@@ -6,7 +6,9 @@ const IDLE_TIMEOUT  = 15 * 60 * 1000;
 const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9raXNqaXpjeWlkdnZ3ZHdlaGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTYzNjMsImV4cCI6MjA5ODM5MjM2M30.O_0EeK297a07B7FLunpWr6HDlqrfP5Z8Owyp3qE4hQE';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+// booking-documents.js (shared with the staff portal) reads window.ghSupabase
+// lazily, so DepOps reuses the fleet app's own signed-in session/RLS
+// identity instead of a second client.
 window.ghSupabase = supabase;
 
 let state = {
@@ -4856,7 +4858,7 @@ async function depOpsConfirmUploadReleaseOrder(tripId, container) {
   }
 }
 
-
+// ---------- Shared doc card + review actions (both tabs) ----------
 
 function depOpsDocCard(doc, kind) {
   const parent = kind === 'inbound' ? (doc.public_bookings || {}) : (doc.trips || {});
