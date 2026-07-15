@@ -4,10 +4,7 @@
   const BUCKET = 'booking-documents';
   const DOC_TYPES = ['guarantee_form', 'release_order', 'delivery_order'];
 
-  // Outbound/repatriation trips (depot → port) only ever need a release
-  // order — kept separate from getRequiredDocTypes() since that function
-  // is booking-shaped (serviceType/origin/destination) and outbound trips
-  // aren't necessarily tied to a booking at all.
+
   const OUTBOUND_REQUIRED_DOC_TYPES = ['release_order'];
 
 
@@ -47,10 +44,7 @@
   }
 
 
-  // Shared upload path for both inbound (booking_id) and outbound (trip_id)
-  // documents. Exactly one of bookingId/tripId must be set — matches the
-  // booking_documents_one_parent CHECK constraint added for DepOps outbound
-  // support (see depops-schema.sql).
+
   async function _uploadDocument({ bookingId, tripId, docType, containerNo, file }) {
     if (!bookingId && !tripId) throw new Error('bookingId or tripId is required');
     if (bookingId && tripId) throw new Error('Provide either bookingId or tripId, not both');
@@ -99,10 +93,7 @@
     return _uploadDocument({ bookingId, docType, containerNo, file });
   }
 
-  // Outbound/repatriation documents (e.g. a release_order) attach to a
-  // fleet trip rather than a public_booking, since not every outbound
-  // container originated from one. See depops-schema.sql for the
-  // trip_id column + CHECK constraint this relies on.
+
   async function uploadTripDocument({ tripId, docType, containerNo, file }) {
     if (!tripId) throw new Error('tripId is required');
     return _uploadDocument({ tripId, docType, containerNo, file });
@@ -129,12 +120,7 @@
     return data || [];
   }
 
-  // Powers the staff portal's review list for any of its filter chips
-  // (Pending Review / Verified / Rejected / All). status === 'all' skips
-  // the status filter entirely. Pending items are ordered oldest-first
-  // (FIFO, so staff clear the backlog in upload order); everything else
-  // is ordered most-recently-uploaded first, which surfaces the latest
-  // review activity.
+
   async function reviewQueue(status) {
     let query = client()
       .from('booking_documents')
@@ -168,9 +154,7 @@
   }
 
 
-  // Batch version of documentsForBooking — one round trip for a whole list
-  // of bookings (e.g. the client dashboard's "My Bookings" panel), grouped
-  // by booking_id so the caller doesn't have to.
+
   async function documentsForBookings(bookingIds) {
     const ids = (bookingIds || []).filter(Boolean);
     if (!ids.length) return {};
@@ -220,10 +204,7 @@
     return byTrip;
   }
 
-  // Outbound counterpart to reviewQueue() — same status-chip semantics,
-  // but joined against trips (via trip_id) instead of public_bookings
-  // (via booking_id), since outbound/repatriation documents aren't tied
-  // to an inbound booking.
+
   async function outboundReviewQueue(status) {
     let query = client()
       .from('booking_documents')
@@ -241,11 +222,7 @@
     return data || [];
   }
 
-  // Bookings whose required document types (per getRequiredDocTypes) are
-  // ALL verified, but which haven't been imported into fleet trips yet.
-  // This is the "Verified — ready to process" gate DepOps surfaces before
-  // enabling import — reuses documentsForBookings() rather than issuing a
-  // new per-booking query.
+
   async function readyToProcessBookings() {
     const { data: bookings, error } = await client()
       .from('public_bookings')
@@ -271,10 +248,7 @@
       .filter(function (entry) { return entry.required.length > 0 && entry.missing.length === 0; });
   }
 
-  // Reverse of allocateStorage() — frees the TEU an outbound/repatriation
-  // trip was holding once the container has actually left (trip status
-  // reaches 'completed'). Idempotent: a trip with no allocation, or one
-  // already released, is a no-op rather than an error.
+ 
   async function releaseStorageForTrip(tripId) {
     const { data: trip, error: tripErr } = await client()
       .from('trips')
@@ -308,9 +282,7 @@
     return { released: true };
   }
 
-  // Lets front-end code decide whether to show staff-only UI (e.g. a link
-  // to the staff portal) without guessing from booking data. Resolves
-  // false (never throws) so it's safe to call speculatively.
+
   async function isStaffMember() {
     try {
       const { data: sessionData } = await client().auth.getSession();
