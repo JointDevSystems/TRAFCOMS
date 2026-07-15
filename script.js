@@ -4856,7 +4856,7 @@ async function depOpsConfirmUploadReleaseOrder(tripId, container) {
   }
 }
 
-// ---------- Shared doc card + review actions (both tabs) ----------
+
 
 function depOpsDocCard(doc, kind) {
   const parent = kind === 'inbound' ? (doc.public_bookings || {}) : (doc.trips || {});
