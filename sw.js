@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v2';
+const CACHE_VERSION = 'gargo-shell-v3'; // bumped for DepOps rollout — bump this on every deploy that changes index.html/script.js/styles.css
 const SHELL_FILES = [
   './',
   './index.html',
