@@ -348,6 +348,8 @@ body::before {
 .s-pending { background: rgba(201,162,39,0.12); color: var(--gold); border-color: var(--gold-border); }
 .s-approved { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.22); }
 .s-rejected { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.22); }
+.s-pending_review { background: rgba(245,158,11,0.12); color: var(--amber); border-color: rgba(245,158,11,0.22); }
+.s-verified { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.22); }
 .s-fulfilled { background: rgba(56,189,248,0.1); color: var(--blue); border-color: rgba(56,189,248,0.18); }
 .s-overdue { background: rgba(239,68,68,0.14); color: var(--red); border-color: rgba(239,68,68,0.25); }
 .s-draft { background: rgba(74,82,104,0.2); color: var(--text-3); border-color: rgba(74,82,104,0.3); }
@@ -716,38 +718,4 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 .truck-card-img {
   width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 0;
-}
-/* DepOps specific */
-.filter-chip {
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.filter-chip:hover {
-  border-color: var(--border-mid);
-  color: var(--text);
-}
-.filter-chip.active {
-  background: var(--gold-dim);
-  border-color: var(--gold-border);
-  color: var(--gold);
-}
-.filter-chip.refresh-chip {
-  margin-left: auto;
-}
-.depops-tab .sbadge.s-verified {
-  background: rgba(34,197,94,0.12);
-  color: var(--green);
-  border-color: rgba(34,197,94,0.22);
-}
-.depops-tab .sbadge.s-rejected {
-  background: rgba(239,68,68,0.12);
-  color: var(--red);
-  border-color: rgba(239,68,68,0.22);
 }
