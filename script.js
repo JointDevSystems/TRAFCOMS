@@ -1463,11 +1463,7 @@ async function applyTripStatus(t, status, actorLabel) {
   buildBadges();
   addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
 
-  // Outbound/repatriation trips hold a depot-storage allocation
-  // (t.storageZoneId/storageTeu) until the container has actually left.
-  // Free it now, best-effort — the trip has already completed at this
-  // point, so a failure here shouldn't undo that; it just means the zone
-  // needs a manual release from DepOps.
+
   if (status === 'completed' && t.storageZoneId && !t.storageReleased) {
     try {
       const res = await window.bookingDocs.releaseStorageForTrip(t.id);
