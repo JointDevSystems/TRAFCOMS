@@ -4432,6 +4432,13 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch((err) => {
       console.error('Service worker registration failed:', err);
     });
+ 
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'SW_UPDATED') {
+        toast('A new version is available — reloading…', 'info', 2500);
+        setTimeout(() => window.location.reload(), 1200);
+      }
+    });
   });
 }
 
