@@ -1,6 +1,5 @@
 'use strict';
 
-
 const IDLE_TIMEOUT  = 15 * 60 * 1000;
 
 const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
