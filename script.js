@@ -4606,12 +4606,35 @@ async function renderDepOpsStorageList() {
           <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
           <td style="padding:6px 8px">${sanitize(zoneName)}</td>
           <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
-          <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="switchDepOpsTab('outbound', document.querySelector('.depops-tab-btn'))">Dispatch →</button></td>
+          <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="depOpsDispatchContainer('${b.id}')">Dispatch →</button></td>
         </tr>`;
       }).join('')}</tbody></table>`;
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
+}
+
+// Routes a "Dispatch" click from the storage list to the right place:
+// - If an outbound trip already exists for this booking, jump straight
+//   into the Dispatch Console with that trip loaded (same as the
+//   "Complete Dispatch" flow used elsewhere).
+// - Otherwise the container needs a destination/TEU picked first, so
+//   send staff to DepOps' Outbound tab, to the same booking's card in
+//   "Eligible for Repatriation" — creating the trip there is what makes
+//   it show up in the Dispatch Console's Awaiting Dispatch queue.
+function depOpsDispatchContainer(bookingId) {
+  const existingTrip = state.db.trips.find(t => t.workType === 'Depot → Port' && t.bookingId === bookingId);
+  if (existingTrip) {
+    jumpToCompleteDispatch(existingTrip.id);
+    return;
+  }
+  showSection('depops', document.querySelector('[data-section="depops"]'));
+  switchDepOpsTab('outbound', document.querySelector('.depops-tab-btn:nth-child(2)'));
+  toast('Pick a destination and create the outbound trip below — it will then appear in the Dispatch Console.', 'info', 5000);
+  setTimeout(() => {
+    const el = document.getElementById('depopsEligibleList');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 150);
 }
 
 // ---------- Inbound ----------
