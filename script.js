@@ -589,7 +589,7 @@ const ROLE_SIDEBAR = {
   admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   clerk:    ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange'],
   dispatch: ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange','fuel'],
-  ops:      ['trucks','drivers','trips','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  ops:      ['trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   finance:  ['trips','shippinglines'],
   viewer:   ['trucks','drivers','trips'],
 };
@@ -2212,7 +2212,7 @@ function cancelDispatchEdit() {
   toast('Dispatch form cleared', 'info');
 }
 
-function createDispatch() {
+async function createDispatch() {
   const truck  = document.getElementById('d_truck').value;
   const driver = document.getElementById('d_driver').value;
   const cont   = document.getElementById('d_container').value.trim().toUpperCase();
@@ -2256,6 +2256,24 @@ function createDispatch() {
 
     const t = state.db.trips.find(tr=>tr.id===editingId);
     if (!t) { toast('That trip no longer exists — it may have been removed.', 'error'); cancelDispatchEdit(); return; }
+
+    // Depot -> Port containers can't be dispatched without a verified
+    // release order on file for this trip — enforced here so it can't be
+    // bypassed by completing dispatch straight from the Dispatch Console.
+    if (workType === 'Depot → Port') {
+      try {
+        const docs = await window.bookingDocs.documentsForTrip(t.id);
+        const hasVerifiedRelease = docs.some(d => d.doc_type === 'release_order' && d.status === 'verified');
+        if (!hasVerifiedRelease) {
+          toast('A verified release order is required before this container can be dispatched to port. Upload it from DepOps → Outbound / Repatriation.', 'error', 6000);
+          return;
+        }
+      } catch (e) {
+        toast(`Could not confirm release order status (${(e && e.message) || 'error'}) — dispatch blocked until this can be checked.`, 'error', 6000);
+        return;
+      }
+    }
+
     Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
@@ -4299,6 +4317,15 @@ async function importPublicBooking(bookingId) {
   }
 
 
+  // Depot Storage bookings never become an Active Trip on import — they go
+  // to the depot storage list (container + zone) via DepOps, and only turn
+  // into a trip later, when repatriation is actually started from there.
+  if (booking.service_type === 'Depot Storage') {
+    toast('Imported into depot storage — allocate a zone from DepOps', 'success');
+    renderPublicBookings();
+    return;
+  }
+
   const trip = {
     id: uid('TRIP'),
     container: rawCont || `PUB-${booking.id.slice(0,8)}`,
@@ -4513,6 +4540,7 @@ function switchDepOpsTab(tab, btn) {
 
 async function renderDepOps() {
   renderDepOpsZones();
+  renderDepOpsStorageList();
   updateDepOpsBadge();
   if (_depOpsTab === 'inbound') await renderDepOpsInbound();
   else await renderDepOpsOutbound();
@@ -4548,6 +4576,37 @@ async function renderDepOpsZones() {
           <td style="padding:6px 8px">${sanitize(z.zone_name)}</td>
           <td style="padding:6px 8px">${occ} / ${cap} TEU<div style="width:100px;height:5px;background:#222;border-radius:3px;overflow:hidden;margin-top:4px"><div style="width:${pct}%;height:100%;background:var(--gold)"></div></div></td>
           <td style="padding:6px 8px">${free} TEU</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+// Simple container + zone list of everything currently occupying depot
+// storage (imported bookings with storage allocated, not yet dispatched
+// out again). This is deliberately separate from Active Trips — storage
+// bookings don't become a trip until repatriation is actually started.
+async function renderDepOpsStorageList() {
+  const wrap = document.getElementById('depopsStorageList');
+  if (!wrap) return;
+  try {
+    const [bookings, zones] = await Promise.all([
+      depOpsRepatriationEligibleBookings(),
+      window.bookingDocs.storageAvailability(),
+    ]);
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No containers currently in storage</div></div>'; return; }
+    const zoneMap = {}; zones.forEach(z => { zoneMap[z.id] = z.zone_name; });
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px"></th>
+      </tr></thead><tbody>${bookings.map(b => {
+        const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
+          <td style="padding:6px 8px">${sanitize(zoneName)}</td>
+          <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
+          <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="switchDepOpsTab('outbound', document.querySelector('.depops-tab-btn'))">Dispatch →</button></td>
         </tr>`;
       }).join('')}</tbody></table>`;
   } catch (e) {
@@ -4615,7 +4674,7 @@ function depOpsReadyCard(entry, zones) {
           <button class="action-btn" onclick="depOpsAllocateForBooking('${b.id}')">Allocate</button>
         </div>`}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet →</button>
+      <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">${b.service_type === 'Depot Storage' ? 'Confirm Into Storage →' : 'Import to Fleet →'}</button>
       <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
     </div>
   </div>`;
@@ -4633,6 +4692,7 @@ async function depOpsAllocateForBooking(bookingId) {
     toast('Storage allocated', 'success');
     renderDepOpsReadyToProcess();
     renderDepOpsZones();
+    renderDepOpsStorageList();
   } catch (e) { toast(e.message || 'Could not allocate storage', 'error'); }
 }
 
@@ -4738,6 +4798,7 @@ async function depOpsCreateOutboundFromBooking(bookingId) {
   scheduleSave();
   toast('Outbound trip created — upload the release order next', 'success');
   renderDepOpsOutbound();
+  renderDepOpsStorageList();
   refreshAwaitingDispatchUI();
 }
 
