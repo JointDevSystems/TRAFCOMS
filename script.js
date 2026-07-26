@@ -37,135 +37,17 @@ let state = {
 };
 
 
-function seedData() {
-  const now = Date.now();
-  const d = (h, m=0) => new Date(now - h*3600000 - m*60000).toISOString();
-  const f = (h, m=0) => new Date(now + h*3600000 + m*60000).toISOString();
-  
+function defaultBillingRates() {
   return {
-    trucks: [
-      { id:'TRK001', reg:'KDA 001A', make:'ISUZU FVZ', type:'Prime Mover', year:2020, colour:'White', status:'on_trip', fuelPct:68, mileage:142300, driver:'DRV001', lastService:d(480), nextService:f(720), notes:'A/C serviced May', img:'', licencePlate:'KDA 001A', vin:'ISUZU123456789' },
-      { id:'TRK002', reg:'KDB 234B', make:'HINO 700', type:'Prime Mover', year:2019, colour:'Red', status:'available', fuelPct:91, mileage:198500, driver:null, lastService:d(240), nextService:f(1440), notes:'', img:'', licencePlate:'KDB 234B', vin:'HINO987654321' },
-      { id:'TRK003', reg:'KDC 567C', make:'ISUZU FVZ', type:'Flatbed', year:2021, colour:'Blue', status:'maintenance', fuelPct:34, mileage:87200, driver:null, lastService:d(48), nextService:f(2160), notes:'Rear axle grease', img:'', licencePlate:'KDC 567C', vin:'ISUZU456123789' },
-      { id:'TRK004', reg:'KDD 890D', make:'MAN TGX', type:'Prime Mover', year:2022, colour:'White', status:'available', fuelPct:77, mileage:52100, driver:null, lastService:d(360), nextService:f(960), notes:'', img:'', licencePlate:'KDD 890D', vin:'MAN789456123' },
-      { id:'TRK005', reg:'KDE 123E', make:'VOLVO FH', type:'Prime Mover', year:2018, colour:'Orange', status:'breakdown', fuelPct:12, mileage:312000, driver:'DRV003', lastService:d(720), nextService:d(24), notes:'Engine coolant leak', img:'', licencePlate:'KDE 123E', vin:'VOLVO321654987' },
-      { id:'TRK006', reg:'KDF 456F', make:'HINO 700', type:'Prime Mover', year:2021, colour:'Silver', status:'available', fuelPct:55, mileage:73400, driver:null, lastService:d(180), nextService:f(1080), notes:'', img:'', licencePlate:'KDF 456F', vin:'HINO741852963' },
-      { id:'TRK007', reg:'KDG 789G', make:'ISUZU FVZ', type:'Tipper', year:2020, colour:'Yellow', status:'off_duty', fuelPct:88, mileage:101200, driver:null, lastService:d(120), nextService:f(1200), notes:'Night shift rest', img:'', licencePlate:'KDG 789G', vin:'ISUZU852963741' },
-      { id:'TRK008', reg:'KDH 012H', make:'MAN TGX', type:'Prime Mover', year:2023, colour:'White', status:'on_trip', fuelPct:62, mileage:21000, driver:'DRV005', lastService:d(96), nextService:f(2400), notes:'New unit', img:'', licencePlate:'KDH 012H', vin:'MAN963741852' },
-    ],
-    drivers: [
-      { id:'DRV001', name:'James Otieno', phone:'+254 722 100 001', licence:'DL-A1234', licenceExp:f(8760), status:'on_trip', truckId:'TRK001', tripsToday:2, load:'MSCU1234567', location:'Miritini Gate', idNo:'12345678', rating:4.8 },
-      { id:'DRV002', name:'Peter Kamau', phone:'+254 733 200 002', licence:'DL-B5678', licenceExp:f(4380), status:'available', truckId:null, tripsToday:0, load:null, location:'Gargo Yard', idNo:'23456789', rating:4.5 },
-      { id:'DRV003', name:'Ali Hassan', phone:'+254 711 300 003', licence:'DL-C9012', licenceExp:f(2190), status:'off_duty', truckId:'TRK005', tripsToday:1, load:null, location:'Roadside B8', idNo:'34567890', rating:4.2 },
-      { id:'DRV004', name:'Samuel Mutuku', phone:'+254 744 400 004', licence:'DL-D3456', licenceExp:f(6570), status:'available', truckId:null, tripsToday:0, load:null, location:'Gargo Yard', idNo:'45678901', rating:4.9 },
-      { id:'DRV005', name:'Ibrahim Farah', phone:'+254 755 500 005', licence:'DL-E7890', licenceExp:f(3285), status:'on_trip', truckId:'TRK008', tripsToday:3, load:'OOLU9876543', location:'Changamwe Rd', idNo:'56789012', rating:4.7 },
-      { id:'DRV006', name:'Grace Wanjiku', phone:'+254 700 600 006', licence:'DL-F1234', licenceExp:f(1095), status:'suspended', truckId:null, tripsToday:0, load:null, location:'—', idNo:'67890123', rating:4.0 },
-      { id:'DRV007', name:'Joseph Mwangi', phone:'+254 712 700 007', licence:'DL-G5678', licenceExp:f(5475), status:'available', truckId:null, tripsToday:1, load:null, location:'Gargo Yard', idNo:'78901234', rating:4.6 },
-      { id:'DRV008', name:'Fatuma Swaleh', phone:'+254 723 800 008', licence:'DL-H9012', licenceExp:f(730), status:'available', truckId:null, tripsToday:0, load:null, location:'Port Gate A', idNo:'89012345', rating:4.4 },
-    ],
-    trips: [
-      { id:'TRIP001', truckId:'TRK001', driverId:'DRV001', container:'MSCU1234567', ctype:'40ft HC', workType:'Port → Depot', origin:'Kilindini Port', dest:'Shimanzi ICD', shippingLine:'SL001', status:'active', startTime:d(2), eta:f(1), distance:18, priority:'High', notes:'Priority reefer', ref:'BL-2024-001' },
-      { id:'TRIP002', truckId:'TRK008', driverId:'DRV005', container:'OOLU9876543', ctype:'20ft Dry', workType:'Depot → Client', origin:'Shimanzi ICD', dest:'Changamwe Depot', shippingLine:'SL002', status:'active', startTime:d(1), eta:f(2), distance:12, priority:'Normal', notes:'', ref:'BL-2024-002' },
-      { id:'TRIP003', truckId:'TRK002', driverId:'DRV002', container:'MAEU5551234', ctype:'40ft Dry', workType:'Client → Port', origin:'Port Reitz', dest:'Kilindini Port', shippingLine:'SL001', status:'completed', startTime:d(5), eta:d(3), distance:22, priority:'Normal', notes:'', ref:'BL-2024-003' },
-      { id:'TRIP004', truckId:'TRK004', driverId:'DRV004', container:'CMAU3219870', ctype:'40ft HC', workType:'Port → CFS', origin:'Kilindini Port', dest:'Mombasa CFS', shippingLine:'SL003', status:'delayed', startTime:d(3), eta:d(0.5), distance:9, priority:'Urgent', notes:'Gate queue 2hr', ref:'BL-2024-004' },
-      { id:'TRIP005', truckId:'TRK006', driverId:'DRV007', container:'HLCU7778901', ctype:'20ft Reefer', workType:'Port → Depot', origin:'Kilindini Port', dest:'EPZ Cold Store', shippingLine:'SL004', status:'completed', startTime:d(4), eta:d(2), distance:14, priority:'High', notes:'Temp: -18°C', ref:'BL-2024-005' },
-    ],
-    maintenance: [
-      { id:'MNT001', truckId:'TRK005', type:'Breakdown', desc:'Engine coolant leak — radiator hose burst on B8 highway. Tow requested.', priority:'critical', status:'open', date:d(4), cost:0, tech:'Abdul Nassir', resolvedDate:null },
-      { id:'MNT002', truckId:'TRK003', type:'Scheduled', desc:'Rear axle bearing replacement. Truck is off-road pending parts arrival.', priority:'high', status:'in_progress', date:d(24), cost:18500, tech:'John Gitonga', resolvedDate:null },
-      { id:'MNT003', truckId:'TRK001', type:'Preventive', desc:'Oil change, filter replacement, brake pad inspection.', priority:'medium', status:'resolved', date:d(168), cost:8700, tech:'Paul Mwema', resolvedDate:d(120) },
-      { id:'MNT004', truckId:'TRK002', type:'Electrical', desc:'Dashboard warning light — alternator output low. Tested & cleared.', priority:'low', status:'resolved', date:d(336), cost:3200, tech:'Abdul Nassir', resolvedDate:d(288) },
-      { id:'MNT005', truckId:'TRK007', type:'Tyre', desc:'Two rear tyres worn below minimum tread. Replaced with Bridgestone L317.', priority:'medium', status:'resolved', date:d(72), cost:42000, tech:'Moses Kwame', resolvedDate:d(48) },
-    ],
-    fuel: [
-      { id:'FUEL001', truckId:'TRK001', driverId:'DRV001', date:d(2), litres:180, pricePerLitre:155, station:'Kobil Shimanzi', odometer:142100, receipt:'RCP-001' },
-      { id:'FUEL002', truckId:'TRK008', driverId:'DRV005', date:d(5), litres:240, pricePerLitre:155, station:'Total Changamwe', odometer:20750, receipt:'RCP-002' },
-      { id:'FUEL003', truckId:'TRK002', driverId:'DRV002', date:d(8), litres:150, pricePerLitre:153, station:'Shell Mombasa', odometer:198250, receipt:'RCP-003' },
-      { id:'FUEL004', truckId:'TRK004', driverId:'DRV004', date:d(12), litres:200, pricePerLitre:155, station:'Kobil Miritini', odometer:51900, receipt:'RCP-004' },
-      { id:'FUEL005', truckId:'TRK006', driverId:'DRV007', date:d(20), litres:170, pricePerLitre:154, station:'Galana Changamwe', odometer:73200, receipt:'RCP-005' },
-    ],
-    shippingLines: [
-      { id:'SL001', code:'MSC', name:'Mediterranean Shipping Co.', contact:'mombasa@msc.com', rate20:12000, rate40:18000, rateHC:20000, active:true },
-      { id:'SL002', code:'OOCL', name:'Orient Overseas Container Line', contact:'ke@oocl.com', rate20:11500, rate40:17500, rateHC:19500, active:true },
-      { id:'SL003', code:'CMA', name:'CMA CGM', contact:'mbs@cmacgm.com', rate20:12500, rate40:18500, rateHC:21000, active:true },
-      { id:'SL004', code:'HL', name:'Hapag-Lloyd', contact:'ke@hapag.com', rate20:13000, rate40:19000, rateHC:21500, active:true },
-      { id:'SL005', code:'PIL', name:'Pacific International Lines', contact:'mbs@pil-line.com', rate20:10500, rate40:16000, rateHC:18000, active:false },
-    ],
-    shutouts: [
-      { id:'SHT001', container:'MSCU4449010', vessel:'MSC AURORA', voyage:'VA-112', line:'SL001', date:d(48), status:'open', reason:'Vessel closed cut-off', truckId:'TRK002', driverId:'DRV002', notes:'Rebook next sailing' },
-      { id:'SHT002', container:'OOLU2221890', vessel:'OOCL KENYA', voyage:'OK-088', line:'SL002', date:d(72), status:'redelivery', reason:'Docs not ready at gate', truckId:'TRK004', driverId:'DRV004', notes:'Empty redeliver to ICD' },
-      { id:'SHT003', container:'CMAU1110099', vessel:'CMA SOLEIL', voyage:'CS-034', line:'SL003', date:d(120), status:'resolved', reason:'Gate queue exceeded ETA', truckId:'TRK006', driverId:'DRV007', notes:'Reshipped next day' },
-    ],
-    interchange: [
-      { id:'IC001', container:'MSCU9991110', line:'SL001', date:d(24), type:'Gate-In', truck:'TRK001', driver:'DRV001', condition:'Good', notes:'No damage', status:'approved', img:'' },
-      { id:'IC002', container:'OOLU3332220', line:'SL002', date:d(48), type:'Gate-Out', truck:'TRK002', driver:'DRV002', condition:'Damaged', notes:'Corner post dent', status:'pending', img:'' },
-      { id:'IC003', container:'CMAU5554440', line:'SL003', date:d(72), type:'Gate-In', truck:'TRK004', driver:'DRV004', condition:'Good', notes:'', status:'reconciled', img:'' },
-    ],
-    requisitions: [
-      { id:'REQ001', requester:'DRV001', category:'Fuel Advance', items:'Fuel advance KSh 5,000', amount:5000, date:d(2), status:'approved', approver:'admin', approvedDate:d(1), notes:'' },
-      { id:'REQ002', requester:'DRV003', category:'Tyre Parts', items:'2× Bridgestone L317 rear tyres', amount:42000, date:d(24), status:'pending', approver:null, approvedDate:null, notes:'Urgent — breakdown' },
-      { id:'REQ003', requester:'DRV005', category:'Tool Purchase', items:'Tyre pressure gauge, spanner set', amount:3500, date:d(48), status:'rejected', approver:'admin', approvedDate:d(36), notes:'Not in budget Q3' },
-      { id:'REQ004', requester:'DRV007', category:'Fuel Advance', items:'Fuel advance KSh 3,500', amount:3500, date:d(3), status:'fulfilled', approver:'admin', approvedDate:d(2), notes:'' },
-      { id:'REQ005', requester:'DRV002', category:'Medical', items:'Medical reimbursement — clinic', amount:2800, date:d(6), status:'pending', approver:null, approvedDate:null, notes:'' },
-    ],
-    workshop: [
-      { id:'WS001', truckId:'TRK005', title:'Radiator hose replacement', desc:'Replace burst radiator hose, flush & refill coolant system.', tech:'Abdul Nassir', status:'in_progress', reported:d(4), diagnosed:d(3), parts:'Hose kit KSh 4,200', labour:3500, total:7700 },
-      { id:'WS002', truckId:'TRK003', title:'Rear axle bearing replacement', desc:'Press-fit new Timken bearing set, torque to spec.', tech:'John Gitonga', status:'diagnosed', reported:d(28), diagnosed:d(24), parts:'Bearing KSh 14,000', labour:4500, total:18500 },
-      { id:'WS003', truckId:'TRK001', title:'Full service 140k km', desc:'Oil, filters, brake pads, belt tension checked.', tech:'Paul Mwema', status:'completed', reported:d(180), diagnosed:d(172), parts:'Consumables 5,700', labour:3000, total:8700 },
-    ],
-    invoices: [
-      { id:'INV001', client:'Bidco Africa Ltd', trips:['TRIP001'], date:d(48), due:f(336), status:'sent', subtotal:18000, vat:2880, total:20880, paid:0, ref:'INV-2024-001', notes:'' },
-      { id:'INV002', client:'Bamburi Cement', trips:['TRIP003','TRIP005'], date:d(72), due:f(168), status:'paid', subtotal:30000, vat:4800, total:34800, paid:34800, ref:'INV-2024-002', notes:'EFT confirmed' },
-      { id:'INV003', client:'KAPA Oil Refineries', trips:['TRIP002'], date:d(168), due:d(0), status:'overdue', subtotal:12000, vat:1920, total:13920, paid:0, ref:'INV-2024-003', notes:'Follow up sent' },
-      { id:'INV004', client:'Crown Paints Kenya', trips:[], date:d(1), due:f(504), status:'draft', subtotal:15000, vat:2400, total:17400, paid:0, ref:'INV-2024-004', notes:'' },
-      { id:'INV005', client:'Kenya Ports Authority', trips:['TRIP004'], date:d(24), due:f(312), status:'partial', subtotal:21000, vat:3360, total:24360, paid:12000, ref:'INV-2024-005', notes:'Partial — cheque' },
-    ],
-    billingRates: {
-      '20ft Dry': { base:10000, perKm:150 },
-      '40ft Dry': { base:14000, perKm:200 },
-      '40ft HC': { base:16000, perKm:220 },
-      '20ft Reefer': { base:18000, perKm:250 },
-      '40ft Reefer': { base:22000, perKm:280 },
-      'Flat Rack': { base:13000, perKm:190 },
-      'Open Top': { base:12000, perKm:180 },
-      'Tank': { base:20000, perKm:260 },
-      'Hazmat': { base:25000, perKm:300 },
-    },
-    profiles: [
-      { id:'USR001', username:'admin', name:'System Administrator', role:'admin', email:'admin@gargo.co.ke', created:d(8760), lastLogin:d(0.1), active:true },
-      { id:'USR002', username:'ops1', name:'Mary Achieng', role:'ops', email:'mary@gargo.co.ke', created:d(4380), lastLogin:d(24), active:true },
-      { id:'USR003', username:'finance1', name:'David Kipkoech', role:'finance', email:'david@gargo.co.ke', created:d(2190), lastLogin:d(48), active:true },
-      { id:'USR004', username:'dispatch1', name:'Aisha Mwangi', role:'dispatch', email:'aisha@gargo.co.ke', created:d(1095), lastLogin:d(12), active:true },
-      { id:'USR006', username:'clerk1', name:'Brian Otieno', role:'clerk', email:'brian@gargo.co.ke', created:d(720), lastLogin:d(6), active:true },
-      { id:'USR005', username:'viewer1', name:'Tom Njoroge', role:'viewer', email:'tom@gargo.co.ke', created:d(730), lastLogin:d(168), active:false },
-    ],
-    auditLog: [
-      { id:'AUD001', user:'admin', action:'Login', detail:'System login from 197.232.x.x', time:d(0.1) },
-      { id:'AUD002', user:'admin', action:'Dispatch Created', detail:'TRIP001 — KDA 001A → Shimanzi ICD', time:d(2.2) },
-      { id:'AUD003', user:'ops1', action:'Maintenance Log', detail:'MNT001 — TRK005 breakdown logged', time:d(4.1) },
-      { id:'AUD004', user:'finance1', action:'Invoice Sent', detail:'INV-2024-001 to Bidco Africa Ltd', time:d(47) },
-      { id:'AUD005', user:'admin', action:'Requisition Approved', detail:'REQ001 — Fuel advance KSh 5,000', time:d(1.2) },
-      { id:'AUD006', user:'dispatch1', action:'Status Update', detail:'TRIP004 marked delayed — gate queue', time:d(3.5) },
-    ],
-    allocationRules: [
-      { id:'AR001', name:'Nearest Available', desc:'Prefer trucks closest to pickup origin', weight:35, active:true },
-      { id:'AR002', name:'Fuel Level ≥ 40%', desc:'Skip trucks below 40% fuel unless unavoidable', weight:25, active:true },
-      { id:'AR003', name:'Trip Rotation', desc:'Distribute trips evenly across fleet', weight:20, active:true },
-      { id:'AR004', name:'Licence Type Match', desc:'Match driver licence class to container type', weight:15, active:true },
-      { id:'AR005', name:'Priority Override', desc:'Urgent jobs bypass normal rotation', weight:5, active:true },
-    ],
-    trackingPositions: {
-      TRK001:{ lat:-4.0422, lng:39.6682, speed:42, heading:'N', zone:'Miritini', lastUpdate:d(0.08) },
-      TRK008:{ lat:-4.0312, lng:39.6812, speed:55, heading:'NE', zone:'Changamwe', lastUpdate:d(0.1) },
-      TRK005:{ lat:-4.0551, lng:39.7010, speed:0, heading:'—', zone:'B8 Hwy', lastUpdate:d(4) },
-    },
-    settings: {
-      backupDate: null,
-      mapApiKey: '',
-      whatsapp: true,
-      mpesa: false,
-      companyName:'Gargo Logistics Ltd',
-    },
+    '20ft Dry': { base:0, perKm:0 },
+    '40ft Dry': { base:0, perKm:0 },
+    '40ft HC': { base:0, perKm:0 },
+    '20ft Reefer': { base:0, perKm:0 },
+    '40ft Reefer': { base:0, perKm:0 },
+    'Flat Rack': { base:0, perKm:0 },
+    'Open Top': { base:0, perKm:0 },
+    'Tank': { base:0, perKm:0 },
+    'Hazmat': { base:0, perKm:0 },
   };
 }
 
@@ -460,6 +342,19 @@ async function clearAllTables() {
     if (error) console.error(`${table} clear failed:`, error.message);
   };
   // Children before parents.
+  await del('booking_documents', 'id');
+  await del('depot_surveys', 'id');
+
+  // Empty out any yard slots occupied by test bookings/trips, but keep
+  // the physical slot grid (block/zone layout) itself intact.
+  {
+    const { error } = await supabase.from('depot_block_slots').update({
+      booking_id: null, trip_id: null, container: null,
+      condition_status: 'empty', released_at: new Date().toISOString(),
+    }).or('booking_id.not.is.null,trip_id.not.is.null,container.not.is.null');
+    if (error) console.error('depot_block_slots reset failed:', error.message);
+  }
+
   await del('invoice_trips', 'invoice_id');
   await del('invoices', 'id');
   await del('audit_log', 'id');
@@ -473,8 +368,23 @@ async function clearAllTables() {
   await del('fuel_logs', 'id');
   await del('maintenance', 'id');
   await del('trips', 'id');
+  await del('public_bookings', 'id');
+
+  // Yard zones stay, but their occupied_teu counters are now stale.
+  {
+    const { error } = await supabase.from('depot_storage_zones').update({ occupied_teu: 0 });
+    if (error) console.error('depot_storage_zones reset failed:', error.message);
+  }
+
   await del('drivers', 'id');
   await del('trucks', 'id');
+
+  // Zones (kept) may point at shipping_lines — clear the link before
+  // removing shipping lines so the delete below doesn't fail on FK.
+  {
+    const { error } = await supabase.from('depot_storage_zones').update({ shipping_line_id: null }).not('id', 'is', null);
+    if (error) console.error('depot_storage_zones link clear failed:', error.message);
+  }
   await del('shipping_lines', 'id');
 }
 
@@ -496,7 +406,7 @@ async function initDB() {
       requisitions: [],
       workshop: [],
       invoices: [],
-      billingRates: {},
+      billingRates: defaultBillingRates(),
       allocationRules: [],
       trackingPositions: {},
       auditLog: [],
@@ -512,6 +422,9 @@ async function initDB() {
       mpesa: false,
       companyName: 'Gargo Logistics Ltd'
     };
+  }
+  if (!state.db.billingRates || !Object.keys(state.db.billingRates).length) {
+    state.db.billingRates = defaultBillingRates();
   }
 }
 
@@ -564,7 +477,60 @@ function findLiveTripByContainer(cont, excludeTripId) {
   return state.db.trips.find(t => t.id !== excludeTripId && isTripLive(t) && (t.container || '').toUpperCase() === c) || null;
 }
 
-function isValidContainerFormat(cont) { return /^[A-Z0-9]{4,12}$/.test(cont); }
+// ── ISO 6346 container number validation ──────────────────────────────
+// Format: 3-letter owner code + 1 equipment category id (U/J/Z) +
+// 6-digit serial number + 1 check digit = 11 characters total.
+// Check digit is computed per ISO 6346 Annex A (letter values skip
+// multiples of 11, weighted by powers of 2, mod 11, 10→0).
+const ISO6346_LETTER_VALUES = {
+  A:10,B:12,C:13,D:14,E:15,F:16,G:17,H:18,I:19,J:20,K:21,L:23,M:24,N:25,
+  O:26,P:27,Q:28,R:29,S:30,T:31,U:32,V:34,W:35,X:36,Y:37,Z:38,
+};
+
+function iso6346CheckDigit(first10) {
+  let sum = 0;
+  for (let i = 0; i < 10; i++) {
+    const ch = first10[i];
+    const val = /[0-9]/.test(ch) ? parseInt(ch, 10) : ISO6346_LETTER_VALUES[ch];
+    if (val === undefined) return null;
+    sum += val * Math.pow(2, i);
+  }
+  const rem = sum % 11;
+  return rem === 10 ? 0 : rem;
+}
+
+// Returns null when valid, or a short human-readable reason why not —
+// used both to gate saves and to show a specific error instead of a
+// generic "invalid format" toast.
+function containerFormatIssue(cont) {
+  const c = (cont || '').trim().toUpperCase();
+  if (!c) return 'Container number is required';
+  if (c.length !== 11) return `Must be 11 characters (owner code + serial + check digit) — got ${c.length}`;
+  if (!/^[A-Z]{3}/.test(c)) return 'First 3 characters must be letters (owner code)';
+  if (!/^[A-Z]{3}[UJZ]/.test(c)) return "4th character must be U, J, or Z (equipment category)";
+  if (!/^[A-Z]{4}\d{6}\d$/.test(c)) return 'Characters 5–11 must be digits (serial number + check digit)';
+  const expected = iso6346CheckDigit(c.slice(0, 10));
+  const actual = parseInt(c[10], 10);
+  if (expected === null) return 'Could not compute check digit';
+  if (expected !== actual) return `Check digit should be ${expected}, not ${actual} — verify the container number`;
+  return null;
+}
+
+function isValidContainerFormat(cont) {
+  return containerFormatIssue(cont) === null;
+}
+
+// Live input feedback: uppercases as you type and colors the border
+// once there's enough to judge (doesn't nag on the first few keystrokes).
+function markContainerValidity(el) {
+  const start = el.selectionStart, end = el.selectionEnd;
+  el.value = el.value.toUpperCase();
+  if (el.setSelectionRange) el.setSelectionRange(start, end);
+  const v = el.value.trim();
+  el.classList.remove('input-valid', 'input-invalid');
+  if (v.length < 4) return;
+  el.classList.add(isValidContainerFormat(v) ? 'input-valid' : 'input-invalid');
+}
 
 function findTruckByReg(reg, excludeId) {
   if (!reg) return null;
@@ -2041,7 +2007,7 @@ function dpRenderShutoutTab(el, driver) {
     <div class="form-card" style="margin-bottom:14px">
       <div class="form-card-head">Report Shutout</div>
       <div class="form-card-body">
-        <div class="fg"><label>Container No.</label><input id="dp_sh_cont" list="containerHistory" placeholder="MSCU0000000"/></div>
+        <div class="fg"><label>Container No.</label><input id="dp_sh_cont" list="containerHistory" placeholder="MSCU1234566" oninput="markContainerValidity(this)"/></div>
         <div class="form-row-2">
           <div class="fg"><label>Vessel</label><input id="dp_sh_vessel" placeholder="MSC VESSEL NAME"/></div>
           <div class="fg"><label>Voyage No.</label><input id="dp_sh_voyage" placeholder="VA-001"/></div>
@@ -2225,8 +2191,9 @@ async function createDispatch() {
     toast('Fill in all required fields', 'error');
     return;
   }
-  if (!isValidContainerFormat(cont)) {
-    toast('Invalid container number format. Use letters and numbers only.', 'error');
+  const contIssue = containerFormatIssue(cont);
+  if (contIssue) {
+    toast(`Container number: ${contIssue}`, 'error');
     return;
   }
   const dupTrip = findLiveTripByContainer(cont, editingId || undefined);
@@ -2419,7 +2386,8 @@ function processBulkDispatch() {
     const rowLabel = r.container ? r.container : `row ${idx+1}`;
     if (!r.container) { skipped.push(`${rowLabel}: missing container number`); return; }
     const cont = r.container.trim().toUpperCase();
-    if (!isValidContainerFormat(cont)) { skipped.push(`${cont}: invalid container format`); return; }
+    const contIssue = containerFormatIssue(cont);
+    if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
     if (seenInBatch.has(cont)) { skipped.push(`${cont}: duplicate container within this file`); return; }
     const dupTrip = findLiveTripByContainer(cont);
     if (dupTrip) { skipped.push(`${cont}: already on an active trip`); return; }
@@ -2461,7 +2429,7 @@ function processBulkDispatch() {
 }
 
 function downloadBulkTemplate() {
-  const csv = 'container,truck,driver,origin,destination,ctype,workType,distance\nMSCU0000001,KDA 001A,James Otieno,Kilindini Port,Shimanzi ICD,40ft Dry,Port → Depot,18';
+  const csv = 'container,truck,driver,origin,destination,ctype,workType,distance\nMSCU1234566,KDA 001A,James Otieno,Kilindini Port,Shimanzi ICD,40ft Dry,Port → Depot,18';
   const a   = document.createElement('a');
   a.href     = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   a.download = 'gargo_bulk_template.csv';
@@ -2587,13 +2555,14 @@ function renderShutout(f){
 }
 
 function showAddShutoutModal() {
-  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" list="containerHistory" placeholder="MSCU0000000 — pick existing or type new"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
+  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
 }
 
 function saveShutout() {
   const cont = document.getElementById('sh_cont').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
-  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
+  const contIssue = containerFormatIssue(cont);
+  if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
   const dupShutout = state.db.shutouts.find(s=>(s.container||'').toUpperCase()===cont && s.status==='open');
   if (dupShutout) { toast(`${cont} already has an open shutout record — resolve it before flagging again`, 'error'); return; }
   state.db.shutouts.push({
@@ -2624,7 +2593,46 @@ function renderInterchange(f){
   let items=f==='all'?state.db.interchange:state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+}
+
+function printInterchangeList() {
+  const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
+  if (!items.length) { toast('Nothing to print yet', 'error'); return; }
+  const rows = items.map(ic => `<tr>
+    <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.type || '—')}</td>
+    <td>${sanitize(lineName(ic.line))}</td><td>${sanitize(ic.condition || '—')}</td>
+    <td>${sanitize(truckName(ic.truck))}</td><td>${sanitize(driverName(ic.driver))}</td><td>${sanitize((ic.status || '').toUpperCase())}</td>
+  </tr>`).join('');
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>Interchange Records</title><style>
+    body{font-family:Arial,sans-serif;padding:20px;color:#111}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
+    th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
+    h2{margin-bottom:4px}
+  </style></head><body><h2>Gargo Haven Depot — Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
+  <table><thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
+function downloadInterchangeCSV() {
+  const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
+  if (!items.length) { toast('Nothing to download yet', 'error'); return; }
+  const headers = ['Date', 'Container', 'Type', 'Shipping Line', 'Condition', 'Truck', 'Driver', 'Status', 'Notes'];
+  const rows = items.map(ic => [
+    ic.date, ic.container, ic.type, lineName(ic.line), ic.condition, truckName(ic.truck), driverName(ic.driver), ic.status, ic.notes,
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `interchange-${_icFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function approveInterchange(id) {
@@ -2639,13 +2647,14 @@ function approveInterchange(id) {
 }
 
 function showAddInterchangeModal() {
-  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU0000000 — pick existing or type new"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
 }
 
 function saveInterchange() {
   const cont = document.getElementById('ic_cont').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
-  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
+  const contIssue = containerFormatIssue(cont);
+  if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
   const dupIc = state.db.interchange.find(i=>(i.container||'').toUpperCase()===cont && i.type===document.getElementById('ic_type').value && new Date(i.date).toDateString()===new Date().toDateString());
   if (dupIc) { toast(`${cont} already has a ${document.getElementById('ic_type').value} interchange record logged today`, 'warning'); return; }
   state.db.interchange.push({
@@ -2665,9 +2674,60 @@ function saveInterchange() {
   toast('Interchange recorded', 'success');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 18  SHIPPING LINES
-────────────────────────────────────────────────────────────────── */
+// Generates a downloadable Interchange Confirmation PDF for a single
+// interchange record — the document a transporter can hand over (or
+// attach to an invoice) as proof of delivery to trigger payment.
+function downloadInterchangeSlip(icId) {
+  const ic = state.db.interchange.find(i => i.id === icId);
+  if (!ic) { toast('Interchange record not found', 'error'); return; }
+  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text('GARGO HAVEN DEPOT LIMITED', 14, 18);
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  doc.text('Interchange Confirmation', 14, 26);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Ref: ${ic.id}  ·  Generated ${new Date().toLocaleString('en-KE')}`, 14, 32);
+  doc.setDrawColor(200); doc.line(14, 36, 196, 36);
+
+  doc.setTextColor(20); doc.setFontSize(11);
+  const rows = [
+    ['Container No.', ic.container || '—'],
+    ['Type', ic.type || '—'],
+    ['Shipping Line', lineName(ic.line)],
+    ['Condition', ic.condition || '—'],
+    ['Truck', truckName(ic.truck)],
+    ['Driver', driverName(ic.driver)],
+    ['Date', fmtDate(ic.date)],
+    ['Status', (ic.status || '').toUpperCase()],
+  ];
+  let y = 46;
+  rows.forEach(([label, val]) => {
+    doc.setFont(undefined, 'bold'); doc.text(label + ':', 14, y);
+    doc.setFont(undefined, 'normal'); doc.text(String(val), 70, y);
+    y += 8;
+  });
+  if (ic.notes) {
+    y += 4; doc.setFont(undefined, 'bold'); doc.text('Notes:', 14, y);
+    y += 6; doc.setFont(undefined, 'normal');
+    doc.text(doc.splitTextToSize(ic.notes, 180), 14, y);
+    y += 14;
+  }
+  y += 10;
+  doc.setDrawColor(220); doc.line(14, y, 90, y); doc.line(120, y, 196, y);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text('Depot Clerk Signature', 14, y + 5);
+  doc.text('Transporter / Driver Signature', 120, y + 5);
+
+  doc.setFontSize(8); doc.setTextColor(150);
+  doc.text('This document confirms container delivery/receipt at Gargo Haven Depot and supports transporter payment processing.', 14, 285);
+
+  doc.save(`interchange-${(ic.container || ic.id).replace(/\s+/g,'')}.pdf`);
+}
+
+
 let _linesFilter='all';
 function filterLines(f,btn){ _linesFilter=f; document.querySelectorAll('#sec-shippinglines .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderLines(f); }
 
@@ -3127,6 +3187,68 @@ function renderReport(tab, btn) {
     if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
     const inv=db.invoices;
     out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
+  } else if(tab==='depops'){
+    out.innerHTML='<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+    renderReportDepOps(out);
+  }
+}
+
+// DepOps report — connects the depot storage/interchange pipeline to
+// Reports & Analytics so occupancy and container-flow metrics don't require
+// digging through the DepOps section tab by tab. Pulls live from Supabase
+// (via window.bookingDocs) rather than the cached state.db blob, same as
+// Trip Reports & Audit Centre does.
+async function renderReportDepOps(out) {
+  try {
+    const [zones, awaitingSurvey, surveyedAwaitingAlloc, escalated] = await Promise.all([
+      window.bookingDocs.listZones(),
+      window.bookingDocs.awaitingSurveyBookings(),
+      window.bookingDocs.surveyedAwaitingAllocation(),
+      window.bookingDocs.escalatedBookings(),
+    ]);
+    const inStorage = await depOpsRepatriationEligibleBookings();
+    const totalCap = zones.reduce((s,z)=>s+(z.capacity_teu||0),0);
+    const totalOcc = zones.reduce((s,z)=>s+(z.occupied_teu||0),0);
+    const ic = state.db.interchange || [];
+    const icPending = ic.filter(i=>i.status==='pending').length;
+    const icApproved = ic.filter(i=>i.status==='approved').length;
+    const icReconciled = ic.filter(i=>i.status==='reconciled').length;
+    const icFromSurvey = ic.filter(i=>/Auto-generated from survey/.test(i.notes||'')).length;
+
+    if (!out || !out.isConnected) return; // tab may have been switched away while loading
+
+    out.innerHTML = `<div class="two-col-grid">
+      <div class="report-block">
+        <h3>Depot Storage Pipeline</h3>
+        ${reportRow('Awaiting Survey', awaitingSurvey.length)}
+        ${reportRow('Surveyed — Awaiting Allocation', surveyedAwaitingAlloc.length)}
+        ${reportRow('Escalated (Joint Survey Needed)', escalated.length)}
+        ${reportRow('Currently In Storage', inStorage.length)}
+      </div>
+      <div class="report-block">
+        <h3>Zone Occupancy</h3>
+        ${reportRow('Total Capacity', totalCap + ' TEU')}
+        ${reportRow('Occupied', totalOcc + ' TEU')}
+        ${reportRow('Free', Math.max(totalCap-totalOcc,0) + ' TEU')}
+        ${reportRow('Zones Configured', zones.length)}
+      </div>
+      <div class="report-block">
+        <h3>Interchange</h3>
+        ${reportRow('Pending', icPending)}
+        ${reportRow('Approved', icApproved)}
+        ${reportRow('Reconciled', icReconciled)}
+        ${reportRow('Generated From Survey', icFromSurvey + ' / ' + ic.length)}
+      </div>
+      <div class="report-block">
+        <h3>Jump To</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+          <button class="action-btn ghost" onclick="showSection('depops', document.querySelector('[data-section=\\'depops\\']'))">Open DepOps →</button>
+          <button class="action-btn ghost" onclick="showSection('interchange', document.querySelector('[data-section=\\'interchange\\']'))">Open Interchange →</button>
+        </div>
+      </div>
+    </div>`;
+  } catch (e) {
+    if (out && out.isConnected) out.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
@@ -3797,23 +3919,21 @@ async function executeClearData() {
   closeModal();
   toast('Clearing all data…', 'info', 2000);
   await clearAllTables();
-  state.db = remapSeedIds(seedData());
+  state.db = {
+    trucks: [], drivers: [], trips: [], maintenance: [], fuel: [],
+    shippingLines: [], shutouts: [], interchange: [], requisitions: [],
+    workshop: [], invoices: [], billingRates: defaultBillingRates(),
+    allocationRules: [], trackingPositions: {}, auditLog: [],
+    settings: state.db.settings || {
+      backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false,
+      companyName: 'Gargo Logistics Ltd'
+    },
+    profiles: state.db.profiles || [],
+  };
   await saveDB();
   buildBadges(); buildAlerts();
   renderSection(state.currentSection);
   toast('All data cleared','warning');
-}
-
-async function resetToSeed() {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
-  if (!confirm('Reset to seed data? This will replace all data with sample data.')) return;
-  toast('Resetting to seed data…', 'info', 2000);
-  await clearAllTables();
-  state.db = remapSeedIds(seedData());
-  await saveDB();
-  buildBadges(); buildAlerts();
-  renderSection(state.currentSection);
-  toast('Reset to seed data','success');
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -4316,7 +4436,8 @@ async function importPublicBooking(bookingId) {
 
   const rawCont = (booking.container || '').trim().toUpperCase();
   if (rawCont) {
-    if (!isValidContainerFormat(rawCont)) { toast(`Booking has an invalid container number (${rawCont}) — fix it before importing`, 'error'); return; }
+    const rawContIssue = containerFormatIssue(rawCont);
+    if (rawContIssue) { toast(`Booking's container number ${rawCont}: ${rawContIssue} — fix it before importing`, 'error', 6000); return; }
     const dupTrip = findLiveTripByContainer(rawCont);
     if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
   }
@@ -4578,6 +4699,10 @@ async function renderDepOps() {
   updateDepOpsBadge();
   if (_depOpsTab === 'inbound') await renderDepOpsInbound();
   else if (_depOpsTab === 'zones') await renderDepOpsZoneAdmin();
+  else if (_depOpsTab === 'escalations') await renderDepOpsEscalations();
+  else if (_depOpsTab === 'yard') await renderDepOpsYardMap();
+  else if (_depOpsTab === 'surveys') await renderDepOpsSurveyRegister();
+  else if (_depOpsTab === 'master') await renderDepOpsMasterList();
   else await renderDepOpsOutbound();
 }
 
@@ -4634,15 +4759,23 @@ async function renderDepOpsStorageList() {
     ]);
     if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No containers currently in storage</div></div>'; return; }
     const zoneMap = {}; zones.forEach(z => { zoneMap[z.id] = z.zone_name; });
+    const surveys = await Promise.all(bookings.map(b => window.bookingDocs.surveyForOccupant({ bookingId: b.id })));
     wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
       <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
-        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px"></th>
-      </tr></thead><tbody>${bookings.map(b => {
+        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px">Interchange</th><th style="padding:6px 8px"></th>
+      </tr></thead><tbody>${bookings.map((b,i) => {
         const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
+        const survey = surveys[i];
+        const icCell = !survey
+          ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>'
+          : survey.interchange_generated_at
+            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>`
+            : `<button class="modal-btn primary" onclick="generateInterchangeFromSurvey('${b.id}','${survey.id}')">Generate →</button>`;
         return `<tr style="border-top:1px solid var(--border)">
           <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
           <td style="padding:6px 8px">${sanitize(zoneName)}</td>
           <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
+          <td style="padding:6px 8px">${icCell}</td>
           <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="depOpsDispatchContainer('${b.id}')">Dispatch →</button></td>
         </tr>`;
       }).join('')}</tbody></table>`;
@@ -4764,16 +4897,20 @@ async function renderDepOpsAwaitingSurvey() {
   }
 }
 
+let _surveyImages = [];
+
 async function openSurveyModal(bookingId) {
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
   const lineId = resolveBookingShippingLineId(booking);
   const lineOptions = state.db.shippingLines.map(l => `<option value="${l.id}" ${l.id === lineId ? 'selected' : ''}>${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
   const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${booking.cargo_type === t ? 'selected' : ''}>${t}</option>`).join('');
+  const tariffCategoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).map(c => `<option>${c}</option>`).join('');
+  _surveyImages = [];
 
   openModal(`Survey — ${sanitize(booking.container) || 'Container'}`, `
     <div class="form-row-2">
-      <div class="fg"><label>Container No.</label><input id="sv_container" value="${sanitize(booking.container || '')}"></div>
+      <div class="fg"><label>Container No.</label><input id="sv_container" value="${sanitize(booking.container || '')}" oninput="markContainerValidity(this)"></div>
       <div class="fg"><label>Type / Size</label><select id="sv_ctype">${typeOptions}</select></div>
     </div>
     <div class="form-row-2">
@@ -4796,21 +4933,95 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Clerk</label><input id="sv_clerk" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
       <div class="fg"><label>Seal Number</label><input id="sv_seal"></div>
     </div>
+    <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px">Condition &amp; Tariff (if damaged)</div>
     <div class="form-row-2">
-      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
-      <div class="fg"><label>Condition</label><select id="sv_condition"><option value="full_grade">Full Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
+      <div class="fg"><label>Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
+        <option value="full_grade">Full Grade</option>
+        <option value="under_repair">Under Repair</option>
+        <option value="damaged">Damaged</option>
+        <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
+      </select></div>
+      <div class="fg"><label>Tariff Category</label><select id="sv_tariff_category" onchange="onTariffCategoryChange()"><option value="">—</option>${tariffCategoryOptions}</select></div>
     </div>
+    <div id="sv_heavily_damaged_note" style="display:none;margin-bottom:10px" class="ops-notice">
+      This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding.
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Tariff Code / Item</label><select id="sv_tariff_code" onchange="onTariffCodeChange()"><option value="">Select category first…</option></select></div>
+      <div class="fg"><label>Side / Location</label><input id="sv_tariff_side" readonly placeholder="Auto-filled"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Est. Labour (hrs)</label><input id="sv_tariff_hours" type="number" step="0.1" readonly placeholder="Auto-filled"></div>
+      <div class="fg"><label>Est. Material (KSh)</label><input id="sv_tariff_material" type="number" step="0.01" readonly placeholder="Auto-filled"></div>
+    </div>
+
+    <div class="fg"><label>Survey Photos</label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
     <div class="fg"><label>Remarks</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc."></textarea></div>
     <button class="submit-btn" onclick="saveSurvey('${bookingId}')">Save Survey →</button>
   `);
+  const svContEl = document.getElementById('sv_container');
+  if (svContEl) markContainerValidity(svContEl);
+}
+
+function onSurveyConditionChange() {
+  const el = document.getElementById('sv_condition');
+  const note = document.getElementById('sv_heavily_damaged_note');
+  if (note) note.style.display = (el && el.value === 'heavily_damaged') ? 'block' : 'none';
+}
+
+function onTariffCategoryChange() {
+  const cat = document.getElementById('sv_tariff_category').value;
+  const codeSel = document.getElementById('sv_tariff_code');
+  const rows = (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [];
+  ['sv_tariff_side','sv_tariff_hours','sv_tariff_material'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  if (!rows.length) { codeSel.innerHTML = '<option value="">Select category first…</option>'; return; }
+  codeSel.innerHTML = '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${r.code} — ${r.item}</option>`).join('');
+}
+
+function onTariffCodeChange() {
+  const cat = document.getElementById('sv_tariff_category').value;
+  const idx = document.getElementById('sv_tariff_code').value;
+  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
+  document.getElementById('sv_tariff_side').value = row ? row.side : '';
+  document.getElementById('sv_tariff_hours').value = row ? row.hours : '';
+  document.getElementById('sv_tariff_material').value = row ? row.material : '';
+}
+
+function onSurveyImagesSelected(e) {
+  const files = Array.from(e.target.files || []).slice(0, 6);
+  const preview = document.getElementById('sv_images_preview');
+  preview.innerHTML = '';
+  _surveyImages = [];
+  files.forEach(file => {
+    if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB per photo`, 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      _surveyImages.push(reader.result);
+      const img = document.createElement('img');
+      img.src = reader.result;
+      img.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--border)';
+      preview.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function saveSurvey(bookingId) {
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const container = val('sv_container').toUpperCase();
+  if (container) {
+    const containerIssue = containerFormatIssue(container);
+    if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
+  }
+  const cat = val('sv_tariff_category');
+  const idx = val('sv_tariff_code');
+  const tariffRow = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx] || null;
   try {
     await window.bookingDocs.recordSurvey({
       bookingId,
-      container: val('sv_container'),
+      container,
       containerType: val('sv_ctype'),
       containerSize: val('sv_ctype'),
       shippingLineId: val('sv_line') || null,
@@ -4826,12 +5037,20 @@ async function saveSurvey(bookingId) {
       gatePassNumber: val('sv_gatepass'),
       conditionStatus: val('sv_condition') || 'full_grade',
       remarks: val('sv_remarks'),
-      photos: [],
+      photos: _surveyImages,
+      tariffCategory: cat || null,
+      tariffCode: tariffRow ? tariffRow.code : null,
+      tariffSide: tariffRow ? tariffRow.side : null,
+      tariffItem: tariffRow ? tariffRow.item : null,
+      tariffHours: tariffRow ? tariffRow.hours : null,
+      tariffMaterial: tariffRow ? tariffRow.material : null,
     });
-    toast('Survey saved — ready for storage allocation', 'success');
+    const heavy = val('sv_condition') === 'heavily_damaged';
+    toast(heavy ? 'Survey saved — escalated for joint survey' : 'Survey saved — ready for storage allocation', heavy ? 'warning' : 'success');
     closeModal();
     renderDepOpsAwaitingSurvey();
     renderDepOpsAllocationQueue();
+    if (typeof renderDepOpsEscalations === 'function') renderDepOpsEscalations();
   } catch (e) {
     toast(e.message || 'Could not save survey', 'error');
   }
@@ -4849,13 +5068,14 @@ async function renderDepOpsAllocationQueue() {
       window.bookingDocs.listZones(),
     ]);
     if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Nothing ready for allocation</div></div>'; return; }
-    wrap.innerHTML = bookings.map(b => depOpsAllocationCard(b, zones)).join('');
+    const surveys = await Promise.all(bookings.map(b => window.bookingDocs.surveyForOccupant({ bookingId: b.id })));
+    wrap.innerHTML = bookings.map((b,i) => depOpsAllocationCard(b, zones, surveys[i])).join('');
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
-function depOpsAllocationCard(b, zones) {
+function depOpsAllocationCard(b, zones, survey) {
   const bookingLineId = resolveBookingShippingLineId(b);
   const zoneOptions = zones.map(z => {
     const free = Math.max((z.capacity_teu || 0) - (z.occupied_teu || 0), 0);
@@ -4870,6 +5090,7 @@ function depOpsAllocationCard(b, zones) {
       </div>
       <span class="sbadge s-approved">surveyed</span>
     </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text-3)">Allocate a storage slot below — interchange can be generated once this container is confirmed in storage.</div>
     <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 90px 70px auto;gap:6px;align-items:end">
       <div class="fg" style="margin:0"><label>Zone</label><select id="alloc-zone-${b.id}" onchange="depOpsAllocZoneChanged('${b.id}')"><option value="">Select…</option>${zoneOptions}</select></div>
       <div class="fg" style="margin:0"><label>Block</label><select id="alloc-block-${b.id}" onchange="depOpsAllocBlockChanged('${b.id}')"><option value="">Select zone first…</option></select></div>
@@ -4878,6 +5099,62 @@ function depOpsAllocationCard(b, zones) {
       <button class="action-btn" onclick="depOpsAllocateBookingToSlot('${b.id}')">Allocate</button>
     </div>
   </div>`;
+}
+
+// Generates the interchange record that confirms this container has been
+// delivered and is what enables the transporter to be paid. Pushed into
+// the legacy state.db.interchange array (same pipeline as the manual
+// "Record Interchange" form) so it goes through the existing admin
+// approval step in the Interchange section before payment is triggered.
+async function generateInterchangeFromSurvey(bookingId, surveyId) {
+  try {
+    const { data: booking } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+    if (!booking || booking.storage_status !== 'allocated') {
+      toast('Storage must be allocated before interchange can be generated for this container', 'error', 5000);
+      return;
+    }
+    const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
+    if (!survey) { toast('No survey found for this container', 'error'); return; }
+    const conditionMap = { full_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+    const matchedTruck = state.db.trucks.find(t => (t.reg || '').toUpperCase() === (survey.truck_reg || '').toUpperCase());
+    const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
+
+    // Storage location — only known now that allocation has happened, which
+    // is why interchange generation is gated on storage_status === 'allocated'.
+    let storageLocation = '—';
+    try {
+      const zones = await window.bookingDocs.listZones();
+      const zone = zones.find(z => z.id === booking.storage_zone_id);
+      storageLocation = [
+        zone ? (zone.zone_code || zone.zone_name) : null,
+        booking.storage_block_id ? `Block ${booking.storage_block_id}` : null,
+        booking.storage_slot_number ? `Slot ${booking.storage_slot_number}` : null,
+      ].filter(Boolean).join(' · ') || '—';
+    } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
+
+    const icRecord = {
+      id: uid('IC'),
+      container: (survey.container || (booking && booking.container) || '').toUpperCase(),
+      type: 'Depot-In',
+      line: survey.shipping_line_id || '',
+      condition: conditionMap[survey.condition_status] || 'Good',
+      truck: matchedTruck ? matchedTruck.id : '',
+      driver: matchedDriver ? matchedDriver.id : '',
+      notes: sanitize(`Auto-generated from survey · Clerk: ${survey.clerk_name || '—'} · Transporter: ${survey.transporter || '—'}${!matchedTruck && survey.truck_reg ? ' · Truck: ' + survey.truck_reg : ''}${!matchedDriver && survey.driver_name ? ' · Driver: ' + survey.driver_name : ''} · Storage: ${storageLocation}`),
+      date: new Date().toISOString(),
+      status: 'pending',
+      img: (survey.photos && survey.photos[0]) || '',
+    };
+    state.db.interchange.push(icRecord);
+    scheduleSave(); buildBadges();
+    addAudit(state.profile.username, 'Interchange Generated (from survey)', icRecord.container);
+    await window.bookingDocs.markInterchangeGenerated(surveyId, icRecord.id);
+    toast(`Interchange generated for ${icRecord.container} — awaiting admin approval to release payment`, 'success', 5000);
+    renderDepOpsStorageList();
+    if (state.currentSection === 'interchange') renderInterchange('all');
+  } catch (e) {
+    toast(e.message || 'Could not generate interchange', 'error');
+  }
 }
 
 async function depOpsAllocZoneChanged(bookingId) {
@@ -4933,12 +5210,237 @@ async function depOpsAllocateBookingToSlot(bookingId) {
       container: booking ? booking.container : null,
       conditionStatus: survey ? survey.condition_status : 'full_grade',
     });
-    toast('Storage allocated', 'success');
+    addAudit(state.profile.username, 'Storage Allocated', booking ? booking.container : bookingId);
+    toast('Storage allocated — interchange can now be generated from the storage list', 'success', 5000);
     renderDepOpsAllocationQueue();
     renderDepOpsZones();
     renderDepOpsStorageList();
   } catch (e) {
     toast(e.message || 'Could not allocate storage', 'error');
+  }
+}
+
+// ---------- Escalations (heavily damaged → joint survey) ----------
+
+async function renderDepOpsEscalations() {
+  const wrap = document.getElementById('depopsEscalationsList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const bookings = await window.bookingDocs.escalatedBookings();
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No containers awaiting joint survey</div></div>'; return; }
+    const surveys = await Promise.all(bookings.map(b => window.bookingDocs.surveyForOccupant({ bookingId: b.id })));
+    wrap.innerHTML = bookings.map((b,i) => depOpsEscalationCard(b, surveys[i])).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsEscalationCard(b, survey) {
+  return `<div style="border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(239,68,68,0.06)">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong class="mono" style="color:var(--red,#ef4444)">${sanitize(b.container) || 'No container on file'}</strong>
+        <div style="font-size:11px;color:var(--text-3)">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''} · ${sanitize(b.cargo_type || '—')}</div>
+        ${survey ? `<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">First survey by ${sanitize(survey.clerk_name||'—')} on ${fmtDate(survey.surveyed_at)}${survey.remarks ? ' — ' + sanitize(survey.remarks) : ''}</div>` : ''}
+      </div>
+      <span class="sbadge s-rejected">heavily damaged</span>
+    </div>
+    <div style="margin-top:10px"><button class="modal-btn primary" onclick="openJointSurveyModal('${b.id}','${survey ? survey.id : ''}')">Record Joint Survey →</button></div>
+  </div>`;
+}
+
+function openJointSurveyModal(bookingId, surveyId) {
+  if (!surveyId) { toast('Original survey not found for this container', 'error'); return; }
+  openModal('Joint Survey', `
+    <div class="ops-notice" style="margin-bottom:12px">A second, independent surveyor must confirm the condition before this container can be accepted into storage or rejected.</div>
+    <div class="fg"><label>Joint Surveyor Name</label><input id="js_by" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
+    <div class="fg"><label>Final Condition</label><select id="js_condition">
+      <option value="damaged">Damaged — accept into storage as damaged</option>
+      <option value="under_repair">Under Repair — accept, route to workshop</option>
+      <option value="full_grade">Full Grade — original finding overturned</option>
+    </select></div>
+    <div class="fg"><label>Joint Survey Notes</label><textarea id="js_notes" rows="3" placeholder="Findings, agreement/disagreement with first survey..."></textarea></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="submit-btn" style="flex:1" onclick="saveJointSurvey('${bookingId}','${surveyId}', false)">Accept Into Storage →</button>
+      <button class="modal-btn danger" onclick="saveJointSurvey('${bookingId}','${surveyId}', true)">Reject Container</button>
+    </div>
+  `);
+}
+
+async function saveJointSurvey(bookingId, surveyId, reject) {
+  const by = document.getElementById('js_by').value.trim();
+  const notes = document.getElementById('js_notes').value.trim();
+  const condition = document.getElementById('js_condition').value;
+  if (!by) { toast('Joint surveyor name is required', 'error'); return; }
+  if (reject && !confirm('Reject this container? It will be removed from the storage-allocation flow entirely.')) return;
+  try {
+    await window.bookingDocs.recordJointSurvey({ bookingId, surveyId, jointSurveyBy: by, jointSurveyNotes: notes, finalConditionStatus: condition, reject });
+    addAudit(state.profile.username, reject ? 'Container Rejected (joint survey)' : 'Joint Survey Recorded', bookingId);
+    toast(reject ? 'Container rejected' : 'Joint survey recorded — ready for storage allocation', reject ? 'warning' : 'success');
+    closeModal();
+    renderDepOpsEscalations();
+    renderDepOpsAllocationQueue();
+  } catch (e) {
+    toast(e.message || 'Could not save joint survey', 'error');
+  }
+}
+
+// ---------- Yard Map (zone → block → slot visualization, KMA stacking rules) ----------
+
+async function renderDepOpsYardMap() {
+  const wrap = document.getElementById('depopsYardMap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const zones = await window.bookingDocs.listZones();
+    if (!zones.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No storage zones configured yet</div></div>'; return; }
+    let html = `<div class="ops-notice" style="margin-bottom:14px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Stacking heights follow KMA Regulatory Guidelines §6.2: 7-high for standard dry empty containers, 6-high for reefers, unless otherwise approved.
+    </div>`;
+    for (const z of zones) {
+      const blocks = await window.bookingDocs.listBlocks(z.id);
+      html += `<div class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="panel-title">${sanitize(z.zone_code||'')} · ${sanitize(z.zone_name)}</span><span class="panel-meta">${z.shipping_lines ? sanitize(z.shipping_lines.code) : 'Unassigned'}</span></div><div style="padding:12px 14px">`;
+      if (!blocks.length) { html += '<div class="empty-state" style="padding:10px"><div class="empty-state-label">No blocks in this zone</div></div>'; }
+      for (const bl of blocks) {
+        const slots = await window.bookingDocs.blockSlots(bl.id);
+        const maxStack = bl.max_stack_height || window.bookingDocs.kmaMaxStackHeight(bl.container_type);
+        const occCount = slots.filter(s => s.condition_status !== 'empty').length;
+        const overLimit = occCount > slots.length;
+        html += `<div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-size:12px;font-weight:600">Block ${sanitize(bl.block_code)} · ${sanitize(bl.container_type)}</div>
+            <div style="font-size:10.5px;color:var(--text-3)">${occCount}/${slots.length} slots · max ${maxStack}-high</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(26px,1fr));gap:3px">
+            ${slots.map(s => `<div title="Slot ${s.slot_number}${s.container ? ' — ' + sanitize(s.container) : ''} (${s.condition_status})" class="yard-slot yard-slot-${s.condition_status}"></div>`).join('')}
+          </div>
+          ${overLimit ? `<div style="font-size:10.5px;color:var(--red,#ef4444);margin-top:4px">⚠ Occupancy exceeds declared capacity — review against KMA §6.1 (85% max occupancy)</div>` : ''}
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `<div class="panel"><div class="panel-head"><span class="panel-title">Legend</span></div><div style="padding:10px 14px;display:flex;gap:14px;flex-wrap:wrap;font-size:11px">
+      <span><span class="yard-slot yard-slot-empty" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Empty</span>
+      <span><span class="yard-slot yard-slot-full_grade" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Full Grade</span>
+      <span><span class="yard-slot yard-slot-under_repair" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Under Repair</span>
+      <span><span class="yard-slot yard-slot-damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Damaged</span>
+      <span><span class="yard-slot yard-slot-heavily_damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Heavily Damaged</span>
+    </div></div>`;
+    wrap.innerHTML = html;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+// ---------- Surveyed Containers Register (printable / downloadable) ----------
+
+let _surveyRegisterData = [];
+
+async function renderDepOpsSurveyRegister() {
+  const wrap = document.getElementById('depopsSurveyRegister');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    _surveyRegisterData = await window.bookingDocs.listAllSurveys();
+    if (!_surveyRegisterData.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No surveys recorded yet</div></div>'; return; }
+    wrap.innerHTML = `<div style="overflow-x:auto"><table class="tbl" id="surveyRegisterTable" style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Type</th>
+        <th style="padding:6px 8px">Consignee</th><th style="padding:6px 8px">Transporter</th><th style="padding:6px 8px">Truck</th>
+        <th style="padding:6px 8px">Clerk</th><th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Interchange</th>
+      </tr></thead><tbody>${_surveyRegisterData.map(s => `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:6px 8px">${fmtDate(s.surveyed_at)}</td>
+        <td style="padding:6px 8px" class="mono">${sanitize(s.container||'—')}</td>
+        <td style="padding:6px 8px">${sanitize(s.container_type||'—')}</td>
+        <td style="padding:6px 8px">${sanitize(s.consignee||'—')}</td>
+        <td style="padding:6px 8px">${sanitize(s.transporter||'—')}</td>
+        <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
+        <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
+        <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'full_grade' ? 'approved' : 'pending'))} ${sanitize((s.condition_status||'').replace(/_/g,' '))}</td>
+        <td style="padding:6px 8px">${s.interchange_generated_at ? '✓ Generated' : '—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function printSurveyRegister() {
+  const table = document.getElementById('surveyRegisterTable');
+  if (!table) { toast('Nothing to print yet', 'error'); return; }
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>Surveyed Containers</title><style>
+    body{font-family:Arial,sans-serif;padding:20px;color:#111}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
+    th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
+    h2{margin-bottom:4px}
+  </style></head><body><h2>Gargo Haven Depot — Surveyed Containers</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')}</div>${table.outerHTML}</body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
+function downloadSurveyRegisterCSV() {
+  if (!_surveyRegisterData.length) { toast('Nothing to download yet', 'error'); return; }
+  const headers = ['Date','Container','Type','Line ID','Consignee','B/L','Vessel','Voyage','Transporter','Truck Reg','Driver','Clerk','Seal','Gate Pass','Condition','Escalated','Interchange Generated'];
+  const rows = _surveyRegisterData.map(s => [
+    s.surveyed_at, s.container, s.container_type, s.shipping_line_id, s.consignee, s.bl_number, s.vessel, s.voyage,
+    s.transporter, s.truck_reg, s.driver_name, s.clerk_name, s.seal_number, s.gate_pass_number, s.condition_status,
+    s.escalated ? 'Yes' : 'No', s.interchange_generated_at ? 'Yes' : 'No',
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `surveyed-containers-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ---------- Master Container List (all statuses) ----------
+
+let _masterListFilter = 'all';
+
+function filterDepOpsMasterList(status, btn) {
+  _masterListFilter = status;
+  document.querySelectorAll('#depopsPanel-master .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDepOpsMasterList();
+}
+
+const MASTER_STATUS_LABELS = {
+  awaiting_survey: 'Awaiting Survey', escalated: 'Escalated (Joint Survey)', surveyed: 'Surveyed',
+  allocated: 'In Storage', survey_rejected: 'Rejected', dispatched: 'Dispatched',
+};
+
+async function renderDepOpsMasterList() {
+  const wrap = document.getElementById('depopsMasterList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    let entries = await window.bookingDocs.masterContainerList();
+    if (_masterListFilter !== 'all') entries = entries.filter(e => e.booking.storage_status === _masterListFilter);
+    if (!entries.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No containers match this filter</div></div>'; return; }
+    wrap.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px">Status</th>
+        <th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Location</th><th style="padding:6px 8px">Interchange</th>
+      </tr></thead><tbody>${entries.map(e => {
+        const b = e.booking, s = e.survey, slot = e.slot;
+        const loc = slot ? `${slot.depot_blocks ? sanitize(slot.depot_blocks.block_code) : ''} · Slot ${slot.slot_number}` : (b.storage_zone_id ? 'Zone assigned' : '—');
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 8px" class="mono">${sanitize(b.container||'—')}</td>
+          <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
+          <td style="padding:6px 8px">${sbadge(b.storage_status==='escalated'?'rejected':b.storage_status==='surveyed'||b.storage_status==='allocated'?'approved':'pending')} ${MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status||'—')}</td>
+          <td style="padding:6px 8px">${s ? sanitize((s.condition_status||'').replace(/_/g,' ')) : '—'}</td>
+          <td style="padding:6px 8px">${loc}</td>
+          <td style="padding:6px 8px">${s && s.interchange_generated_at ? '✓' : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
@@ -5124,7 +5626,7 @@ async function showBlockSlotsModal(blockId) {
 
 function manualAssignSlot(blockId, slotNumber) {
   openModal(`Assign Slot ${slotNumber}`, `
-    <div class="fg"><label>Container No.</label><input id="ms_container" placeholder="e.g. MSCU1234567"></div>
+    <div class="fg"><label>Container No.</label><input id="ms_container" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>
     <div class="fg"><label>Condition</label><select id="ms_condition"><option value="full_grade">Full Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
     <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Use this for containers already on-site with no matching booking — e.g. after a physical stock-take. Containers coming through Public Bookings should go through Survey/Allocation above instead, so their paperwork stays linked.</div>
     <button class="submit-btn" onclick="saveManualAssignSlot('${blockId}',${slotNumber})">Assign →</button>
@@ -5134,7 +5636,8 @@ function manualAssignSlot(blockId, slotNumber) {
 async function saveManualAssignSlot(blockId, slotNumber) {
   const container = document.getElementById('ms_container').value.trim().toUpperCase();
   const condition = document.getElementById('ms_condition').value;
-  if (!container || !isValidContainerFormat(container)) { toast('Enter a valid container number', 'error'); return; }
+  const containerIssue = containerFormatIssue(container);
+  if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   try {
     await window.bookingDocs.occupySlot({ blockId, slotNumber, container, conditionStatus: condition });
     toast(`${container} placed in slot ${slotNumber}`, 'success');
@@ -5275,7 +5778,8 @@ async function depOpsCreateManualOutbound() {
   const dest = destEl.value;
   const lineId = lineEl ? lineEl.value : '';
 
-  if (!container || !isValidContainerFormat(container)) { toast('Enter a valid container number', 'error'); return; }
+  const containerIssue = containerFormatIssue(container);
+  if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
   if (!lineId) { toast('Select the shipping line — without it this container won\u2019t show up under any line\u2019s account', 'error'); return; }
@@ -5311,7 +5815,7 @@ async function renderDepOpsOutboundTrips() {
       formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
         <div class="panel-head"><span class="panel-title">Add Outbound Container Manually</span></div>
         <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr 1fr auto;gap:10px;align-items:end">
-          <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234567"></div>
+          <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>
           <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select…</option>${zoneOptions}</select></div>
           <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>
           <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">${portOptions}</select></div>

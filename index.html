@@ -29,6 +29,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
     <link rel="stylesheet" href="styles.css" />
+<style>
+.yard-slot{width:100%;aspect-ratio:1/1;border-radius:3px;background:#2a2a35;border:1px solid rgba(255,255,255,0.06)}
+.yard-slot-empty{background:#2a2a35}
+.yard-slot-full_grade{background:#22c55e}
+.yard-slot-under_repair{background:#f59e0b}
+.yard-slot-damaged{background:#ef4444}
+.yard-slot-heavily_damaged{background:#7f1d1d;box-shadow:0 0 0 1px #ef4444 inset}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -478,7 +487,7 @@
                                             <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="ABCD1234567 — pick existing or type new" /></div>
+                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
                                             <div class="fg"><label>Container Type</label>
                                                 <select id="d_ctype">
                                                     <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
@@ -637,6 +646,8 @@
                                 <button class="filter-btn" onclick="filterInterchange('pending',this)">Pending</button>
                                 <button class="filter-btn" onclick="filterInterchange('approved',this)">Approved</button>
                                 <button class="filter-btn" onclick="filterInterchange('reconciled',this)">Reconciled</button>
+                                <button class="action-btn ghost" onclick="printInterchangeList()">🖨 Print</button>
+                                <button class="action-btn ghost" onclick="downloadInterchangeCSV()">⬇ Download CSV</button>
                                 <button class="action-btn" onclick="showAddInterchangeModal()">+ Record Interchange</button>
                             </div>
                         </div>
@@ -844,6 +855,7 @@
                                 <button class="filter-btn" onclick="renderReport('drivers',this)">Drivers</button>
                                 <button class="filter-btn" onclick="renderReport('maintenance',this)">Maintenance</button>
                                 <button class="filter-btn" onclick="renderReport('fuel',this)">Fuel</button>
+                                <button class="filter-btn" onclick="renderReport('depops',this)">DepOps</button>
                                 <button class="filter-btn" onclick="requireFinanceReport('revenue',this)">Revenue 🔒</button>
                             </div>
                         </div>
@@ -1040,7 +1052,6 @@
                                         <div class="danger-zone-banner">⚠ These actions are irreversible. Admin PIN required.</div>
                                         <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
                                             <button class="action-btn danger" onclick="clearAllData()">🗑 Clear All System Data</button>
-                                            <button class="action-btn danger" onclick="resetToSeed()">Reset to Seed Data</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1091,31 +1102,45 @@
     Document review and depot storage for both inbound bookings and outbound/repatriation containers. Verifying or rejecting a document here updates the same record the staff portal uses — either place reflects instantly.
   </div>
 
-  <div class="panel" style="margin-bottom:14px">
-    <div class="panel-head"><span class="panel-title">Depot Storage Availability</span></div>
-    <div id="depopsZones" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
-  </div>
+  <div class="two-col-grid" style="margin-bottom:14px">
+    <div class="panel depops-scroll-panel">
+      <div class="panel-head"><span class="panel-title">Depot Storage Availability</span></div>
+      <div id="depopsZones" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+    </div>
 
-  <div class="panel" style="margin-bottom:14px">
-    <div class="panel-head"><span class="panel-title">Containers Currently in Storage</span></div>
-    <div id="depopsStorageList" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+    <div class="panel depops-scroll-panel">
+      <div class="panel-head"><span class="panel-title">Containers Currently in Storage</span></div>
+      <div id="depopsStorageList" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+    </div>
   </div>
 
   <div class="filter-row" style="margin-bottom:16px">
     <button class="filter-btn active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outbound',this)">Outbound / Repatriation</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('zones',this)">Zones</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('yard',this)">Yard Map</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('escalations',this)">⚠ Escalations</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('surveys',this)">Surveyed Register</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('master',this)">Master List</button>
   </div>
 
   <div class="depops-tab-panel active" id="depopsPanel-inbound">
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Verified — Ready to Process</div>
-    <div id="depopsReadyList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+    <div class="depops-columns" style="margin-top:14px">
+      <div class="panel depops-scroll-panel">
+        <div class="panel-head"><span class="panel-title">Verified — Ready to Process</span></div>
+        <div id="depopsReadyList" style="padding:10px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+      </div>
 
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Awaiting Survey</div>
-    <div id="depopsAwaitingSurveyList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+      <div class="panel depops-scroll-panel">
+        <div class="panel-head"><span class="panel-title">Awaiting Survey</span></div>
+        <div id="depopsAwaitingSurveyList" style="padding:10px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+      </div>
 
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Surveyed — Ready for Storage Allocation</div>
-    <div id="depopsAllocationList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+      <div class="panel depops-scroll-panel">
+        <div class="panel-head"><span class="panel-title">Surveyed — Ready for Storage Allocation</span></div>
+        <div id="depopsAllocationList" style="padding:10px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+      </div>
+    </div>
 
     <div class="sec-toolbar" style="margin-top:22px">
       <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Document Review</div>
@@ -1158,6 +1183,46 @@
       </div>
     </div>
     <div id="depopsOutboundQueue"></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-yard">
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Yard &amp; Block Visualization</div>
+    <div id="depopsYardMap"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-escalations">
+    <div class="ops-notice" style="margin:18px 0 14px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Containers surveyed as Heavily Damaged land here and cannot be allocated to storage until a second surveyor records a joint finding.
+    </div>
+    <div id="depopsEscalationsList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-surveys">
+    <div class="sec-toolbar" style="margin:18px 0 10px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Surveyed Containers</div>
+      <div class="filter-row">
+        <button class="action-btn ghost" onclick="printSurveyRegister()">🖨 Print</button>
+        <button class="action-btn ghost" onclick="downloadSurveyRegisterCSV()">⬇ Download CSV</button>
+        <button class="action-btn ghost" onclick="renderDepOpsSurveyRegister()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="depopsSurveyRegister"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-master">
+    <div class="sec-toolbar" style="margin:18px 0 10px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Master Container List</div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filterDepOpsMasterList('all',this)">All</button>
+        <button class="filter-btn" onclick="filterDepOpsMasterList('awaiting_survey',this)">Awaiting Survey</button>
+        <button class="filter-btn" onclick="filterDepOpsMasterList('escalated',this)">Escalated</button>
+        <button class="filter-btn" onclick="filterDepOpsMasterList('surveyed',this)">Surveyed</button>
+        <button class="filter-btn" onclick="filterDepOpsMasterList('allocated',this)">In Storage</button>
+        <button class="filter-btn" onclick="filterDepOpsMasterList('survey_rejected',this)">Rejected</button>
+      </div>
+    </div>
+    <div id="depopsMasterList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
   </div>
 </section>
 

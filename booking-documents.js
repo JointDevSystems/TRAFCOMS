@@ -13,7 +13,43 @@
 
   // Slot / container condition, set at survey time and carried onto whatever
   // slot the container is eventually allocated to.
-  const CONDITION_STATUSES = ['full_grade', 'under_repair', 'damaged'];
+  const CONDITION_STATUSES = ['full_grade', 'under_repair', 'damaged', 'heavily_damaged'];
+
+  // KMA Regulatory Guidelines §6.2 — max stacking height by container type.
+  // Reefers are capped lower than dry boxes; used by the Yard Map to flag
+  // any block whose declared height exceeds the regulatory limit.
+  function kmaMaxStackHeight(containerType) {
+    return /reefer/i.test(containerType || '') ? 6 : 7;
+  }
+
+  // Tariff schedule for damage/repair line items captured on the survey
+  // form — mirrors the HTS reference's auto-filled Category → Code → Side/
+  // Item/Hours/Material lookup. Extend this table as KMA/line tariffs change.
+  const TARIFF_SCHEDULE = {
+    'Structural': [
+      { code: 'STR-01', side: 'Side Wall',  item: 'Panel replacement (per panel)', hours: 4,   material: 8500 },
+      { code: 'STR-02', side: 'Roof',       item: 'Roof panel patch',              hours: 3,   material: 6000 },
+      { code: 'STR-03', side: 'Floor',      item: 'Floor board replacement (per board)', hours: 2.5, material: 4500 },
+      { code: 'STR-04', side: 'Corner Post', item: 'Corner post straighten/weld',   hours: 5,   material: 5000 },
+    ],
+    'Doors & Seals': [
+      { code: 'DOR-01', side: 'Rear Doors', item: 'Door gasket replacement',       hours: 1.5, material: 2200 },
+      { code: 'DOR-02', side: 'Rear Doors', item: 'Locking bar / cam repair',      hours: 1,   material: 1800 },
+      { code: 'DOR-03', side: 'Rear Doors', item: 'Hinge replacement',             hours: 2,   material: 3200 },
+    ],
+    'Cleaning': [
+      { code: 'CLN-01', side: 'Interior',   item: 'Standard sweep & wash',         hours: 0.5, material: 500 },
+      { code: 'CLN-02', side: 'Interior',   item: 'Chemical / residue wash',       hours: 1.5, material: 2500 },
+    ],
+    'Refrigeration (Reefer)': [
+      { code: 'REF-01', side: 'Machinery',  item: 'Compressor service',            hours: 3,   material: 12000 },
+      { code: 'REF-02', side: 'Machinery',  item: 'Thermostat / controller replace', hours: 2, material: 9000 },
+    ],
+    'Paint & Marking': [
+      { code: 'PNT-01', side: 'Exterior',   item: 'Spot repaint (per m²)',         hours: 1,   material: 1500 },
+      { code: 'PNT-02', side: 'Exterior',   item: 'CSC plate / marking restencil', hours: 0.5, material: 800 },
+    ],
+  };
 
 
   function getRequiredDocTypes({ serviceType, origin, destination }) {
@@ -579,6 +615,8 @@
     const { data: sessionData } = await client().auth.getSession();
     const userId = sessionData && sessionData.session ? sessionData.session.user.id : null;
 
+    const isHeavilyDamaged = (payload.conditionStatus === 'heavily_damaged');
+
     const { data, error } = await client()
       .from('depot_surveys')
       .insert({
@@ -601,23 +639,218 @@
         condition_status: payload.conditionStatus || 'full_grade',
         remarks: payload.remarks || null,
         photos: payload.photos || [],
+        tariff_category: payload.tariffCategory || null,
+        tariff_code: payload.tariffCode || null,
+        tariff_side: payload.tariffSide || null,
+        tariff_item: payload.tariffItem || null,
+        tariff_hours: payload.tariffHours || null,
+        tariff_material: payload.tariffMaterial || null,
+        escalated: isHeavilyDamaged,
         surveyed_by: userId,
       })
       .select('*')
       .single();
     if (error) throw new Error(error.message || 'Could not save survey');
 
-    // This is the gate: only a saved survey moves a booking out of
+    // This is the gate: a saved survey normally moves a booking out of
     // 'awaiting_survey' and into 'surveyed', which is what unlocks the
-    // storage-allocation queue.
+    // storage-allocation queue. A heavily-damaged finding instead routes
+    // to 'escalated' — it needs a second (joint) survey sign-off before
+    // it can be accepted into storage at all.
     if (payload.bookingId) {
       const { error: updErr } = await client()
         .from('public_bookings')
-        .update({ storage_status: 'surveyed' })
+        .update({ storage_status: isHeavilyDamaged ? 'escalated' : 'surveyed' })
         .eq('id', payload.bookingId);
       if (updErr) throw new Error(updErr.message || 'Survey saved, but could not update booking status');
     }
     return data;
+  }
+
+  // ── ESCALATION / JOINT SURVEY ─────────────────────────────────────────
+  // Heavily-damaged containers land here instead of the allocation queue.
+  // A second surveyor must record a joint finding before the container is
+  // either accepted into storage (as 'surveyed') or rejected outright.
+  // Returns each escalated (heavy-damage, awaiting joint survey) booking
+  // together with the depot_surveys row that flagged it — specifically its
+  // `id`, since recordJointSurvey() below requires a surveyId and previously
+  // had no way to get one: this function used to return bare public_bookings
+  // rows with no link back to the survey that escalated them, so the "record
+  // joint survey" action failed with "surveyId is required" every time it
+  // was actually attempted, effectively bricking the whole heavy-damage
+  // escalation flow. Each returned row now carries `survey` (the full
+  // depot_surveys record, or null if one genuinely can't be found — which
+  // itself indicates a data problem worth surfacing rather than hiding).
+  async function escalatedBookings() {
+    const { data: bookings, error } = await client()
+      .from('public_bookings')
+      .select('*')
+      .eq('storage_status', 'escalated')
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message || 'Could not load escalated bookings');
+    const list = bookings || [];
+    if (!list.length) return [];
+
+    const ids = list.map(function (b) { return b.id; });
+    const { data: surveys, error: surveyErr } = await client()
+      .from('depot_surveys')
+      .select('*')
+      .in('booking_id', ids)
+      .eq('escalated', true)
+      .order('surveyed_at', { ascending: false });
+    if (surveyErr) throw new Error(surveyErr.message || 'Could not load surveys for escalated bookings');
+
+    const surveyByBooking = {};
+    (surveys || []).forEach(function (s) {
+      // newest-first, so the first one seen per booking is the current
+      // outstanding escalation
+      if (!surveyByBooking[s.booking_id]) surveyByBooking[s.booking_id] = s;
+    });
+
+    return list.map(function (b) {
+      const survey = surveyByBooking[b.id] || null;
+      return { ...b, survey: survey, surveyId: survey ? survey.id : null };
+    });
+  }
+
+  // Every open heavy-damage escalation, straight from depot_surveys —
+  // covers both a booking-based survey (bookingId set) and a trip-only
+  // survey (tripId set, no booking behind it, e.g. a container surveyed
+  // mid-haulage). escalatedBookings() above only ever finds the former,
+  // because recordSurvey() only flips public_bookings.storage_status to
+  // 'escalated' when payload.bookingId was actually provided — a trip-only
+  // escalation never sets that status anywhere, so it was structurally
+  // invisible to any queue built on top of public_bookings alone. Prefer
+  // this function for any escalation/joint-survey queue; escalatedBookings()
+  // is kept only for existing callers that specifically want booking rows.
+  async function escalatedSurveys() {
+    const { data: surveys, error } = await client()
+      .from('depot_surveys')
+      .select('*')
+      .eq('escalated', true)
+      .order('surveyed_at', { ascending: true });
+    if (error) throw new Error(error.message || 'Could not load escalated surveys');
+    const list = surveys || [];
+    if (!list.length) return [];
+
+    const bookingIds = list.map(function (s) { return s.booking_id; }).filter(Boolean);
+    const tripIds = list.map(function (s) { return s.trip_id; }).filter(Boolean);
+
+    const [bookingsRes, tripsRes] = await Promise.all([
+      bookingIds.length
+        ? client().from('public_bookings').select('*').in('id', bookingIds)
+        : Promise.resolve({ data: [] }),
+      tripIds.length
+        ? client().from('trips').select('*').in('id', tripIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const bookingById = {};
+    (bookingsRes.data || []).forEach(function (b) { bookingById[b.id] = b; });
+    const tripById = {};
+    (tripsRes.data || []).forEach(function (t) { tripById[t.id] = t; });
+
+    return list.map(function (s) {
+      return {
+        surveyId: s.id,
+        survey: s,
+        bookingId: s.booking_id || null,
+        tripId: s.trip_id || null,
+        booking: s.booking_id ? (bookingById[s.booking_id] || null) : null,
+        trip: s.trip_id ? (tripById[s.trip_id] || null) : null,
+        container: s.container || (s.booking_id && bookingById[s.booking_id] && bookingById[s.booking_id].container) || (s.trip_id && tripById[s.trip_id] && tripById[s.trip_id].container) || null,
+      };
+    });
+  }
+
+  // bookingId or tripId — whichever the original survey was recorded
+  // against (see escalatedSurveys()/escalatedBookings() above, both now
+  // return the right one to pass back in). At least one is required; a
+  // trip-only escalation has no booking status to update, so that update
+  // is simply skipped for it rather than throwing.
+  async function recordJointSurvey({ bookingId, tripId, surveyId, jointSurveyBy, jointSurveyNotes, finalConditionStatus, reject }) {
+    if (!bookingId && !tripId) throw new Error('bookingId or tripId is required');
+    if (!jointSurveyBy) throw new Error('Joint surveyor name is required');
+    if (!surveyId) throw new Error('surveyId is required — could not find the original survey. Use escalatedSurveys() (or escalatedBookings() for booking-only cases) to fetch escalations, which return each one\'s survey/surveyId already joined.');
+    if (finalConditionStatus && CONDITION_STATUSES.indexOf(finalConditionStatus) === -1) {
+      throw new Error('finalConditionStatus must be one of: ' + CONDITION_STATUSES.join(', '));
+    }
+
+    const { error: surveyErr } = await client()
+      .from('depot_surveys')
+      .update({
+        escalated: false,
+        joint_survey_by: jointSurveyBy,
+        joint_survey_notes: jointSurveyNotes || null,
+        joint_survey_at: new Date().toISOString(),
+        condition_status: finalConditionStatus || 'damaged',
+      })
+      .eq('id', surveyId);
+    if (surveyErr) throw new Error(surveyErr.message || 'Could not record joint survey');
+
+    if (bookingId) {
+      const { error: bookingErr } = await client()
+        .from('public_bookings')
+        .update({ storage_status: reject ? 'survey_rejected' : 'surveyed' })
+        .eq('id', bookingId);
+      if (bookingErr) throw new Error(bookingErr.message || 'Joint survey saved, but could not update booking status');
+    }
+    // No equivalent status field is updated for a trip-only escalation —
+    // the depot_surveys row above (escalated:false, joint findings) is the
+    // authoritative record for it.
+  }
+
+  // ── SURVEYED CONTAINERS REGISTER (printable / downloadable) ──────────
+  async function listAllSurveys() {
+    const { data, error } = await client()
+      .from('depot_surveys')
+      .select('*, public_bookings(full_name, company, container, storage_status)')
+      .order('surveyed_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Could not load surveys');
+    return data || [];
+  }
+
+  // ── INTERCHANGE FROM SURVEY ────────────────────────────────────────────
+  // Marks a survey as having produced an interchange record (the app-side
+  // caller does the actual insert into the `interchange` table, since that
+  // table is still synced through the legacy state.db pipeline rather than
+  // queried live here — this just stamps the survey so the button can't
+  // double-fire and so the register/master list can show it was done).
+  async function markInterchangeGenerated(surveyId, interchangeId) {
+    if (!surveyId) throw new Error('surveyId is required');
+    const { error } = await client()
+      .from('depot_surveys')
+      .update({ interchange_id: interchangeId || null, interchange_generated_at: new Date().toISOString() })
+      .eq('id', surveyId);
+    if (error) throw new Error(error.message || 'Could not flag interchange as generated');
+  }
+
+  // ── MASTER CONTAINER LIST ──────────────────────────────────────────────
+  // Every Depot Storage booking regardless of status, left-joined with its
+  // latest survey and slot, for a single at-a-glance register.
+  async function masterContainerList() {
+    const { data: bookings, error } = await client()
+      .from('public_bookings')
+      .select('*')
+      .eq('service_type', 'Depot Storage')
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Could not load bookings');
+    const ids = (bookings || []).map(b => b.id);
+    if (!ids.length) return [];
+
+    const [{ data: surveys }, { data: slots }] = await Promise.all([
+      client().from('depot_surveys').select('*').in('booking_id', ids).order('surveyed_at', { ascending: false }),
+      client().from('depot_block_slots').select('*, depot_blocks(block_code, zone_id)').in('booking_id', ids),
+    ]);
+    const surveyByBooking = {};
+    (surveys || []).forEach(s => { if (!surveyByBooking[s.booking_id]) surveyByBooking[s.booking_id] = s; });
+    const slotByBooking = {};
+    (slots || []).forEach(s => { slotByBooking[s.booking_id] = s; });
+
+    return (bookings || []).map(b => ({
+      booking: b,
+      survey: surveyByBooking[b.id] || null,
+      slot: slotByBooking[b.id] || null,
+    }));
   }
 
   async function surveyForOccupant({ bookingId, tripId }) {
@@ -694,5 +927,17 @@
     awaitingSurveyBookings,
     surveyedAwaitingAllocation,
     CONDITION_STATUSES,
+    TARIFF_SCHEDULE,
+    kmaMaxStackHeight,
+
+    // Escalation / joint survey
+    escalatedBookings,
+    escalatedSurveys,
+    recordJointSurvey,
+
+    // Register / master list / interchange linkage
+    listAllSurveys,
+    markInterchangeGenerated,
+    masterContainerList,
   };
 })();
