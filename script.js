@@ -4256,6 +4256,29 @@ async function renderPublicBookings() {
 }
 
 
+// Resolve the shipping line a booking should carry onto its trip. Bookings
+// created through TRAFCOMS's relay carry shipping_line_id (a real
+// shipping_lines.id) and/or shipping_line (free text name/code); bookings
+// created through Gargo's own public form currently carry neither, so this
+// safely falls back to null rather than guessing. Fixes containers silently
+// losing their shipping line (and disappearing from line-scoped views) the
+// moment a booking is repatriated into a trip.
+function resolveBookingShippingLineId(booking) {
+  if (!booking) return null;
+  if (booking.shipping_line_id && state.db.shippingLines.some(l => l.id === booking.shipping_line_id)) {
+    return booking.shipping_line_id;
+  }
+  const raw = (booking.shipping_line || '').trim().toLowerCase();
+  if (!raw) return null;
+  const match = state.db.shippingLines.find(l =>
+    (l.code || '').toLowerCase() === raw ||
+    (l.name || '').toLowerCase() === raw ||
+    (l.name || '').toLowerCase().includes(raw) ||
+    raw.includes((l.name || '').toLowerCase())
+  );
+  return match ? match.id : null;
+}
+
 function findTripByBookingId(bookingId) {
   return state.db.trips.find(t => t.bookingId === bookingId);
 }
@@ -4320,8 +4343,19 @@ async function importPublicBooking(bookingId) {
   // Depot Storage bookings never become an Active Trip on import — they go
   // to the depot storage list (container + zone) via DepOps, and only turn
   // into a trip later, when repatriation is actually started from there.
+  // Booked-in containers must be surveyed before a zone/block/slot can be
+  // allocated, so this sets the new workflow's starting gate rather than
+  // leaving the container immediately eligible for allocation.
   if (booking.service_type === 'Depot Storage') {
-    toast('Imported into depot storage — allocate a zone from DepOps', 'success');
+    const { error: statusErr } = await supabase
+      .from('public_bookings')
+      .update({ storage_status: 'awaiting_survey' })
+      .eq('id', bookingId);
+    if (statusErr) {
+      toast(`Imported, but couldn't set survey status (${statusErr.message}) — check DepOps → Zones`, 'warning', 6000);
+    } else {
+      toast('Imported — now awaiting survey in DepOps', 'success');
+    }
     renderPublicBookings();
     return;
   }
@@ -4333,7 +4367,7 @@ async function importPublicBooking(bookingId) {
     workType: booking.service_type || 'Other',
     origin: booking.pickup_location || '—',
     dest: booking.dropoff_location || '—',
-    shippingLine: null,
+    shippingLine: resolveBookingShippingLineId(booking),
     status: 'active',
     startTime: new Date().toISOString(),
     eta: new Date(Date.now() + 4*3600000).toISOString(),
@@ -4543,6 +4577,7 @@ async function renderDepOps() {
   renderDepOpsStorageList();
   updateDepOpsBadge();
   if (_depOpsTab === 'inbound') await renderDepOpsInbound();
+  else if (_depOpsTab === 'zones') await renderDepOpsZoneAdmin();
   else await renderDepOpsOutbound();
 }
 
@@ -4564,16 +4599,18 @@ async function renderDepOpsZones() {
   const wrap = document.getElementById('depopsZones');
   if (!wrap) return;
   try {
-    const zones = await window.bookingDocs.storageAvailability();
+    const zones = await window.bookingDocs.listZones();
     if (!zones.length) { wrap.innerHTML = '<div class="empty-state" style="padding:16px"><div class="empty-state-label">No storage zones configured yet</div></div>'; return; }
     wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
       <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
-        <th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Occupied</th><th style="padding:6px 8px">Free</th>
+        <th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Line</th><th style="padding:6px 8px">Occupied</th><th style="padding:6px 8px">Free</th>
       </tr></thead><tbody>${zones.map(z => {
         const cap = z.capacity_teu || 0, occ = z.occupied_teu || 0, free = Math.max(cap - occ, 0);
         const pct = cap > 0 ? Math.min(100, Math.round(occ / cap * 100)) : 0;
+        const lineLabel = z.shipping_lines ? `${sanitize(z.shipping_lines.code)}` : '<span style="color:var(--text-3)">Unassigned</span>';
         return `<tr style="border-top:1px solid var(--border)">
-          <td style="padding:6px 8px">${sanitize(z.zone_name)}</td>
+          <td style="padding:6px 8px">${sanitize(z.zone_code || '')} · ${sanitize(z.zone_name)}</td>
+          <td style="padding:6px 8px">${lineLabel}</td>
           <td style="padding:6px 8px">${occ} / ${cap} TEU<div style="width:100px;height:5px;background:#222;border-radius:3px;overflow:hidden;margin-top:4px"><div style="width:${pct}%;height:100%;background:var(--gold)"></div></div></td>
           <td style="padding:6px 8px">${free} TEU</td>
         </tr>`;
@@ -4648,6 +4685,8 @@ function filterDepOpsInbound(status, btn) {
 
 async function renderDepOpsInbound() {
   await renderDepOpsReadyToProcess();
+  await renderDepOpsAwaitingSurvey();
+  await renderDepOpsAllocationQueue();
   const container = document.getElementById('depopsInboundQueue');
   if (!container) return;
   container.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
@@ -4667,19 +4706,17 @@ async function renderDepOpsReadyToProcess() {
   try {
     const ready = await window.bookingDocs.readyToProcessBookings();
     if (!ready.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No bookings are fully verified yet</div></div>'; return; }
-    const zones = await window.bookingDocs.storageAvailability();
-    wrap.innerHTML = ready.map(entry => depOpsReadyCard(entry, zones)).join('');
+    wrap.innerHTML = ready.map(entry => depOpsReadyCard(entry)).join('');
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
-function depOpsReadyCard(entry, zones) {
+// Storage allocation no longer happens at this pre-import stage — a Depot
+// Storage booking now has to pass through Awaiting Survey → Surveyed before
+// it's eligible for a zone/block/slot, so this card is just the import step.
+function depOpsReadyCard(entry) {
   const b = entry.booking;
-  const zoneOptions = zones.map(z => {
-    const free = Math.max((z.capacity_teu || 0) - (z.occupied_teu || 0), 0);
-    return `<option value="${z.id}">${sanitize(z.zone_name)} (${free} TEU free)</option>`;
-  }).join('');
   return `<div style="border:1px solid rgba(34,197,94,0.35);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(34,197,94,0.05)">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
@@ -4689,13 +4726,7 @@ function depOpsReadyCard(entry, zones) {
       </div>
       <span class="sbadge s-approved">verified & ready</span>
     </div>
-    ${b.storage_status === 'allocated'
-      ? '<div style="margin-top:8px;font-size:11.5px;color:var(--green)">✓ Storage already allocated</div>'
-      : `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">
-          <select id="depopsZoneSel-${b.id}" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="">Allocate storage (optional)…</option>${zoneOptions}</select>
-          <input type="number" id="depopsTeu-${b.id}" min="1" value="1" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
-          <button class="action-btn" onclick="depOpsAllocateForBooking('${b.id}')">Allocate</button>
-        </div>`}
+    ${b.service_type === 'Depot Storage' ? '<div style="margin-top:8px;font-size:11px;color:var(--text-3)">Importing will send this container to Awaiting Survey below.</div>' : ''}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">${b.service_type === 'Depot Storage' ? 'Confirm Into Storage →' : 'Import to Fleet →'}</button>
       <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
@@ -4703,20 +4734,427 @@ function depOpsReadyCard(entry, zones) {
   </div>`;
 }
 
-async function depOpsAllocateForBooking(bookingId) {
-  const zoneEl = document.getElementById('depopsZoneSel-' + bookingId);
-  const teuEl = document.getElementById('depopsTeu-' + bookingId);
-  const zoneId = zoneEl ? zoneEl.value : '';
-  const teu = teuEl ? parseInt(teuEl.value, 10) : 0;
+// ---------- Awaiting Survey → Surveyed → Storage Allocation ----------
+// New workflow gate copied from the HTS reference: a booked-in Depot
+// Storage container must be surveyed (condition + paperwork capture)
+// before it can be allocated to a zone/block/slot.
+
+const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat'];
+
+async function renderDepOpsAwaitingSurvey() {
+  const wrap = document.getElementById('depopsAwaitingSurveyList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const bookings = await window.bookingDocs.awaitingSurveyBookings();
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Nothing awaiting survey</div></div>'; return; }
+    wrap.innerHTML = bookings.map(b => `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong class="mono" style="color:var(--gold)">${sanitize(b.container) || 'No container on file'}</strong>
+          <div style="font-size:11px;color:var(--text-3)">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''} · ${sanitize(b.cargo_type || '—')}</div>
+          <div style="font-size:10px;color:var(--text-3)">Booking ${b.id.slice(0,8)}</div>
+        </div>
+        <span class="sbadge s-pending">awaiting survey</span>
+      </div>
+      <div style="margin-top:10px"><button class="modal-btn primary" onclick="openSurveyModal('${b.id}')">Start Survey →</button></div>
+    </div>`).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+async function openSurveyModal(bookingId) {
+  const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !booking) { toast('Booking not found', 'error'); return; }
+  const lineId = resolveBookingShippingLineId(booking);
+  const lineOptions = state.db.shippingLines.map(l => `<option value="${l.id}" ${l.id === lineId ? 'selected' : ''}>${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
+  const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${booking.cargo_type === t ? 'selected' : ''}>${t}</option>`).join('');
+
+  openModal(`Survey — ${sanitize(booking.container) || 'Container'}`, `
+    <div class="form-row-2">
+      <div class="fg"><label>Container No.</label><input id="sv_container" value="${sanitize(booking.container || '')}"></div>
+      <div class="fg"><label>Type / Size</label><select id="sv_ctype">${typeOptions}</select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Shipping Line</label><select id="sv_line"><option value="">—</option>${lineOptions}</select></div>
+      <div class="fg"><label>Consignee</label><input id="sv_consignee" value="${sanitize(booking.company || booking.full_name || '')}"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>B/L Number</label><input id="sv_bl"></div>
+      <div class="fg"><label>Vessel</label><input id="sv_vessel"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Voyage</label><input id="sv_voyage"></div>
+      <div class="fg"><label>Transporter</label><input id="sv_transporter"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Truck Reg.</label><input id="sv_truck"></div>
+      <div class="fg"><label>Driver Name</label><input id="sv_driver"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Clerk</label><input id="sv_clerk" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
+      <div class="fg"><label>Seal Number</label><input id="sv_seal"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
+      <div class="fg"><label>Condition</label><select id="sv_condition"><option value="full_grade">Full Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
+    </div>
+    <div class="fg"><label>Remarks</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc."></textarea></div>
+    <button class="submit-btn" onclick="saveSurvey('${bookingId}')">Save Survey →</button>
+  `);
+}
+
+async function saveSurvey(bookingId) {
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  try {
+    await window.bookingDocs.recordSurvey({
+      bookingId,
+      container: val('sv_container'),
+      containerType: val('sv_ctype'),
+      containerSize: val('sv_ctype'),
+      shippingLineId: val('sv_line') || null,
+      consignee: val('sv_consignee'),
+      blNumber: val('sv_bl'),
+      vessel: val('sv_vessel'),
+      voyage: val('sv_voyage'),
+      transporter: val('sv_transporter'),
+      truckReg: val('sv_truck'),
+      driverName: val('sv_driver'),
+      clerkName: val('sv_clerk'),
+      sealNumber: val('sv_seal'),
+      gatePassNumber: val('sv_gatepass'),
+      conditionStatus: val('sv_condition') || 'full_grade',
+      remarks: val('sv_remarks'),
+      photos: [],
+    });
+    toast('Survey saved — ready for storage allocation', 'success');
+    closeModal();
+    renderDepOpsAwaitingSurvey();
+    renderDepOpsAllocationQueue();
+  } catch (e) {
+    toast(e.message || 'Could not save survey', 'error');
+  }
+}
+
+// ---------- Ready for Storage Allocation (post-survey) ----------
+
+async function renderDepOpsAllocationQueue() {
+  const wrap = document.getElementById('depopsAllocationList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const [bookings, zones] = await Promise.all([
+      window.bookingDocs.surveyedAwaitingAllocation(),
+      window.bookingDocs.listZones(),
+    ]);
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Nothing ready for allocation</div></div>'; return; }
+    wrap.innerHTML = bookings.map(b => depOpsAllocationCard(b, zones)).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsAllocationCard(b, zones) {
+  const bookingLineId = resolveBookingShippingLineId(b);
+  const zoneOptions = zones.map(z => {
+    const free = Math.max((z.capacity_teu || 0) - (z.occupied_teu || 0), 0);
+    const match = bookingLineId && z.shipping_line_id === bookingLineId;
+    return `<option value="${z.id}" ${match ? 'selected' : ''}>${sanitize(z.zone_code || z.zone_name)}${z.shipping_lines ? ' · ' + sanitize(z.shipping_lines.code) : ''} (${free} TEU free)</option>`;
+  }).join('');
+  return `<div style="border:1px solid rgba(201,162,39,0.35);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--gold-dim)">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong class="mono" style="color:var(--gold)">${sanitize(b.container) || 'No container on file'}</strong>
+        <div style="font-size:11px;color:var(--text-3)">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''} · ${sanitize(b.cargo_type || '—')}</div>
+      </div>
+      <span class="sbadge s-approved">surveyed</span>
+    </div>
+    <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 90px 70px auto;gap:6px;align-items:end">
+      <div class="fg" style="margin:0"><label>Zone</label><select id="alloc-zone-${b.id}" onchange="depOpsAllocZoneChanged('${b.id}')"><option value="">Select…</option>${zoneOptions}</select></div>
+      <div class="fg" style="margin:0"><label>Block</label><select id="alloc-block-${b.id}" onchange="depOpsAllocBlockChanged('${b.id}')"><option value="">Select zone first…</option></select></div>
+      <div class="fg" style="margin:0"><label>Slot</label><select id="alloc-slot-${b.id}"><option value="">—</option></select></div>
+      <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="alloc-teu-${b.id}" min="1" value="1"></div>
+      <button class="action-btn" onclick="depOpsAllocateBookingToSlot('${b.id}')">Allocate</button>
+    </div>
+  </div>`;
+}
+
+async function depOpsAllocZoneChanged(bookingId) {
+  const zoneSel = document.getElementById('alloc-zone-' + bookingId);
+  const blockSel = document.getElementById('alloc-block-' + bookingId);
+  const slotSel = document.getElementById('alloc-slot-' + bookingId);
+  if (!zoneSel || !blockSel || !slotSel) return;
+  const zoneId = zoneSel.value;
+  slotSel.innerHTML = '<option value="">—</option>';
+  if (!zoneId) { blockSel.innerHTML = '<option value="">Select zone first…</option>'; return; }
+  blockSel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const blocks = await window.bookingDocs.listBlocks(zoneId);
+    if (!blocks.length) { blockSel.innerHTML = '<option value="">No blocks in this zone</option>'; return; }
+    blockSel.innerHTML = '<option value="">Select…</option>' + blocks.map(bl =>
+      `<option value="${bl.id}">${sanitize(bl.block_code)} · ${sanitize(bl.container_type)}</option>`
+    ).join('');
+  } catch (e) {
+    blockSel.innerHTML = '<option value="">Error loading blocks</option>';
+  }
+}
+
+async function depOpsAllocBlockChanged(bookingId) {
+  const blockSel = document.getElementById('alloc-block-' + bookingId);
+  const slotSel = document.getElementById('alloc-slot-' + bookingId);
+  if (!blockSel || !slotSel) return;
+  const blockId = blockSel.value;
+  if (!blockId) { slotSel.innerHTML = '<option value="">—</option>'; return; }
+  slotSel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const slots = await window.bookingDocs.blockSlots(blockId);
+    const free = slots.filter(s => !s.booking_id && !s.trip_id && !s.container);
+    if (!free.length) { slotSel.innerHTML = '<option value="">No free slots</option>'; return; }
+    slotSel.innerHTML = '<option value="">Select…</option>' + free.map(s => `<option value="${s.slot_number}">Slot ${s.slot_number}</option>`).join('');
+  } catch (e) {
+    slotSel.innerHTML = '<option value="">Error loading slots</option>';
+  }
+}
+
+async function depOpsAllocateBookingToSlot(bookingId) {
+  const zoneId = (document.getElementById('alloc-zone-' + bookingId) || {}).value;
+  const blockId = (document.getElementById('alloc-block-' + bookingId) || {}).value;
+  const slotNumber = (document.getElementById('alloc-slot-' + bookingId) || {}).value;
+  const teu = parseInt((document.getElementById('alloc-teu-' + bookingId) || {}).value, 10);
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
   try {
-    await window.bookingDocs.allocateStorage(bookingId, zoneId, teu);
+    const { data: booking } = await supabase.from('public_bookings').select('container').eq('id', bookingId).single();
+    const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
+    await window.bookingDocs.allocateStorage(bookingId, zoneId, teu, {
+      blockId: blockId || null,
+      slotNumber: slotNumber ? parseInt(slotNumber, 10) : null,
+      container: booking ? booking.container : null,
+      conditionStatus: survey ? survey.condition_status : 'full_grade',
+    });
     toast('Storage allocated', 'success');
-    renderDepOpsReadyToProcess();
+    renderDepOpsAllocationQueue();
     renderDepOpsZones();
     renderDepOpsStorageList();
-  } catch (e) { toast(e.message || 'Could not allocate storage', 'error'); }
+  } catch (e) {
+    toast(e.message || 'Could not allocate storage', 'error');
+  }
+}
+
+// ---------- Zone Management (admin) ----------
+// Admin creates zones (assigned to a shipping line), then blocks within a
+// zone (pinned to a container type/size, e.g. "Zone A · Block 1 · 40ft"),
+// which auto-generates that block's slot grid — the same block/bay/position
+// pattern the HTS reference uses, adapted to Gargo's zone/shipping-line model.
+
+async function renderDepOpsZoneAdmin() {
+  const wrap = document.getElementById('depopsZoneAdmin');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const zones = await window.bookingDocs.listZones();
+    const blocksByZone = {};
+    for (const z of zones) blocksByZone[z.id] = await window.bookingDocs.listBlocks(z.id);
+    wrap.innerHTML = `
+      <div style="margin-bottom:14px"><button class="action-btn" onclick="showAddZoneModal()">+ Create Zone</button></div>
+      ${zones.length ? zones.map(z => depOpsZoneAdminCard(z, blocksByZone[z.id] || [])).join('') : '<div class="empty-state"><div class="empty-state-label">No zones yet — create one above</div></div>'}
+    `;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsZoneAdminCard(z, blocks) {
+  const cap = z.capacity_teu || 0, occ = z.occupied_teu || 0;
+  const lineLabel = z.shipping_lines ? `${sanitize(z.shipping_lines.code)} — ${sanitize(z.shipping_lines.name)}` : 'Unassigned';
+  return `<div class="panel" style="margin-bottom:14px">
+    <div class="panel-head">
+      <span class="panel-title">${sanitize(z.zone_code || '')} · ${sanitize(z.zone_name)}</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="panel-meta">${lineLabel} · ${occ}/${cap} TEU</span>
+        <button class="modal-btn ghost" onclick="showEditZoneModal('${z.id}')">Edit</button>
+      </span>
+    </div>
+    <div style="padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase">Blocks</div>
+        <button class="modal-btn ghost" onclick="showAddBlockModal('${z.id}','${sanitize(z.zone_name).replace(/'/g,"\\'")}')">+ Add Block</button>
+      </div>
+      ${blocks.length ? blocks.map(bl => depOpsBlockRow(bl)).join('') : '<div class="empty-state" style="padding:10px"><div class="empty-state-label">No blocks in this zone yet</div></div>'}
+    </div>
+  </div>`;
+}
+
+function depOpsBlockRow(bl) {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)">
+    <div>
+      <strong style="font-size:12.5px">${sanitize(bl.block_code)}</strong>
+      <span style="font-size:11px;color:var(--text-3)"> · ${sanitize(bl.container_type)} · ${bl.capacity_slots} slots</span>
+    </div>
+    <button class="modal-btn ghost" onclick="showBlockSlotsModal('${bl.id}')">View Slots →</button>
+  </div>`;
+}
+
+function showAddZoneModal() {
+  const lineOptions = state.db.shippingLines.filter(l => l.active).map(l => `<option value="${l.id}">${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
+  openModal('Create Storage Zone', `
+    <div class="form-row-2">
+      <div class="fg"><label>Zone Code</label><input id="zn_code" placeholder="A" maxlength="8"></div>
+      <div class="fg"><label>Zone Name</label><input id="zn_name" placeholder="Zone A"></div>
+    </div>
+    <div class="fg"><label>Shipping Line</label><select id="zn_line"><option value="">Unassigned / shared</option>${lineOptions}</select></div>
+    <div class="fg"><label>Capacity (TEU)</label><input id="zn_cap" type="number" min="0" placeholder="100"></div>
+    <div class="fg"><label>Notes</label><input id="zn_notes" placeholder="Optional"></div>
+    <button class="submit-btn" onclick="saveZone()">Create Zone →</button>
+  `);
+}
+
+async function saveZone() {
+  const code = document.getElementById('zn_code').value.trim();
+  const name = document.getElementById('zn_name').value.trim();
+  const lineId = document.getElementById('zn_line').value || null;
+  const cap = document.getElementById('zn_cap').value;
+  const notes = document.getElementById('zn_notes').value.trim();
+  if (!code || !name) { toast('Zone code and name are required', 'error'); return; }
+  try {
+    await window.bookingDocs.createZone({ zoneCode: code, zoneName: name, shippingLineId: lineId, capacityTeu: cap, notes });
+    toast(`Zone ${code} created`, 'success');
+    closeModal();
+    renderDepOpsZoneAdmin();
+    renderDepOpsZones();
+  } catch (e) {
+    toast(e.message || 'Could not create zone', 'error');
+  }
+}
+
+async function showEditZoneModal(zoneId) {
+  try {
+    const zones = await window.bookingDocs.listZones();
+    const z = zones.find(x => x.id === zoneId);
+    if (!z) { toast('Zone not found', 'error'); return; }
+    const lineOptions = state.db.shippingLines.filter(l => l.active).map(l =>
+      `<option value="${l.id}" ${z.shipping_line_id === l.id ? 'selected' : ''}>${sanitize(l.code)} — ${sanitize(l.name)}</option>`
+    ).join('');
+    openModal(`Edit Zone — ${sanitize(z.zone_code || z.zone_name)}`, `
+      <div class="form-row-2">
+        <div class="fg"><label>Zone Code</label><input id="zn_edit_code" value="${sanitize(z.zone_code || '')}" maxlength="8"></div>
+        <div class="fg"><label>Zone Name</label><input id="zn_edit_name" value="${sanitize(z.zone_name)}"></div>
+      </div>
+      <div class="fg"><label>Shipping Line</label><select id="zn_edit_line"><option value="">Unassigned / shared</option>${lineOptions}</select></div>
+      <div class="fg"><label>Capacity (TEU)</label><input id="zn_edit_cap" type="number" min="0" value="${z.capacity_teu || 0}"></div>
+      <button class="submit-btn" onclick="saveZoneEdit('${zoneId}')">Save Changes →</button>
+    `);
+  } catch (e) {
+    toast(e.message || 'Could not load zone', 'error');
+  }
+}
+
+async function saveZoneEdit(zoneId) {
+  const code = document.getElementById('zn_edit_code').value.trim();
+  const name = document.getElementById('zn_edit_name').value.trim();
+  const lineId = document.getElementById('zn_edit_line').value || null;
+  const cap = parseInt(document.getElementById('zn_edit_cap').value, 10) || 0;
+  if (!code || !name) { toast('Zone code and name are required', 'error'); return; }
+  try {
+    await window.bookingDocs.updateZone(zoneId, { zone_code: code.toUpperCase(), zone_name: name, shipping_line_id: lineId, capacity_teu: cap });
+    toast('Zone updated', 'success');
+    closeModal();
+    renderDepOpsZoneAdmin();
+    renderDepOpsZones();
+  } catch (e) {
+    toast(e.message || 'Could not update zone', 'error');
+  }
+}
+
+function showAddBlockModal(zoneId, zoneName) {
+  const typeOptions = ['Any', ...CONTAINER_TYPE_OPTIONS].map(t => `<option>${t}</option>`).join('');
+  openModal(`Add Block — ${sanitize(zoneName)}`, `
+    <div class="form-row-2">
+      <div class="fg"><label>Block Code</label><input id="bl_code" placeholder="1"></div>
+      <div class="fg"><label>Container Type</label><select id="bl_ctype">${typeOptions}</select></div>
+    </div>
+    <div class="fg"><label>Capacity (number of slots)</label><input id="bl_cap" type="number" min="1" value="20"></div>
+    <div class="fg"><label>Notes</label><input id="bl_notes" placeholder="Optional"></div>
+    <button class="submit-btn" onclick="saveBlock('${zoneId}')">Create Block →</button>
+  `);
+}
+
+async function saveBlock(zoneId) {
+  const code = document.getElementById('bl_code').value.trim();
+  const ctype = document.getElementById('bl_ctype').value;
+  const cap = document.getElementById('bl_cap').value;
+  const notes = document.getElementById('bl_notes').value.trim();
+  if (!code) { toast('Block code is required', 'error'); return; }
+  try {
+    await window.bookingDocs.createBlock({ zoneId, blockCode: code, containerType: ctype, capacitySlots: cap, notes });
+    toast(`Block ${code} created`, 'success');
+    closeModal();
+    renderDepOpsZoneAdmin();
+  } catch (e) {
+    toast(e.message || 'Could not create block', 'error');
+  }
+}
+
+async function showBlockSlotsModal(blockId) {
+  openModal('Block Slots', '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>');
+  try {
+    const slots = await window.bookingDocs.blockSlots(blockId);
+    const grid = slots.map(s => {
+      const linked = !!(s.booking_id || s.trip_id);
+      const manual = !linked && !!s.container;
+      const occupied = linked || manual;
+      const colour = !occupied ? 'var(--border-mid)' : (s.condition_status === 'under_repair' ? 'var(--red)' : s.condition_status === 'damaged' ? '#b45309' : 'var(--green)');
+      const label = occupied ? sanitize(s.container || '•') : s.slot_number;
+      let clickAction;
+      if (manual) clickAction = `releaseSlotFromGrid('${blockId}',${s.slot_number})`;
+      else if (linked) clickAction = `toast('Linked to a booking/trip — release it from Outbound / Repatriation instead', 'info', 5000)`;
+      else clickAction = `manualAssignSlot('${blockId}',${s.slot_number})`;
+      const titleTip = !occupied ? 'empty · click to assign' : (manual ? (s.condition_status || '') + ' · click to release' : (s.condition_status || '') + ' · linked booking/trip');
+      return `<div class="slot-cell" style="border-color:${colour};color:${occupied ? '#fff' : 'var(--text-3)'};background:${occupied ? colour : 'transparent'}" title="Slot ${s.slot_number} · ${titleTip}" onclick="${clickAction}">${label}</div>`;
+    }).join('');
+    openModal('Block Slots', `
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Click an empty slot to manually place a container. Slots linked to a booking/trip release automatically through Outbound / Repatriation.</div>
+      <div class="slot-grid">${grid || '<div class="empty-state"><div class="empty-state-label">No slots</div></div>'}</div>
+    `);
+  } catch (e) {
+    openModal('Block Slots', `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`);
+  }
+}
+
+function manualAssignSlot(blockId, slotNumber) {
+  openModal(`Assign Slot ${slotNumber}`, `
+    <div class="fg"><label>Container No.</label><input id="ms_container" placeholder="e.g. MSCU1234567"></div>
+    <div class="fg"><label>Condition</label><select id="ms_condition"><option value="full_grade">Full Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Use this for containers already on-site with no matching booking — e.g. after a physical stock-take. Containers coming through Public Bookings should go through Survey/Allocation above instead, so their paperwork stays linked.</div>
+    <button class="submit-btn" onclick="saveManualAssignSlot('${blockId}',${slotNumber})">Assign →</button>
+  `);
+}
+
+async function saveManualAssignSlot(blockId, slotNumber) {
+  const container = document.getElementById('ms_container').value.trim().toUpperCase();
+  const condition = document.getElementById('ms_condition').value;
+  if (!container || !isValidContainerFormat(container)) { toast('Enter a valid container number', 'error'); return; }
+  try {
+    await window.bookingDocs.occupySlot({ blockId, slotNumber, container, conditionStatus: condition });
+    toast(`${container} placed in slot ${slotNumber}`, 'success');
+    showBlockSlotsModal(blockId);
+    renderDepOpsZoneAdmin();
+  } catch (e) {
+    toast(e.message || 'Could not assign slot', 'error');
+  }
+}
+
+async function releaseSlotFromGrid(blockId, slotNumber) {
+  if (!confirm(`Release slot ${slotNumber}?`)) return;
+  try {
+    await window.bookingDocs.releaseSlotByNumber(blockId, slotNumber);
+    toast('Slot released', 'success');
+    showBlockSlotsModal(blockId);
+    renderDepOpsZoneAdmin();
+  } catch (e) {
+    toast(e.message || 'Could not release slot', 'error');
+  }
 }
 
 // ---------- Outbound / repatriation ----------
@@ -4811,7 +5249,7 @@ async function depOpsCreateOutboundFromBooking(bookingId) {
   const trip = {
     id: uid('TRIP'), container, ctype: booking.cargo_type || '20ft Dry',
     workType: 'Depot → Port', origin: 'Depot', dest,
-    shippingLine: null, status: 'active', startTime: new Date().toISOString(),
+    shippingLine: resolveBookingShippingLineId(booking), status: 'active', startTime: new Date().toISOString(),
     eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
     notes: `Repatriation for booking #${booking.id}`, ref: `REPAT-${booking.id.slice(0,8)}`,
     truckId: null, driverId: null, containerImages: [], bookingId: booking.id,
@@ -4830,20 +5268,23 @@ async function depOpsCreateManualOutbound() {
   const zoneEl = document.getElementById('depopsManualZone');
   const teuEl = document.getElementById('depopsManualTeu');
   const destEl = document.getElementById('depopsManualDest');
+  const lineEl = document.getElementById('depopsManualLine');
   const container = (containerEl.value || '').trim().toUpperCase();
   const zoneId = zoneEl.value;
   const teu = parseInt(teuEl.value, 10);
   const dest = destEl.value;
+  const lineId = lineEl ? lineEl.value : '';
 
   if (!container || !isValidContainerFormat(container)) { toast('Enter a valid container number', 'error'); return; }
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
+  if (!lineId) { toast('Select the shipping line — without it this container won\u2019t show up under any line\u2019s account', 'error'); return; }
   const dupTrip = findLiveTripByContainer(container);
   if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
 
   const trip = {
     id: uid('TRIP'), container, ctype: '20ft Dry', workType: 'Depot → Port', origin: 'Depot', dest,
-    shippingLine: null, status: 'active', startTime: new Date().toISOString(),
+    shippingLine: lineId, status: 'active', startTime: new Date().toISOString(),
     eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
     notes: 'Manually added repatriation container (no originating booking)', ref: `REPAT-${container}`,
     truckId: null, driverId: null, containerImages: [], bookingId: null,
@@ -4853,6 +5294,7 @@ async function depOpsCreateManualOutbound() {
   scheduleSave();
   toast('Outbound trip created — upload the release order next', 'success');
   containerEl.value = '';
+  if (lineEl) lineEl.value = '';
   renderDepOpsOutbound();
   refreshAwaitingDispatchUI();
 }
@@ -4865,13 +5307,15 @@ async function renderDepOpsOutboundTrips() {
       const zones = await window.bookingDocs.storageAvailability();
       const zoneOptions = zones.map(z => `<option value="${z.id}">${sanitize(z.zone_name)}</option>`).join('');
       const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
+      const lineOptions = state.db.shippingLines.filter(l=>l.active).map(l => `<option value="${l.id}">${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
       formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
         <div class="panel-head"><span class="panel-title">Add Outbound Container Manually</span></div>
-        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr auto;gap:10px;align-items:end">
+        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr 1fr auto;gap:10px;align-items:end">
           <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234567"></div>
           <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select…</option>${zoneOptions}</select></div>
           <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>
           <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">${portOptions}</select></div>
+          <div class="fg" style="margin:0"><label>Shipping Line</label><select id="depopsManualLine"><option value="">Select…</option>${lineOptions}</select></div>
           <button class="modal-btn primary" onclick="depOpsCreateManualOutbound()">Create →</button>
         </div>
       </div>`;

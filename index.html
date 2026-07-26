@@ -1104,11 +1104,18 @@
   <div class="filter-row" style="margin-bottom:16px">
     <button class="filter-btn active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outbound',this)">Outbound / Repatriation</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('zones',this)">Zones</button>
   </div>
 
   <div class="depops-tab-panel active" id="depopsPanel-inbound">
     <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Verified — Ready to Process</div>
     <div id="depopsReadyList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Awaiting Survey</div>
+    <div id="depopsAwaitingSurveyList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Surveyed — Ready for Storage Allocation</div>
+    <div id="depopsAllocationList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
 
     <div class="sec-toolbar" style="margin-top:22px">
       <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Document Review</div>
@@ -1121,6 +1128,14 @@
       </div>
     </div>
     <div id="depopsInboundQueue"></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-zones">
+    <div class="ops-notice" style="margin:18px 0 14px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Create storage zones and allocate each to a shipping line, then add blocks within a zone pinned to a container type/size (e.g. Zone A · Block 1 · 40ft).
+    </div>
+    <div id="depopsZoneAdmin"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
   </div>
 
   <div class="depops-tab-panel" id="depopsPanel-outbound">
