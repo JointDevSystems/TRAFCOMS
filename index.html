@@ -172,7 +172,7 @@
                             Users
                             <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                         </button>
-                        <button class="admin-nav-item" onclick="requireSettingsVault()" id="adminBtn-settings">
+                        <button class="admin-nav-item" onclick="showAdminSection('settings',this)" id="adminBtn-settings">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.6 9"/></svg>
                             Settings
                             <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
@@ -727,15 +727,9 @@
                                 <button class="action-btn" onclick="showCreateInvoiceModal()">+ Create Invoice</button>
                                 <button class="action-btn ghost" onclick="autoGenerateInvoices()">Auto-Generate</button>
                                 <button class="action-btn ghost" onclick="showBillingRatesModal()">⚙ Billing Rates</button>
-                                <button class="action-btn ghost" onclick="lockFinance()">🔒 Lock Vault</button>
                             </div>
                         </div>
-                        <div class="inv-kpi-reveal-bar" id="invKpiRevealBar">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                            <span>Financial summary is hidden for security.</span>
-                            <button class="inv-reveal-btn" onclick="revealInvKpis()">Reveal with PIN →</button>
-                        </div>
-                        <div class="kpi-row" id="invKpis" style="display:none"></div>
+                        <div class="kpi-row" id="invKpis"></div>
                         <div id="invoicesList"></div>
                     </section>
 
@@ -1067,13 +1061,10 @@
                                 <div style="font-size:9.5px;color:var(--text-3);margin-top:14px;line-height:1.5">The live fleet map uses free OpenStreetMap tiles via Leaflet.js — no API key or billing account required. Address lookups use the free Nominatim reverse-geocoding service.</div>
                             </div>
                             <div class="report-block">
-                                <h3>Company Details</h3>
-                                <div class="detail-row"><span>Company</span><b>Gargo Logistics Ltd</b></div>
-                                <div class="detail-row"><span>Location</span><b>Mombasa, Kenya</b></div>
-                                <div class="detail-row"><span>Tel</span><b>+254 116 307 751</b></div>
-                                <div class="detail-row"><span>Bank</span><b>Equity Bank · 1234567890</b></div>
-                                <div class="detail-row"><span>Swift</span><b>EQBLKENX</b></div>
-                                <div class="detail-row"><span>KRA PIN</span><b>P051234567X</b></div>
+                                <h3>Company &amp; Invoicing Details</h3>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Used on generated invoices, VAT calculations and auto-billing. Changes apply immediately — no redeploy needed.</div>
+                                <div id="invoiceConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
+                                <button class="submit-btn" style="margin-top:12px" onclick="saveInvoiceConfig()">Save Invoicing Details →</button>
                             </div>
                         </div>
                     </section>
@@ -1241,73 +1232,6 @@
             <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
-
-   
-    <div class="modal-backdrop" id="financeLockOverlay">
-        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
-            <div class="modal-hdr">
-                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                    Finance Vault
-                </div>
-            </div>
-            <div class="modal-body">
-                <div class="vault-banner">
-                    <div class="vault-banner-label">RESTRICTED · FINANCIAL DATA</div>
-                    <div class="vault-banner-desc">This area contains sensitive financial data — invoicing, billing rates, revenue reports, and cost analytics. Finance PIN required.</div>
-                </div>
-                <div class="fg">
-                    <label>Finance PIN</label>
-                    <div class="pw-wrap">
-                        <input type="password" id="financePin" placeholder="••••" maxlength="8" autocomplete="off" onkeydown="if(event.key==='Enter')submitFinancePin()" />
-                        <button class="pw-eye" type="button" onclick="togglePwVis('financePin',this)" tabindex="-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="login-error" id="financePinError" style="min-height:1.2em"></div>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button class="modal-btn primary" style="flex:1" onclick="submitFinancePin()">Unlock Vault</button>
-                    <button class="modal-btn ghost" onclick="closeFinanceLock()">Cancel</button>
-                </div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:12px;text-align:center;letter-spacing:0.5px">Session-locked · Resets on logout</div>
-            </div>
-        </div>
-    </div>
-
-    
-    <div class="modal-backdrop" id="settingsVaultOverlay">
-        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
-            <div class="modal-hdr">
-                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg>
-                    Settings 
-                </div>
-            </div>
-            <div class="modal-body">
-                <div class="vault-banner">
-                    <div class="vault-banner-label">SETTINGS</div>
-                    <div class="vault-banner-desc">System settings contain sensitive configuration. Admin password required to proceed.</div>
-                </div>
-                <div class="fg">
-                    <label>pin</label>
-                    <div class="pw-wrap">
-                        <input type="password" id="settingsVaultPin" placeholder="Enter vault password" autocomplete="off" onkeydown="if(event.key==='Enter')submitSettingsVault()" />
-                        <button class="pw-eye" type="button" onclick="togglePwVis('settingsVaultPin',this)" tabindex="-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="login-error" id="settingsVaultError" style="min-height:1.2em"></div>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button class="modal-btn primary" style="flex:1" onclick="submitSettingsVault()">Unlock Settings</button>
-                    <button class="modal-btn ghost" onclick="closeSettingsVault()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    
 
    
     <div class="shell" id="driverPortal" style="display:none;flex-direction:column">

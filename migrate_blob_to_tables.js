@@ -1,4 +1,3 @@
-
 'use strict';
 const { createClient } = require('@supabase/supabase-js');
 
@@ -135,6 +134,9 @@ async function main() {
       truck_id: idMap.trucks.get(i.truck) || null,
       driver_id: idMap.drivers.get(i.driver) || null,
       condition: i.condition, notes: i.notes, status: i.status, img: i.img,
+      eir_number: i.eirNumber || null, vessel: i.vessel || null, voyage: i.voyage || null,
+      bl_number: i.blNumber || null, ctype: i.ctype || null,
+      repairs: JSON.stringify(i.repairs || []), repair_total: i.repairTotal || 0,
     });
     if (error) { console.error('interchange failed:', i.id, error.message); continue; }
     icCount++;
@@ -264,4 +266,3 @@ async function main() {
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
-

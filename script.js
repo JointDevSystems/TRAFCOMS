@@ -11,8 +11,6 @@ window.ghSupabase = supabase;
 let state = {
   currentUser       : null,
   profile           : null,
-  financeUnlocked   : false,
-  settingsUnlocked  : false,
   currentSection    : 'dashboard',
   currentAdminSection: null,
   alertsOpen        : false,
@@ -76,8 +74,16 @@ function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.ve
 function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes }; }
 
 
-function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'' }; }
-function icFromRow(r){ return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'' }; }
+// container/line/truck/driver/condition/notes/status/img were the original
+// fields. eir_number, vessel, voyage, bl_number and ctype mirror what every
+// paper interchange form in circulation (Hakika, Noah Depot, Dodwell) always
+// carries — the EIR is worthless for reconciliation without its own
+// reference number, and repairs/repair_total hold the itemised damage/cost
+// breakdown (multiple lines, each with hours + labour + material), replacing
+// the old single free-text "condition" note with the same per-item costing
+// those paper forms use.
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0 }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0 }; }
 
 function reqToRow(r)   { return { id:r.id, requester:r.requester, requester_id:r.requesterId||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
 function reqFromRow(r) { return { id:r.id, requester:r.requester, requesterId:r.requester_id||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
@@ -183,8 +189,8 @@ async function loadDB() {
 
     const s = settingsRes.data;
     const settings = s
-      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd' }
-      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null };
 
   
     const profiles = (profilesRes.data || []).map(p => ({
@@ -243,14 +249,22 @@ async function saveDB() {
     }
 
     if (db.settings) {
-      const { error } = await supabase.from('app_settings').upsert({
+      const settingsRow = {
         id: 1,
         company_name: db.settings.companyName,
         backup_date: db.settings.backupDate,
         map_api_key: db.settings.mapApiKey,
         whatsapp: db.settings.whatsapp,
         mpesa: db.settings.mpesa,
-      }, { onConflict: 'id' });
+        invoice_config: db.settings.invoiceConfig || null,
+      };
+      let { error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' });
+      if (error && /invoice_config/i.test(error.message || '')) {
+        // invoice_config column not migrated yet on this Supabase project — retry without it
+        // so the rest of settings still save. Run the migration in the docs to persist invoicing config.
+        delete settingsRow.invoice_config;
+        ({ error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' }));
+      }
       if (error) { console.error('app_settings save failed:', error.message); failures.push({ table: 'app_settings', error }); }
     }
   } catch (e) {
@@ -283,8 +297,8 @@ function saveNowAwaited() {
   return saveDB();
 }
 
-const FINANCE_PIN   = '2026';
-const SETTINGS_PASS = '2026';
+/* Finance/Settings PIN vault removed — access to Settings, Admin, Finance
+   and Invoicing sections is now gated purely by admin role (see isAdmin()). */
 
 
 function remapSeedIds(db) {
@@ -420,7 +434,8 @@ async function initDB() {
       mapApiKey: '',
       whatsapp: true,
       mpesa: false,
-      companyName: 'Gargo Logistics Ltd'
+      companyName: 'Gargo Logistics Ltd',
+      invoiceConfig: null
     };
   }
   if (!state.db.billingRates || !Object.keys(state.db.billingRates).length) {
@@ -616,7 +631,7 @@ function defaultSectionForRole() {
 }
 
 function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
-function canFinance() { return state.financeUnlocked; }
+function canFinance() { return isAdmin(); }
 function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 function validatePhone(phone) { return /^\+?[0-9\s\-()]{7,20}$/.test(phone); }
 function sanitize(str) { if(!str)return ''; return str.replace(/[<>]/g,''); }
@@ -879,8 +894,6 @@ async function performLogout(auditDetail) {
   await supabase.auth.signOut();
   state.currentUser = null;
   state.profile = null;
-  state.financeUnlocked = false;
-  state.settingsUnlocked = false;
   clearIdleTimer();
   document.getElementById('shell').style.display = 'none';
   const dp = document.getElementById('driverPortal');
@@ -2593,16 +2606,21 @@ function renderInterchange(f){
   let items=f==='all'?state.db.interchange:state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+  el.innerHTML=items.map(ic=>{
+    const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null].filter(Boolean).join(' · ');
+    const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
+    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`;
+  }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
 function printInterchangeList() {
   const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to print yet', 'error'); return; }
   const rows = items.map(ic => `<tr>
-    <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.type || '—')}</td>
+    <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.eirNumber || '—')}</td><td>${sanitize(ic.type || '—')}</td>
     <td>${sanitize(lineName(ic.line))}</td><td>${sanitize(ic.condition || '—')}</td>
-    <td>${sanitize(truckName(ic.truck))}</td><td>${sanitize(driverName(ic.driver))}</td><td>${sanitize((ic.status || '').toUpperCase())}</td>
+    <td>${sanitize(truckName(ic.truck))}</td><td>${sanitize(driverName(ic.driver))}</td>
+    <td>${ic.repairTotal ? 'KSh ' + Number(ic.repairTotal).toLocaleString(undefined,{minimumFractionDigits:2}) : '—'}</td><td>${sanitize((ic.status || '').toUpperCase())}</td>
   </tr>`).join('');
   const w = window.open('', '_blank');
   w.document.write(`<html><head><title>Interchange Records</title><style>
@@ -2612,7 +2630,7 @@ function printInterchangeList() {
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
   </style></head><body><h2>Gargo Haven Depot — Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
-  <table><thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`);
   w.document.close();
   w.focus();
@@ -2622,9 +2640,10 @@ function printInterchangeList() {
 function downloadInterchangeCSV() {
   const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to download yet', 'error'); return; }
-  const headers = ['Date', 'Container', 'Type', 'Shipping Line', 'Condition', 'Truck', 'Driver', 'Status', 'Notes'];
+  const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Condition', 'Truck', 'Driver', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
   const rows = items.map(ic => [
-    ic.date, ic.container, ic.type, lineName(ic.line), ic.condition, truckName(ic.truck), driverName(ic.driver), ic.status, ic.notes,
+    ic.date, ic.container, ic.eirNumber, ic.type, ic.ctype, lineName(ic.line), ic.vessel, ic.voyage, ic.condition, truckName(ic.truck), driverName(ic.driver),
+    (ic.repairs || []).map(r => `${r.code} (${r.item})`).join('; '), ic.repairTotal || 0, ic.status, ic.notes,
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2647,7 +2666,10 @@ function approveInterchange(id) {
 }
 
 function showAddInterchangeModal() {
-  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+  window._repairItems.ic = [];
+  const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option>${t}</option>`).join('');
+  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Container Type/Size</label><select id="ic_ctype">${typeOptions}</select></div><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>EIR / Reference No.</label><input id="ic_eir" placeholder="Transporter's own EIR no."/></div><div class="fg"><label>B/L Number</label><input id="ic_bl"/></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="ic_vessel"/></div><div class="fg"><label>Voyage</label><input id="ic_voyage"/></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Overall Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>${tariffPickerHtml('ic')}<div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+  renderRepairItemsList('ic');
 }
 
 function saveInterchange() {
@@ -2657,13 +2679,20 @@ function saveInterchange() {
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
   const dupIc = state.db.interchange.find(i=>(i.container||'').toUpperCase()===cont && i.type===document.getElementById('ic_type').value && new Date(i.date).toDateString()===new Date().toDateString());
   if (dupIc) { toast(`${cont} already has a ${document.getElementById('ic_type').value} interchange record logged today`, 'warning'); return; }
+  const repairs = window._repairItems.ic || [];
   state.db.interchange.push({
     id: uid('IC'), container: cont,
     type: document.getElementById('ic_type').value,
+    ctype: document.getElementById('ic_ctype').value,
     line: document.getElementById('ic_line').value,
     condition: document.getElementById('ic_cond').value,
     truck:  document.getElementById('ic_truck').value,
     driver: document.getElementById('ic_driver').value,
+    eirNumber: sanitize(document.getElementById('ic_eir').value.trim()),
+    blNumber: sanitize(document.getElementById('ic_bl').value.trim()),
+    vessel: sanitize(document.getElementById('ic_vessel').value.trim()),
+    voyage: sanitize(document.getElementById('ic_voyage').value.trim()),
+    repairs, repairTotal: repairItemsTotal(repairs),
     notes:  sanitize(document.getElementById('ic_notes').value.trim()),
     date: new Date().toISOString(), status:'pending', img:'',
   });
@@ -2676,7 +2705,11 @@ function saveInterchange() {
 
 // Generates a downloadable Interchange Confirmation PDF for a single
 // interchange record — the document a transporter can hand over (or
-// attach to an invoice) as proof of delivery to trigger payment.
+// attach to an invoice) as proof of delivery to trigger payment. Layout
+// follows the same shape as the paper EIRs depots hand transporters
+// (Hakika, Noah Depot, Dodwell): header, container/vessel/transport
+// details, then an itemised damage/repair table with a grand total,
+// rather than a single free-text condition line.
 function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return; }
@@ -2687,35 +2720,82 @@ function downloadInterchangeSlip(icId) {
   doc.setFontSize(16); doc.setFont(undefined, 'bold');
   doc.text('GARGO HAVEN DEPOT LIMITED', 14, 18);
   doc.setFontSize(11); doc.setFont(undefined, 'normal');
-  doc.text('Interchange Confirmation', 14, 26);
+  doc.text('Container Interchange', 14, 26);
   doc.setFontSize(9); doc.setTextColor(120);
-  doc.text(`Ref: ${ic.id}  ·  Generated ${new Date().toLocaleString('en-KE')}`, 14, 32);
+  doc.text(`EIR: ${ic.eirNumber || ic.id}  ·  Generated ${new Date().toLocaleString('en-KE')}`, 14, 32);
   doc.setDrawColor(200); doc.line(14, 36, 196, 36);
 
   doc.setTextColor(20); doc.setFontSize(11);
-  const rows = [
+  const leftRows = [
     ['Container No.', ic.container || '—'],
-    ['Type', ic.type || '—'],
+    ['Movement', ic.type || '—'],
+    ['Container Type', ic.ctype || '—'],
     ['Shipping Line', lineName(ic.line)],
-    ['Condition', ic.condition || '—'],
-    ['Truck', truckName(ic.truck)],
-    ['Driver', driverName(ic.driver)],
-    ['Date', fmtDate(ic.date)],
-    ['Status', (ic.status || '').toUpperCase()],
+  ];
+  const rightRows = [
+    ['Vessel', ic.vessel || '—'],
+    ['Voyage', ic.voyage || '—'],
+    ['B/L No.', ic.blNumber || '—'],
+    ['Condition', (ic.condition || '—').toUpperCase()],
   ];
   let y = 46;
-  rows.forEach(([label, val]) => {
-    doc.setFont(undefined, 'bold'); doc.text(label + ':', 14, y);
-    doc.setFont(undefined, 'normal'); doc.text(String(val), 70, y);
-    y += 8;
-  });
+  const rowH = 7;
+  for (let i = 0; i < Math.max(leftRows.length, rightRows.length); i++) {
+    if (leftRows[i]) { doc.setFont(undefined, 'bold'); doc.text(leftRows[i][0] + ':', 14, y); doc.setFont(undefined, 'normal'); doc.text(String(leftRows[i][1]), 52, y); }
+    if (rightRows[i]) { doc.setFont(undefined, 'bold'); doc.text(rightRows[i][0] + ':', 112, y); doc.setFont(undefined, 'normal'); doc.text(String(rightRows[i][1]), 150, y); }
+    y += rowH;
+  }
+  y += 3;
+  doc.setFont(undefined, 'bold'); doc.text('Transporter:', 14, y); doc.setFont(undefined, 'normal'); doc.text(truckName(ic.truck), 52, y);
+  doc.setFont(undefined, 'bold'); doc.text('Driver:', 112, y); doc.setFont(undefined, 'normal'); doc.text(driverName(ic.driver), 150, y);
+  y += rowH;
+  doc.setFont(undefined, 'bold'); doc.text('Date:', 14, y); doc.setFont(undefined, 'normal'); doc.text(fmtDate(ic.date), 52, y);
+  doc.setFont(undefined, 'bold'); doc.text('Status:', 112, y); doc.setFont(undefined, 'normal'); doc.text((ic.status || '').toUpperCase(), 150, y);
+  y += 10;
+
+  doc.setDrawColor(200); doc.line(14, y, 196, y); y += 8;
+
+  const repairs = ic.repairs || [];
+  if (repairs.length) {
+    doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+    doc.text('CONDITION & REPAIR ESTIMATE', 14, y); y += 3;
+    doc.setDrawColor(180);
+    doc.setFillColor(240, 240, 240);
+    doc.rect(14, y, 182, 7, 'F');
+    doc.setFontSize(8);
+    doc.text('Code', 16, y + 5); doc.text('Description', 36, y + 5); doc.text('Side', 118, y + 5);
+    doc.text('Hrs', 138, y + 5); doc.text('Labour', 152, y + 5); doc.text('Material', 170, y + 5);
+    y += 7;
+    doc.setFont(undefined, 'normal');
+    repairs.forEach(r => {
+      const hours = Number(r.hours || 0);
+      const labour = hours * REPAIR_LABOUR_RATE_PER_HOUR;
+      const material = Number(r.material || 0);
+      doc.text(String(r.code || '—'), 16, y + 5);
+      doc.text(doc.splitTextToSize(r.item || '—', 78), 36, y + 5);
+      doc.text(String(r.side || '—'), 118, y + 5);
+      doc.text(hours.toFixed(1), 138, y + 5);
+      doc.text(labour.toLocaleString(undefined,{minimumFractionDigits:2}), 152, y + 5);
+      doc.text(material.toLocaleString(undefined,{minimumFractionDigits:2}), 170, y + 5);
+      y += 8;
+    });
+    doc.setDrawColor(200); doc.line(14, y, 196, y); y += 6;
+    doc.setFont(undefined, 'bold');
+    doc.text(`TOTAL REPAIR COST: KSh ${Number(ic.repairTotal || repairItemsTotal(repairs)).toLocaleString(undefined,{minimumFractionDigits:2})}`, 14, y);
+    y += 10;
+  } else {
+    doc.setFont(undefined, 'italic'); doc.setFontSize(10);
+    doc.text('Container received in good condition — no damage items recorded.', 14, y);
+    y += 10;
+  }
+
   if (ic.notes) {
-    y += 4; doc.setFont(undefined, 'bold'); doc.text('Notes:', 14, y);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.text('Notes:', 14, y);
     y += 6; doc.setFont(undefined, 'normal');
     doc.text(doc.splitTextToSize(ic.notes, 180), 14, y);
     y += 14;
   }
-  y += 10;
+  y += 6;
   doc.setDrawColor(220); doc.line(14, y, 90, y); doc.line(120, y, 196, y);
   doc.setFontSize(9); doc.setTextColor(120);
   doc.text('Depot Clerk Signature', 14, y + 5);
@@ -2838,10 +2918,10 @@ function saveWorkshopJob() {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 21  INVOICING (with vault PIN)
+   § 21  INVOICING (admin-only)
 ────────────────────────────────────────────────────────────────── */
 function renderInvoicing(f) {
-  if (!state.financeUnlocked) return;
+  if (!isAdmin()) return;
   renderInvoiceKpis();
   renderInvoiceList(f);
 }
@@ -2871,7 +2951,8 @@ function showInvoiceDetail(id) {
   const inv = state.db.invoices.find(i=>i.id===id);
   if (!inv) return;
   const trips = state.db.trips.filter(t=>inv.trips.includes(t.id));
-  openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc"><div class="inv-doc-head"><div><div class="inv-doc-company-name">GARGO</div><div class="inv-doc-company-details">Gargo Logistics Ltd · Mombasa, Kenya<br>+254 116 307 751 · KRA: P051234567X</div></div><div style="text-align:right"><div class="inv-doc-id">${inv.ref}</div><div class="inv-doc-type">Tax Invoice</div><div class="inv-doc-status">${sbadge(inv.status)}</div></div></div><div class="inv-billing-row"><div><div class="inv-bill-label">Bill To</div><div class="inv-bill-name">${inv.client}</div></div><div><div class="inv-bill-label">Invoice Date</div><div class="inv-bill-detail">${fmtDate(inv.date)}</div><div class="inv-bill-label" style="margin-top:6px">Due Date</div><div class="inv-bill-detail">${fmtDate(inv.due)}</div></div></div><div class="inv-items-table-wrap"><table class="inv-items-table"><thead><tr><th>Description</th><th>Container</th><th>Work Type</th><th style="text-align:right">Amount</th></tr></thead><tbody>${trips.map(t=>`<tr><td>Haulage — ${t.ctype}</td><td class="mono">${t.container}</td><td>${t.workType}</td><td class="mono" style="text-align:right">${fmtKsh(inv.subtotal/Math.max(trips.length,1))}</td></tr>`).join('')||`<tr><td colspan="4" style="text-align:center;color:var(--text-3)">General haulage services</td></tr>`}</tbody></table></div><div class="inv-totals"><div class="inv-totals-row"><span>Subtotal</span><span class="inv-amount">${fmtKsh(inv.subtotal)}</span></div><div class="inv-totals-row"><span>VAT 16%</span><span class="inv-amount">${fmtKsh(inv.vat)}</span></div>${inv.paid?`<div class="inv-totals-row"><span>Amount Paid</span><span class="inv-amount" style="color:var(--green)">-${fmtKsh(inv.paid)}</span></div>`:''}<div class="inv-totals-row total-row"><span style="font-weight:700">Balance Due</span><span class="inv-amount" style="font-size:16px;color:var(--gold);font-weight:700">${fmtKsh(inv.total-inv.paid)}</span></div></div><div class="inv-bank">Bank: Equity Bank · A/C: 1234567890 · Swift: EQBLKENX · Ref: ${inv.ref}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
+  const ic = invoiceConfig();
+  openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc"><div class="inv-doc-head"><div><div class="inv-doc-company-name">${ic.companyName}</div><div class="inv-doc-company-details">${ic.companyName} · ${ic.companyLocation}<br>${ic.companyTel} · KRA: ${ic.kraPin}</div></div><div style="text-align:right"><div class="inv-doc-id">${inv.ref}</div><div class="inv-doc-type">Tax Invoice</div><div class="inv-doc-status">${sbadge(inv.status)}</div></div></div><div class="inv-billing-row"><div><div class="inv-bill-label">Bill To</div><div class="inv-bill-name">${inv.client}</div></div><div><div class="inv-bill-label">Invoice Date</div><div class="inv-bill-detail">${fmtDate(inv.date)}</div><div class="inv-bill-label" style="margin-top:6px">Due Date</div><div class="inv-bill-detail">${fmtDate(inv.due)}</div></div></div><div class="inv-items-table-wrap"><table class="inv-items-table"><thead><tr><th>Description</th><th>Container</th><th>Work Type</th><th style="text-align:right">Amount</th></tr></thead><tbody>${trips.map(t=>`<tr><td>Haulage — ${t.ctype}</td><td class="mono">${t.container}</td><td>${t.workType}</td><td class="mono" style="text-align:right">${fmtKsh(inv.subtotal/Math.max(trips.length,1))}</td></tr>`).join('')||`<tr><td colspan="4" style="text-align:center;color:var(--text-3)">General haulage services</td></tr>`}</tbody></table></div><div class="inv-totals"><div class="inv-totals-row"><span>Subtotal</span><span class="inv-amount">${fmtKsh(inv.subtotal)}</span></div><div class="inv-totals-row"><span>VAT ${ic.vatRate}%</span><span class="inv-amount">${fmtKsh(inv.vat)}</span></div>${inv.paid?`<div class="inv-totals-row"><span>Amount Paid</span><span class="inv-amount" style="color:var(--green)">-${fmtKsh(inv.paid)}</span></div>`:''}<div class="inv-totals-row total-row"><span style="font-weight:700">Balance Due</span><span class="inv-amount" style="font-size:16px;color:var(--gold);font-weight:700">${fmtKsh(inv.total-inv.paid)}</span></div></div><div class="inv-bank">Bank: ${ic.bankName} · A/C: ${ic.bankAccount} · Swift: ${ic.bankSwift} · Ref: ${inv.ref}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
 }
 
 function markInvoicePaid(id) {
@@ -2897,7 +2978,7 @@ function markInvoiceSent(id) {
 function downloadInvoicePDF(id) { toast('PDF export — integrate with jsPDF for production', 'info'); }
 
 function showCreateInvoiceModal() {
-  if (!state.financeUnlocked) { openFinanceLock(()=>showCreateInvoiceModal()); return; }
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   openModal('Create Invoice', `<div class="fg"><label>Client Name</label><input id="ci_client" placeholder="Company Ltd"/></div><div class="form-row-2"><div class="fg"><label>Subtotal (KSh)</label><input id="ci_sub" type="number" placeholder="0"/></div><div class="fg"><label>Due Date</label><input id="ci_due" type="date"/></div></div><div class="fg"><label>Select Trips</label><div style="max-height:150px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px">${state.db.trips.map(t=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11.5px;cursor:pointer"><input type="checkbox" value="${t.id}" style="accent-color:var(--gold)">${t.container} — ${t.origin}→${t.dest}</label>`).join('')}</div></div><div class="fg"><label>Notes</label><textarea id="ci_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveInvoice()">Create Invoice →</button>`);
 }
 
@@ -2905,7 +2986,7 @@ function saveInvoice() {
   const client = document.getElementById('ci_client').value.trim();
   const sub    = Math.max(0, parseInt(document.getElementById('ci_sub').value)||0);
   if (!client||!sub) { toast('Client and amount required','error'); return; }
-  const vat   = Math.round(sub * 0.16);
+  const vat   = Math.round(sub * invoiceVatRate());
   const total = sub+vat;
   const trips = [...document.querySelectorAll('#modalBody input[type=checkbox]:checked')].map(cb=>cb.value);
   const inv = {
@@ -2923,14 +3004,14 @@ function saveInvoice() {
 }
 
 function autoGenerateInvoices() {
-  if (!state.financeUnlocked) { openFinanceLock(()=>autoGenerateInvoices()); return; }
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const tripsWithoutInvoice = state.db.trips.filter(t=>t.status==='completed' && !state.db.invoices.some(i=>i.trips.includes(t.id)));
   if (!tripsWithoutInvoice.length) { toast('All completed trips already invoiced','info'); return; }
   tripsWithoutInvoice.forEach(t=>{
     const line  = state.db.shippingLines.find(l=>l.id===t.shippingLine);
     const rates = state.db.billingRates[t.ctype]||{base:12000,perKm:180};
     const sub   = rates.base + rates.perKm * t.distance;
-    const vat   = Math.round(sub * 0.16);
+    const vat   = Math.round(sub * invoiceVatRate());
     state.db.invoices.push({
       id: uid('INV'), client: line? `${line.name} (Auto)` :'Client (Auto)',
       subtotal:sub, vat, total:sub+vat, paid:0,
@@ -2948,34 +3029,31 @@ function autoGenerateInvoices() {
 }
 
 function showBillingRatesModal() {
-  if (!state.financeUnlocked) { openFinanceLock(()=>showBillingRatesModal()); return; }
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const rates = state.db.billingRates;
-  openModal('Billing Rates', `<div class="table-wrap"><table class="data-table"><thead><tr><th>Container Type</th><th>Base Rate (KSh)</th><th>Per km (KSh)</th></tr></thead><tbody>${Object.entries(rates).map(([k,v])=>`<tr><td>${k}</td><td><input type="number" value="${v.base}" onchange="updateRate('${k}','base',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td><td><input type="number" value="${v.perKm}" onchange="updateRate('${k}','perKm',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td></tr>`).join('')}</tbody></table></div><button class="submit-btn" style="margin-top:12px" onclick="saveBillingRates()">Save Rates →</button>`);
+  openModal('Billing Rates', `<div class="table-wrap"><table class="data-table"><thead><tr><th>Container Type</th><th>Base Rate (KSh)</th><th>Per km (KSh)</th><th></th></tr></thead><tbody id="billingRatesRows">${Object.entries(rates).map(([k,v])=>`<tr><td>${k}</td><td><input type="number" value="${v.base}" onchange="updateRate('${k}','base',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td><td><input type="number" value="${v.perKm}" onchange="updateRate('${k}','perKm',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td><td><button class="tbl-btn" style="color:var(--red)" onclick="removeBillingRateType('${k}')">🗑</button></td></tr>`).join('')}</tbody></table></div><div class="form-row-2" style="margin-top:12px"><div class="fg"><label>New Container Type</label><input id="brNewType" placeholder="e.g. 20ft"/></div><div class="fg"><label>Base Rate (KSh)</label><input id="brNewBase" type="number" placeholder="0"/></div></div><div class="fg"><label>Per km (KSh)</label><input id="brNewPerKm" type="number" placeholder="0"/></div><button class="action-btn ghost" onclick="addBillingRateType()">+ Add Container Type</button><button class="submit-btn" style="margin-top:12px" onclick="saveBillingRates()">Save Rates →</button>`);
 }
 
 function updateRate(ctype, field, val) { state.db.billingRates[ctype][field] = Math.max(0, parseInt(val)||0); }
-function saveBillingRates() { scheduleSave(); closeModal(); toast('Billing rates updated', 'success'); }
 
-function revealInvKpis() {
-  openFinanceLock(()=>{
-    document.getElementById('invKpiRevealBar').style.display='none';
-    document.getElementById('invKpis').style.display='grid';
-    renderInvoiceKpis();
-  });
+function addBillingRateType() {
+  const type  = sanitize(document.getElementById('brNewType').value.trim());
+  const base  = Math.max(0, parseInt(document.getElementById('brNewBase').value)||0);
+  const perKm = Math.max(0, parseInt(document.getElementById('brNewPerKm').value)||0);
+  if (!type) { toast('Container type required', 'error'); return; }
+  state.db.billingRates[type] = { base, perKm };
+  showBillingRatesModal();
 }
 
-function lockFinance() {
-  state.financeUnlocked = false;
-  document.getElementById('invKpis').style.display='none';
-  document.getElementById('invKpiRevealBar').style.display='flex';
-  toast('Finance vault locked', 'info');
+function removeBillingRateType(ctype) {
+  delete state.db.billingRates[ctype];
+  showBillingRatesModal();
 }
+
+function saveBillingRates() { scheduleSave(); addAudit(state.profile.username,'Billing Rates','Updated'); closeModal(); toast('Billing rates updated', 'success'); }
 
 function requireFinanceReport(tab, btn) {
-  if (!state.financeUnlocked) {
-    openFinanceLock(()=>{ renderReport('revenue'); });
-    return;
-  }
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   renderReport('revenue');
   document.querySelectorAll('#sec-reports .filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
@@ -3184,7 +3262,7 @@ function renderReport(tab, btn) {
   } else if(tab==='fuel'){
     out.innerHTML=`<div class="report-block"><h3>Fuel Report</h3>${reportRow('Total Fill-ups',db.fuel.length)}${reportRow('Total Litres',fmt(db.fuel.reduce((s,f)=>s+f.litres,0))+' L')}${reportRow('Total Spend',fmtKsh(db.fuel.reduce((s,f)=>s+f.litres*f.pricePerLitre,0)))}${reportRow('Avg Price/Litre','KSh '+(db.fuel.reduce((s,f)=>s+f.pricePerLitre,0)/Math.max(db.fuel.length,1)).toFixed(2))}</div>`;
   } else if(tab==='revenue'){
-    if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
+    if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
     const inv=db.invoices;
     out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
   } else if(tab==='depops'){
@@ -3741,11 +3819,11 @@ function updateTrackingMarkers() {
    § 26  USER MANAGEMENT
 ────────────────────────────────────────────────────────────────── */
 function renderUserMgmt() {
-  if (!state.financeUnlocked) {
+  if (!isAdmin()) {
     const kpis = document.getElementById('userKpis');
-    if (kpis) kpis.innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><div><div class="title">Financial Vault Locked</div><div class="desc">Unlock with admin PIN to access user management.</div></div></div>`;
+    if (kpis) kpis.innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><div><div class="title">Admin Access Required</div><div class="desc">User management is restricted to System Administrators.</div></div></div>`;
     const ul = document.getElementById('userList');
-    if (ul) ul.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔒</div>Vault protected.</div>`;
+    if (ul) ul.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔒</div>Admin access required.</div>`;
     return;
   }
   const users  = state.db.profiles;
@@ -3758,9 +3836,9 @@ function renderUserMgmt() {
     ul.innerHTML = users.map(u=>`<div class="user-row" onclick="showUserDetail('${u.id}')"><div class="user-av-lg">${initials(u.name)}</div><div class="user-row-info"><div class="user-row-name">${u.name}${!u.active?'<span style="font-size:9px;color:var(--text-3)">(inactive)</span>':''}</div><div class="user-row-meta">${u.username} · ${u.email}</div></div><span class="sbadge s-${u.role==='admin'?'pending':u.role==='finance'?'completed':'active'}" style="font-size:9px">${roleLabel(u.role)}</span><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">Last: ${timeAgo(u.lastLogin)}</div></div>`).join('');
   }
   const roles=[
-    {name:'System Administrator',perms:'Full access — all modules including Finance Vault & Settings Vault'},
+    {name:'System Administrator',perms:'Full access — all modules including Settings, Finance & Invoicing'},
     {name:'Operations Officer',  perms:'Dashboard, Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange'},
-    {name:'Finance Manager',     perms:'Invoicing (PIN), Revenue Reports, Billing Rates'},
+    {name:'Finance Manager',     perms:'Revenue Reports (admin only), Billing Rates (admin only)'},
     {name:'Dispatch Controller', perms:'Dispatch Console, Active Trips, Driver/Truck visibility'},
     {name:'Read-Only Viewer',    perms:'Dashboard and reports only — no edit access'},
   ];
@@ -3792,7 +3870,7 @@ async function toggleUserActive(id) {
 }
 
 function showCreateUserModal() {
-  if (!state.financeUnlocked) { openFinanceLock(()=>showCreateUserModal()); return; }
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="clerk">Clerk</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
 }
 
@@ -3818,11 +3896,11 @@ async function saveUser() {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 27  SETTINGS (with vault)
+   § 27  SETTINGS (admin-only, no vault)
 ────────────────────────────────────────────────────────────────── */
 function renderSettings() {
-  if (!state.settingsUnlocked) {
-    document.querySelector('#sec-settings .settings-grid').innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg><div><div class="title">Settings Vault Locked</div><div class="desc">System settings are protected. Enter vault password to access.</div></div></div>`;
+  if (!isAdmin()) {
+    document.querySelector('#sec-settings .settings-grid').innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg><div><div class="title">Admin Access Required</div><div class="desc">System settings are restricted to System Administrators.</div></div></div>`;
     return;
   }
   const total = Object.values(state.db).reduce((s,v)=>s+(Array.isArray(v)?v.length:0),0);
@@ -3832,33 +3910,59 @@ function renderSettings() {
 
   const gpsStatus = document.getElementById('gpsStatusVal');
   if (gpsStatus) { gpsStatus.textContent = 'Live · Driver GPS'; gpsStatus.style.color = 'var(--green)'; }
+
+  renderInvoiceConfigForm();
 }
 
+/* Invoicing & billing configuration — editable by any admin, no redeploy needed. */
+function invoiceConfig() {
+  const c = state.db.settings?.invoiceConfig || {};
+  return {
+    companyName:     c.companyName     || state.db.settings?.companyName || 'Gargo Logistics Ltd',
+    companyLocation: c.companyLocation || 'Mombasa, Kenya',
+    companyTel:      c.companyTel      || '+254 116 307 751',
+    kraPin:          c.kraPin          || 'P051234567X',
+    bankName:        c.bankName        || 'Equity Bank',
+    bankAccount:     c.bankAccount     || '1234567890',
+    bankSwift:       c.bankSwift       || 'EQBLKENX',
+    vatRate:         (typeof c.vatRate === 'number') ? c.vatRate : 16,
+  };
+}
+function invoiceVatRate() { return invoiceConfig().vatRate / 100; }
 
-function requireSettingsVault() {
-  if (state.settingsUnlocked) { showAdminSection('settings', document.getElementById('adminBtn-settings')); return; }
-  document.getElementById('settingsVaultOverlay').style.display = 'flex';
-  setTimeout(()=>document.getElementById('settingsVaultPin').focus(), 100);
+function renderInvoiceConfigForm() {
+  const el = document.getElementById('invoiceConfigForm');
+  if (!el) return;
+  const c = invoiceConfig();
+  el.innerHTML = `
+    <div class="fg" style="margin:0"><label>Company Name</label><input id="ic_companyName" value="${c.companyName}"/></div>
+    <div class="fg" style="margin:0"><label>Location</label><input id="ic_companyLocation" value="${c.companyLocation}"/></div>
+    <div class="fg" style="margin:0"><label>Phone</label><input id="ic_companyTel" value="${c.companyTel}"/></div>
+    <div class="fg" style="margin:0"><label>KRA PIN</label><input id="ic_kraPin" value="${c.kraPin}"/></div>
+    <div class="fg" style="margin:0"><label>Bank Name</label><input id="ic_bankName" value="${c.bankName}"/></div>
+    <div class="fg" style="margin:0"><label>Bank Account</label><input id="ic_bankAccount" value="${c.bankAccount}"/></div>
+    <div class="fg" style="margin:0"><label>Bank Swift</label><input id="ic_bankSwift" value="${c.bankSwift}"/></div>
+    <div class="fg" style="margin:0"><label>VAT Rate (%)</label><input id="ic_vatRate" type="number" step="0.1" value="${c.vatRate}"/></div>
+  `;
 }
 
-function submitSettingsVault() {
-  const val = document.getElementById('settingsVaultPin').value;
-  if (val === SETTINGS_PASS) {
-    state.settingsUnlocked = true;
-    closeSettingsVault();
-    showAdminSection('settings', document.getElementById('adminBtn-settings'));
-    addAudit(state.profile.username,'Settings Vault','Unlocked');
-    toast('Settings vault unlocked', 'success');
-  } else {
-    document.getElementById('settingsVaultError').textContent = 'Incorrect password.';
-    document.getElementById('settingsVaultPin').value='';
-  }
-}
-
-function closeSettingsVault() {
-  document.getElementById('settingsVaultOverlay').style.display='none';
-  document.getElementById('settingsVaultPin').value='';
-  document.getElementById('settingsVaultError').textContent='';
+function saveInvoiceConfig() {
+  const cfg = {
+    companyName:     sanitize(document.getElementById('ic_companyName').value.trim())     || 'Gargo Logistics Ltd',
+    companyLocation: sanitize(document.getElementById('ic_companyLocation').value.trim()),
+    companyTel:      sanitize(document.getElementById('ic_companyTel').value.trim()),
+    kraPin:          sanitize(document.getElementById('ic_kraPin').value.trim()),
+    bankName:        sanitize(document.getElementById('ic_bankName').value.trim()),
+    bankAccount:     sanitize(document.getElementById('ic_bankAccount').value.trim()),
+    bankSwift:       sanitize(document.getElementById('ic_bankSwift').value.trim()),
+    vatRate:         Math.max(0, parseFloat(document.getElementById('ic_vatRate').value) || 0),
+  };
+  state.db.settings = state.db.settings || {};
+  state.db.settings.invoiceConfig = cfg;
+  state.db.settings.companyName = cfg.companyName;
+  scheduleSave();
+  addAudit(state.profile.username, 'Invoice Settings', 'Updated company & billing details');
+  toast('Invoicing details saved', 'success');
 }
 
 function exportAllData() {
@@ -3926,7 +4030,7 @@ async function executeClearData() {
     allocationRules: [], trackingPositions: {}, auditLog: [],
     settings: state.db.settings || {
       backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false,
-      companyName: 'Gargo Logistics Ltd'
+      companyName: 'Gargo Logistics Ltd', invoiceConfig: null
     },
     profiles: state.db.profiles || [],
   };
@@ -3937,36 +4041,8 @@ async function executeClearData() {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 28  VAULT & PIN FLOWS
+   § 28  ADMIN ACTION GUARD (vault/PIN flows removed — admin role only)
 ────────────────────────────────────────────────────────────────── */
-let _financePendingCb = null;
-function openFinanceLock(callback) {
-  if (state.financeUnlocked) { if (callback) callback(); return; }
-  _financePendingCb = callback;
-  document.getElementById('financeLockOverlay').style.display='flex';
-  setTimeout(()=>document.getElementById('financePin').focus(), 100);
-}
-
-function submitFinancePin() {
-  const pin = document.getElementById('financePin').value;
-  if (pin === FINANCE_PIN) {
-    state.financeUnlocked = true;
-    closeFinanceLock();
-    if (_financePendingCb) { _financePendingCb(); _financePendingCb=null; }
-    addAudit(state.profile.username,'Finance Vault','Unlocked');
-    toast('Finance vault unlocked', 'success');
-  } else {
-    document.getElementById('financePinError').textContent='Incorrect PIN.';
-    document.getElementById('financePin').value='';
-  }
-}
-
-function closeFinanceLock() {
-  document.getElementById('financeLockOverlay').style.display='none';
-  document.getElementById('financePin').value='';
-  document.getElementById('financePinError').textContent='';
-}
-
 function requireAdminAction(callback, actionKey) {
   if (isAdmin()) { callback(); return; }
   toast('Admin rights required for this action', 'error');
@@ -4295,18 +4371,17 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ──────────────────────────────────────────────────────────────────
-   § 37  INVOICE VAULT GUARD
+   § 37  ADMIN-ONLY SECTION GUARD (Invoicing, Settings, Finance, Admin)
 ────────────────────────────────────────────────────────────────── */
+const ADMIN_ONLY_SECTIONS = ['invoicing', 'settings', 'usermgmt'];
 const origShowAdminSection = window.showAdminSection || showAdminSection;
 window.showAdminSection = function(sec, btn) {
-  if (sec==='invoicing' && !state.financeUnlocked) {
-    openFinanceLock(()=>{
-      origShowAdminSection(sec, btn || document.getElementById('adminBtn-invoicing'));
-      renderInvoicing(_invFilter);
-    });
+  if (ADMIN_ONLY_SECTIONS.includes(sec) && !isAdmin()) {
+    toast('Admin rights required', 'error');
     return;
   }
   origShowAdminSection(sec, btn);
+  if (sec === 'invoicing') renderInvoicing(_invFilter);
 };
 
  // ================== PUBLIC BOOKINGS ==================
@@ -4874,6 +4949,85 @@ function depOpsReadyCard(entry) {
 
 const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat'];
 
+// Every real interchange/EIR form we were handed (Hakika Transport, Noah
+// Depot, Dodwell) bills damage as a table of separate line items — each
+// with its own hours, labour cost and material cost — never a single
+// "condition" note. This constant and the picker below replace the old
+// one-tariff-row-per-survey capture with the same multi-item shape, and
+// are shared by both the survey form and the manual interchange form so
+// a clerk gets the identical picker either way.
+const REPAIR_LABOUR_RATE_PER_HOUR = 300; // KSh/hr — matches the labour rate implied by the Hakika sample (750/2.5hrs, 450/1.5hrs)
+
+// items: array of {category, code, side, item, hours, material}
+window._repairItems = {};
+
+function repairItemsFor(prefix) { return window._repairItems[prefix] || (window._repairItems[prefix] = []); }
+
+function repairItemsTotal(items) {
+  return (items || []).reduce((sum, r) => sum + (Number(r.hours || 0) * REPAIR_LABOUR_RATE_PER_HOUR) + Number(r.material || 0), 0);
+}
+
+function tariffPickerHtml(prefix) {
+  const categoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).map(c => `<option>${c}</option>`).join('');
+  return `
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px">Damage / Repair Items</div>
+    <div class="form-row-2">
+      <div class="fg"><label>Category</label><select id="${prefix}_tcat" onchange="onRepairCategoryChange('${prefix}')"><option value="">—</option>${categoryOptions}</select></div>
+      <div class="fg"><label>Code / Item</label><select id="${prefix}_tcode" onchange="onRepairCodeChange('${prefix}')"><option value="">Select category first…</option></select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" readonly placeholder="Auto-filled"></div>
+      <div class="fg"><label>Material (KSh)</label><input id="${prefix}_tmaterial" type="number" step="0.01" readonly placeholder="Auto-filled"></div>
+    </div>
+    <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem('${prefix}')">+ Add item</button>
+    <div id="${prefix}_repairList"></div>`;
+}
+
+function onRepairCategoryChange(prefix) {
+  const cat = document.getElementById(`${prefix}_tcat`).value;
+  const codeSel = document.getElementById(`${prefix}_tcode`);
+  const rows = (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [];
+  [`${prefix}_thours`, `${prefix}_tmaterial`].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  codeSel.innerHTML = rows.length ? '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${r.code} — ${r.item}</option>`).join('') : '<option value="">Select category first…</option>';
+}
+
+function onRepairCodeChange(prefix) {
+  const cat = document.getElementById(`${prefix}_tcat`).value;
+  const idx = document.getElementById(`${prefix}_tcode`).value;
+  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
+  document.getElementById(`${prefix}_thours`).value = row ? row.hours : '';
+  document.getElementById(`${prefix}_tmaterial`).value = row ? row.material : '';
+}
+
+function addRepairItem(prefix) {
+  const cat = document.getElementById(`${prefix}_tcat`).value;
+  const idx = document.getElementById(`${prefix}_tcode`).value;
+  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
+  if (!row) { toast('Pick a category and code first', 'error'); return; }
+  repairItemsFor(prefix).push({ category: cat, code: row.code, side: row.side, item: row.item, hours: row.hours, material: row.material });
+  renderRepairItemsList(prefix);
+}
+
+function removeRepairItem(prefix, i) {
+  repairItemsFor(prefix).splice(i, 1);
+  renderRepairItemsList(prefix);
+}
+
+function renderRepairItemsList(prefix) {
+  const el = document.getElementById(`${prefix}_repairList`);
+  if (!el) return;
+  const items = repairItemsFor(prefix);
+  if (!items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added — container will be logged as good condition.</div>'; return; }
+  const rows = items.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">
+    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">${r.code}</span> — ${sanitize(r.item)} <span style="color:var(--text-3)">(${r.side})</span></div>
+    <div style="font-size:11px;color:var(--text-2)">${r.hours}h · KSh ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
+  </div>`).join('');
+  const total = repairItemsTotal(items);
+  el.innerHTML = rows + `<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">
+    <span>Total (labour @ KSh ${REPAIR_LABOUR_RATE_PER_HOUR}/hr + material)</span><span>KSh ${total.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+  </div>`;
+}
+
 async function renderDepOpsAwaitingSurvey() {
   const wrap = document.getElementById('depopsAwaitingSurveyList');
   if (!wrap) return;
@@ -4905,8 +5059,8 @@ async function openSurveyModal(bookingId) {
   const lineId = resolveBookingShippingLineId(booking);
   const lineOptions = state.db.shippingLines.map(l => `<option value="${l.id}" ${l.id === lineId ? 'selected' : ''}>${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
   const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${booking.cargo_type === t ? 'selected' : ''}>${t}</option>`).join('');
-  const tariffCategoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).map(c => `<option>${c}</option>`).join('');
   _surveyImages = [];
+  window._repairItems.sv = [];
 
   openModal(`Survey — ${sanitize(booking.container) || 'Container'}`, `
     <div class="form-row-2">
@@ -4919,11 +5073,15 @@ async function openSurveyModal(bookingId) {
     </div>
     <div class="form-row-2">
       <div class="fg"><label>B/L Number</label><input id="sv_bl"></div>
-      <div class="fg"><label>Vessel</label><input id="sv_vessel"></div>
+      <div class="fg"><label>EIR / Reference No.</label><input id="sv_eir" placeholder="Transporter's own EIR no."></div>
     </div>
     <div class="form-row-2">
+      <div class="fg"><label>Vessel</label><input id="sv_vessel"></div>
       <div class="fg"><label>Voyage</label><input id="sv_voyage"></div>
+    </div>
+    <div class="form-row-2">
       <div class="fg"><label>Transporter</label><input id="sv_transporter"></div>
+      <div class="fg"><label>Max Gross Weight (kg)</label><input id="sv_mgwt" type="number"></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Truck Reg.</label><input id="sv_truck"></div>
@@ -4935,27 +5093,17 @@ async function openSurveyModal(bookingId) {
     </div>
     <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
 
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px">Condition &amp; Tariff (if damaged)</div>
-    <div class="form-row-2">
-      <div class="fg"><label>Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
-        <option value="full_grade">Full Grade</option>
-        <option value="under_repair">Under Repair</option>
-        <option value="damaged">Damaged</option>
-        <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
-      </select></div>
-      <div class="fg"><label>Tariff Category</label><select id="sv_tariff_category" onchange="onTariffCategoryChange()"><option value="">—</option>${tariffCategoryOptions}</select></div>
-    </div>
+    <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
+      <option value="full_grade">Full Grade</option>
+      <option value="under_repair">Under Repair</option>
+      <option value="damaged">Damaged</option>
+      <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
+    </select></div>
     <div id="sv_heavily_damaged_note" style="display:none;margin-bottom:10px" class="ops-notice">
       This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding.
     </div>
-    <div class="form-row-2">
-      <div class="fg"><label>Tariff Code / Item</label><select id="sv_tariff_code" onchange="onTariffCodeChange()"><option value="">Select category first…</option></select></div>
-      <div class="fg"><label>Side / Location</label><input id="sv_tariff_side" readonly placeholder="Auto-filled"></div>
-    </div>
-    <div class="form-row-2">
-      <div class="fg"><label>Est. Labour (hrs)</label><input id="sv_tariff_hours" type="number" step="0.1" readonly placeholder="Auto-filled"></div>
-      <div class="fg"><label>Est. Material (KSh)</label><input id="sv_tariff_material" type="number" step="0.01" readonly placeholder="Auto-filled"></div>
-    </div>
+
+    ${tariffPickerHtml('sv')}
 
     <div class="fg"><label>Survey Photos</label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
     <div class="fg"><label>Remarks</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc."></textarea></div>
@@ -4963,30 +5111,13 @@ async function openSurveyModal(bookingId) {
   `);
   const svContEl = document.getElementById('sv_container');
   if (svContEl) markContainerValidity(svContEl);
+  renderRepairItemsList('sv');
 }
 
 function onSurveyConditionChange() {
   const el = document.getElementById('sv_condition');
   const note = document.getElementById('sv_heavily_damaged_note');
   if (note) note.style.display = (el && el.value === 'heavily_damaged') ? 'block' : 'none';
-}
-
-function onTariffCategoryChange() {
-  const cat = document.getElementById('sv_tariff_category').value;
-  const codeSel = document.getElementById('sv_tariff_code');
-  const rows = (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [];
-  ['sv_tariff_side','sv_tariff_hours','sv_tariff_material'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
-  if (!rows.length) { codeSel.innerHTML = '<option value="">Select category first…</option>'; return; }
-  codeSel.innerHTML = '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${r.code} — ${r.item}</option>`).join('');
-}
-
-function onTariffCodeChange() {
-  const cat = document.getElementById('sv_tariff_category').value;
-  const idx = document.getElementById('sv_tariff_code').value;
-  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
-  document.getElementById('sv_tariff_side').value = row ? row.side : '';
-  document.getElementById('sv_tariff_hours').value = row ? row.hours : '';
-  document.getElementById('sv_tariff_material').value = row ? row.material : '';
 }
 
 function onSurveyImagesSelected(e) {
@@ -5015,9 +5146,7 @@ async function saveSurvey(bookingId) {
     const containerIssue = containerFormatIssue(container);
     if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   }
-  const cat = val('sv_tariff_category');
-  const idx = val('sv_tariff_code');
-  const tariffRow = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx] || null;
+  const repairItems = repairItemsFor('sv');
   try {
     await window.bookingDocs.recordSurvey({
       bookingId,
@@ -5027,6 +5156,8 @@ async function saveSurvey(bookingId) {
       shippingLineId: val('sv_line') || null,
       consignee: val('sv_consignee'),
       blNumber: val('sv_bl'),
+      eirNumber: val('sv_eir'),
+      mgwt: val('sv_mgwt') ? parseFloat(val('sv_mgwt')) : null,
       vessel: val('sv_vessel'),
       voyage: val('sv_voyage'),
       transporter: val('sv_transporter'),
@@ -5038,12 +5169,7 @@ async function saveSurvey(bookingId) {
       conditionStatus: val('sv_condition') || 'full_grade',
       remarks: val('sv_remarks'),
       photos: _surveyImages,
-      tariffCategory: cat || null,
-      tariffCode: tariffRow ? tariffRow.code : null,
-      tariffSide: tariffRow ? tariffRow.side : null,
-      tariffItem: tariffRow ? tariffRow.item : null,
-      tariffHours: tariffRow ? tariffRow.hours : null,
-      tariffMaterial: tariffRow ? tariffRow.material : null,
+      tariffItems: repairItems,
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
     toast(heavy ? 'Survey saved — escalated for joint survey' : 'Survey saved — ready for storage allocation', heavy ? 'warning' : 'success');
@@ -5140,6 +5266,13 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       condition: conditionMap[survey.condition_status] || 'Good',
       truck: matchedTruck ? matchedTruck.id : '',
       driver: matchedDriver ? matchedDriver.id : '',
+      ctype: survey.container_type || '',
+      vessel: survey.vessel || '',
+      voyage: survey.voyage || '',
+      blNumber: survey.bl_number || '',
+      eirNumber: survey.eir_number || '',
+      repairs: survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ category: survey.tariff_category, code: survey.tariff_code, side: survey.tariff_side, item: survey.tariff_item, hours: survey.tariff_hours, material: survey.tariff_material }] : []),
+      repairTotal: repairItemsTotal(survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ hours: survey.tariff_hours, material: survey.tariff_material }] : [])),
       notes: sanitize(`Auto-generated from survey · Clerk: ${survey.clerk_name || '—'} · Transporter: ${survey.transporter || '—'}${!matchedTruck && survey.truck_reg ? ' · Truck: ' + survey.truck_reg : ''}${!matchedDriver && survey.driver_name ? ' · Driver: ' + survey.driver_name : ''} · Storage: ${storageLocation}`),
       date: new Date().toISOString(),
       status: 'pending',

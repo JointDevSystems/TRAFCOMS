@@ -628,6 +628,8 @@
         shipping_line_id: payload.shippingLineId || null,
         consignee: payload.consignee || null,
         bl_number: payload.blNumber || null,
+        eir_number: payload.eirNumber || null,
+        mgwt: payload.mgwt || null,
         vessel: payload.vessel || null,
         voyage: payload.voyage || null,
         transporter: payload.transporter || null,
@@ -639,12 +641,18 @@
         condition_status: payload.conditionStatus || 'full_grade',
         remarks: payload.remarks || null,
         photos: payload.photos || [],
-        tariff_category: payload.tariffCategory || null,
-        tariff_code: payload.tariffCode || null,
-        tariff_side: payload.tariffSide || null,
-        tariff_item: payload.tariffItem || null,
-        tariff_hours: payload.tariffHours || null,
-        tariff_material: payload.tariffMaterial || null,
+        // tariff_items is the source of truth: one row per damage/repair line,
+        // matching how every sample EIR (Hakika, Noah Depot, Dodwell) bills
+        // condition — several separately-costed items, not one note. The
+        // single tariff_* columns below just mirror item [0] so any older
+        // report reading them still finds a value.
+        tariff_items: (payload.tariffItems && payload.tariffItems.length) ? payload.tariffItems : null,
+        tariff_category: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].category) || null,
+        tariff_code: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].code) || null,
+        tariff_side: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].side) || null,
+        tariff_item: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].item) || null,
+        tariff_hours: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].hours) || null,
+        tariff_material: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].material) || null,
         escalated: isHeavilyDamaged,
         surveyed_by: userId,
       })
