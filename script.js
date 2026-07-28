@@ -2703,108 +2703,209 @@ function saveInterchange() {
   toast('Interchange recorded', 'success');
 }
 
-// Generates a downloadable Interchange Confirmation PDF for a single
-// interchange record — the document a transporter can hand over (or
+// Generates a downloadable Interchange Equipment Receipt (IER) PDF for a
+// single interchange record — the document a transporter can hand over (or
 // attach to an invoice) as proof of delivery to trigger payment. Layout
-// follows the same shape as the paper EIRs depots hand transporters
-// (Hakika, Noah Depot, Dodwell): header, container/vessel/transport
-// details, then an itemised damage/repair table with a grand total,
-// rather than a single free-text condition line.
+// standardises on the formal boxed-field IER shape used by depot operators
+// in the field (Dodwell's "Inward Interchange" form in particular): a
+// bordered field grid instead of loose label/value lines, a container
+// diagram with damage-location legend driven off each repair item's `side`,
+// and a bordered repair-estimate table. Every value on the page comes from
+// the existing interchange record — no new fields were added to the data
+// model for this template.
 function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return; }
   if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  const GOLD = [201, 162, 39];
+  const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
 
-  doc.setFontSize(16); doc.setFont(undefined, 'bold');
-  doc.text('GARGO HAVEN DEPOT LIMITED', 14, 18);
-  doc.setFontSize(11); doc.setFont(undefined, 'normal');
-  doc.text('Container Interchange', 14, 26);
-  doc.setFontSize(9); doc.setTextColor(120);
-  doc.text(`EIR: ${ic.eirNumber || ic.id}  ·  Generated ${new Date().toLocaleString('en-KE')}`, 14, 32);
-  doc.setDrawColor(200); doc.line(14, 36, 196, 36);
-
-  doc.setTextColor(20); doc.setFontSize(11);
-  const leftRows = [
-    ['Container No.', ic.container || '—'],
-    ['Movement', ic.type || '—'],
-    ['Container Type', ic.ctype || '—'],
-    ['Shipping Line', lineName(ic.line)],
-  ];
-  const rightRows = [
-    ['Vessel', ic.vessel || '—'],
-    ['Voyage', ic.voyage || '—'],
-    ['B/L No.', ic.blNumber || '—'],
-    ['Condition', (ic.condition || '—').toUpperCase()],
-  ];
-  let y = 46;
-  const rowH = 7;
-  for (let i = 0; i < Math.max(leftRows.length, rightRows.length); i++) {
-    if (leftRows[i]) { doc.setFont(undefined, 'bold'); doc.text(leftRows[i][0] + ':', 14, y); doc.setFont(undefined, 'normal'); doc.text(String(leftRows[i][1]), 52, y); }
-    if (rightRows[i]) { doc.setFont(undefined, 'bold'); doc.text(rightRows[i][0] + ':', 112, y); doc.setFont(undefined, 'normal'); doc.text(String(rightRows[i][1]), 150, y); }
-    y += rowH;
+  // ---- small helpers -------------------------------------------------
+  // Bordered field box: label in small caps top-left, value bold below —
+  // the unit every field in the Dodwell-style grid is built from.
+  function fieldBox(x, y, w, h, label, value) {
+    doc.setDrawColor(150); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+    doc.text(String(label).toUpperCase(), x + 2, y + 4.5);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(20);
+    const val = doc.splitTextToSize(String(value || '—'), w - 4);
+    doc.text(val.slice(0, 2), x + 2, y + (h > 10 ? 10 : 9));
   }
-  y += 3;
-  doc.setFont(undefined, 'bold'); doc.text('Transporter:', 14, y); doc.setFont(undefined, 'normal'); doc.text(ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'), 52, y);
-  doc.setFont(undefined, 'bold'); doc.text('Driver:', 112, y); doc.setFont(undefined, 'normal'); doc.text(ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'), 150, y);
-  y += rowH;
-  doc.setFont(undefined, 'bold'); doc.text('Date:', 14, y); doc.setFont(undefined, 'normal'); doc.text(fmtDate(ic.date), 52, y);
-  doc.setFont(undefined, 'bold'); doc.text('Status:', 112, y); doc.setFont(undefined, 'normal'); doc.text((ic.status || '').toUpperCase(), 150, y);
-  y += 10;
+  function sectionLabel(text, y) {
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GOLD);
+    doc.text(text.toUpperCase(), MARGIN, y);
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.line(MARGIN, y + 1.5, RIGHT, y + 1.5);
+    doc.setTextColor(20);
+  }
 
-  doc.setDrawColor(200); doc.line(14, y, 196, y); y += 8;
+  // ---- header ----------------------------------------------------------
+  doc.setFont(undefined, 'bold'); doc.setFontSize(15); doc.setTextColor(20);
+  doc.text('GARGO HAVEN DEPOT LIMITED', MARGIN, 20);
+  doc.setFont(undefined, 'italic'); doc.setFontSize(9.5); doc.setTextColor(...GOLD);
+  doc.text('Container Interchange Report', MARGIN, 26.5);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(120);
+  doc.text('Mombasa, Kenya  ·  Generated automatically for reference only', MARGIN, 31.5);
 
+  // Top-right stacked boxes, mirroring the "Inward Date / Inward IER" boxes
+  // on the Dodwell form.
+  fieldBox(140, 12, 28, 10, ic.type ? `${ic.type} Date` : 'Date', fmtDate(ic.date));
+  fieldBox(168, 12, 28, 10, 'EIR / IER No.', ic.eirNumber || ic.id.slice(0, 8).toUpperCase());
+  doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(MARGIN, 36, RIGHT, 36);
+
+  // ---- field grid --------------------------------------------------------
+  let y = 41;
+  fieldBox(MARGIN, y, CONTENT_W, 11, 'Shipping Line', lineName(ic.line));
+  y += 14;
+  fieldBox(MARGIN, y, 62, 11, 'Container No.', ic.container);
+  fieldBox(MARGIN + 65, y, 42, 11, 'Type / Size', ic.ctype);
+  fieldBox(MARGIN + 110, y, 33, 11, 'Movement', ic.type);
+  fieldBox(MARGIN + 146, y, 36, 11, 'Condition', (ic.condition || '—').toUpperCase());
+  y += 14;
+  fieldBox(MARGIN, y, 60, 11, 'Vessel Name', ic.vessel);
+  fieldBox(MARGIN + 63, y, 40, 11, 'Voyage No.', ic.voyage);
+  fieldBox(MARGIN + 106, y, 76, 11, 'B/L Number', ic.blNumber);
+  y += 14;
+  fieldBox(MARGIN, y, 92, 11, 'Party Delivering / Receiving', ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'));
+  fieldBox(MARGIN + 95, y, 42, 11, 'Vehicle No.', ic.truck ? truckName(ic.truck).split(' · ')[0] : (ic.truckRegText || '—'));
+  fieldBox(MARGIN + 140, y, 42, 11, 'Driver', ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'));
+  y += 18;
+
+  // ---- container diagram + damage legend --------------------------------
+  sectionLabel('Container Inspection', y); y += 6;
+  const diagX = MARGIN, diagY = y, diagW = 62, diagH = 38;
+  const sideDefs = [
+    { code: 'T', label: 'Top / Roof' }, { code: 'L', label: 'Left Side' },
+    { code: 'R', label: 'Right Side' }, { code: 'F', label: 'Front' },
+    { code: 'D', label: 'Rear / Door' }, { code: 'B', label: 'Floor / Bottom' },
+  ];
   const repairs = ic.repairs || [];
+  function sideMatches(sideText, code) {
+    if (!sideText) return false;
+    const s = String(sideText).toLowerCase();
+    const map = { T: 'top|roof', L: 'left', R: 'right', F: 'front', D: 'rear|door', B: 'floor|bottom' };
+    return new RegExp(map[code]).test(s);
+  }
+  const flagged = new Set(sideDefs.filter(sd => repairs.some(r => sideMatches(r.side, sd.code))).map(sd => sd.code));
+
+  doc.setDrawColor(150); doc.setLineWidth(0.3); doc.rect(diagX, diagY, diagW, diagH);
+  doc.setDrawColor(190); doc.line(diagX, diagY + diagH * 0.22, diagX + diagW, diagY + diagH * 0.22);
+  doc.line(diagX, diagY + diagH * 0.78, diagX + diagW, diagY + diagH * 0.78);
+  doc.line(diagX + diagW * 0.5, diagY, diagX + diagW * 0.5, diagY + diagH);
+  const marks = [
+    { code: 'T', x: diagX + diagW * 0.5, y: diagY + diagH * 0.11 },
+    { code: 'F', x: diagX + diagW * 0.25, y: diagY + diagH * 0.5 },
+    { code: 'D', x: diagX + diagW * 0.75, y: diagY + diagH * 0.5 },
+    { code: 'B', x: diagX + diagW * 0.5, y: diagY + diagH * 0.89 },
+  ];
+  marks.forEach(m => {
+    const isFlagged = flagged.has(m.code);
+    doc.setDrawColor(isFlagged ? 200 : 160, isFlagged ? 40 : 160, isFlagged ? 40 : 160);
+    doc.setFillColor(isFlagged ? 220 : 245, isFlagged ? 60 : 245, isFlagged ? 60 : 245);
+    doc.circle(m.x, m.y, 3.4, 'FD');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(7);
+    doc.setTextColor(isFlagged ? 255 : 90, isFlagged ? 255 : 90, isFlagged ? 255 : 90);
+    doc.text(m.code, m.x, m.y + 1.3, { align: 'center' });
+  });
+  ['L', 'R'].forEach(code => {
+    const isFlagged = flagged.has(code);
+    const mx = code === 'L' ? diagX - 4.5 : diagX + diagW + 4.5;
+    doc.setDrawColor(isFlagged ? 200 : 160, isFlagged ? 40 : 160, isFlagged ? 40 : 160);
+    doc.setFillColor(isFlagged ? 220 : 245, isFlagged ? 60 : 245, isFlagged ? 60 : 245);
+    doc.circle(mx, diagY + diagH * 0.5, 3.4, 'FD');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(7);
+    doc.setTextColor(isFlagged ? 255 : 90, isFlagged ? 255 : 90, isFlagged ? 255 : 90);
+    doc.text(code, mx, diagY + diagH * 0.5 + 1.3, { align: 'center' });
+  });
+
+  // legend beside the diagram
+  doc.setTextColor(20);
+  let lx = diagX + diagW + 14, ly = diagY + 3;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7); doc.setTextColor(120);
+  doc.text('LOCATION LEGEND', lx, ly); ly += 5;
+  sideDefs.forEach(sd => {
+    const isFlagged = flagged.has(sd.code);
+    doc.setDrawColor(isFlagged ? 200 : 170, isFlagged ? 40 : 170, isFlagged ? 40 : 170);
+    doc.setFillColor(isFlagged ? 220 : 255, isFlagged ? 60 : 255, isFlagged ? 60 : 255);
+    doc.circle(lx + 1.6, ly - 1, 1.8, 'FD');
+    doc.setFont(undefined, isFlagged ? 'bold' : 'normal'); doc.setFontSize(7.5);
+    doc.setTextColor(isFlagged ? 160 : 60, isFlagged ? 30 : 60, isFlagged ? 30 : 60);
+    doc.text(`${sd.code} — ${sd.label}${isFlagged ? '  (damage noted)' : ''}`, lx + 6, ly);
+    ly += 5;
+  });
+  doc.setTextColor(20);
+  y = diagY + diagH + 10;
+
+  // ---- repair estimate table --------------------------------------------
+  sectionLabel('Repair Estimate', y); y += 5;
+  const cols = [
+    { key: 'code', label: 'Code', x: MARGIN, w: 18 },
+    { key: 'item', label: 'Description of Damage / Repair', x: MARGIN + 18, w: 92 },
+    { key: 'side', label: 'Side', x: MARGIN + 110, w: 18 },
+    { key: 'labour', label: 'Labour Cost', x: MARGIN + 128, w: 27 },
+    { key: 'material', label: 'Material Cost', x: MARGIN + 155, w: 27 },
+  ];
+  doc.setDrawColor(150); doc.setLineWidth(0.25);
+  doc.setFillColor(235, 235, 235);
+  doc.rect(MARGIN, y, CONTENT_W, 7, 'FD');
+  cols.forEach(c => doc.rect(c.x, y, c.w, 7));
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
+  cols.forEach(c => doc.text(c.label, c.x + 1.5, y + 4.7));
+  y += 7;
+
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+  let repairTotal = 0;
   if (repairs.length) {
-    doc.setFont(undefined, 'bold'); doc.setFontSize(10);
-    doc.text('CONDITION & REPAIR ESTIMATE', 14, y); y += 3;
-    doc.setDrawColor(180);
-    doc.setFillColor(240, 240, 240);
-    doc.rect(14, y, 182, 7, 'F');
-    doc.setFontSize(8);
-    doc.text('Code', 16, y + 5); doc.text('Description', 36, y + 5); doc.text('Side', 118, y + 5);
-    doc.text('Hrs', 138, y + 5); doc.text('Labour', 152, y + 5); doc.text('Material', 170, y + 5);
-    y += 7;
-    doc.setFont(undefined, 'normal');
     repairs.forEach(r => {
       const hours = Number(r.hours || 0);
       const labour = hours * REPAIR_LABOUR_RATE_PER_HOUR;
       const material = Number(r.material || 0);
-      doc.text(String(r.code || '—'), 16, y + 5);
-      doc.text(doc.splitTextToSize(r.item || '—', 78), 36, y + 5);
-      doc.text(String(r.side || '—'), 118, y + 5);
-      doc.text(hours.toFixed(1), 138, y + 5);
-      doc.text(labour.toLocaleString(undefined,{minimumFractionDigits:2}), 152, y + 5);
-      doc.text(material.toLocaleString(undefined,{minimumFractionDigits:2}), 170, y + 5);
-      y += 8;
+      repairTotal += labour + material;
+      const lines = doc.splitTextToSize(r.item || '—', cols[1].w - 3);
+      const rowH = Math.max(7, lines.length * 3.6 + 3);
+      cols.forEach(c => doc.rect(c.x, y, c.w, rowH));
+      doc.text(String(r.code || '—'), cols[0].x + 1.5, y + 4.6);
+      doc.text(lines, cols[1].x + 1.5, y + 4.6);
+      doc.text(String(r.side || '—'), cols[2].x + 1.5, y + 4.6);
+      doc.text(labour.toLocaleString(undefined, { minimumFractionDigits: 2 }), cols[3].x + cols[3].w - 1.5, y + 4.6, { align: 'right' });
+      doc.text(material.toLocaleString(undefined, { minimumFractionDigits: 2 }), cols[4].x + cols[4].w - 1.5, y + 4.6, { align: 'right' });
+      y += rowH;
     });
-    doc.setDrawColor(200); doc.line(14, y, 196, y); y += 6;
-    doc.setFont(undefined, 'bold');
-    doc.text(`TOTAL REPAIR COST: KSh ${Number(ic.repairTotal || repairItemsTotal(repairs)).toLocaleString(undefined,{minimumFractionDigits:2})}`, 14, y);
-    y += 10;
   } else {
-    doc.setFont(undefined, 'italic'); doc.setFontSize(10);
-    doc.text('Container received in good condition — no damage items recorded.', 14, y);
-    y += 10;
+    doc.rect(MARGIN, y, CONTENT_W, 8);
+    doc.setFont(undefined, 'italic'); doc.setTextColor(100);
+    doc.text('Container received in good condition — no damage items recorded.', MARGIN + 2, y + 5.3);
+    doc.setFont(undefined, 'normal'); doc.setTextColor(20);
+    y += 8;
   }
+  const total = Number(ic.repairTotal || repairTotal || repairItemsTotal(repairs) || 0);
+  doc.setDrawColor(150); doc.rect(MARGIN, y, CONTENT_W - 34, 8);
+  doc.rect(RIGHT - 34, y, 34, 8, 'S');
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
+  doc.text('TOTAL (LABOUR + MATERIAL)', MARGIN + 2, y + 5.3);
+  doc.text(`KSh ${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, RIGHT - 2, y + 5.3, { align: 'right' });
+  y += 14;
 
-  if (ic.notes) {
-    doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.text('Notes:', 14, y);
-    y += 6; doc.setFont(undefined, 'normal');
-    doc.text(doc.splitTextToSize(ic.notes, 180), 14, y);
-    y += 14;
-  }
-  y += 6;
-  doc.setDrawColor(220); doc.line(14, y, 90, y); doc.line(120, y, 196, y);
-  doc.setFontSize(9); doc.setTextColor(120);
-  doc.text('Depot Clerk Signature', 14, y + 5);
-  doc.text('Transporter / Driver Signature', 120, y + 5);
+  // ---- inspection / remarks / signatures ---------------------------------
+  if (y > 250) { doc.addPage(); y = 20; }
+  fieldBox(MARGIN, y, 60, 11, 'Place of Inspection', 'Gargo Haven Depot, Mombasa');
+  fieldBox(MARGIN + 63, y, 55, 11, 'Inspector Name', '');
+  fieldBox(MARGIN + 121, y, 61, 11, 'Approval Date', '');
+  y += 14;
+  fieldBox(MARGIN, y, CONTENT_W, 16, 'Remarks', ic.notes || '');
+  y += 24;
 
-  doc.setFontSize(8); doc.setTextColor(150);
-  doc.text('This document confirms container delivery/receipt at Gargo Haven Depot and supports transporter payment processing.', 14, 285);
+  doc.setDrawColor(180); doc.setLineWidth(0.3);
+  doc.line(MARGIN, y, MARGIN + 76, y); doc.line(RIGHT - 76, y, RIGHT, y);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(110);
+  doc.text('Depot Officer Signature', MARGIN, y + 5);
+  doc.text('Driver / Transporter Signature', RIGHT - 76, y + 5);
 
-  doc.save(`interchange-${(ic.container || ic.id).replace(/\s+/g,'')}.pdf`);
+  doc.setFontSize(7.5); doc.setTextColor(150);
+  doc.text('This document confirms container delivery/receipt at Gargo Haven Depot and supports transporter payment processing.', MARGIN, 289);
+
+  doc.save(`interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf`);
 }
 
 
