@@ -4844,7 +4844,7 @@ async function renderDepOpsStorageList() {
         const icCell = !survey
           ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>'
           : survey.interchange_generated_at
-            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>`
+            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>${survey.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇</button>` : ''}`
             : `<button class="modal-btn primary" onclick="generateInterchangeFromSurvey('${b.id}','${survey.id}')">Generate →</button>`;
         return `<tr style="border-top:1px solid var(--border)">
           <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
@@ -5220,13 +5220,16 @@ function depOpsAllocationCard(b, zones, survey) {
     const match = bookingLineId && z.shipping_line_id === bookingLineId;
     return `<option value="${z.id}" ${match ? 'selected' : ''}>${sanitize(z.zone_code || z.zone_name)}${z.shipping_lines ? ' · ' + sanitize(z.shipping_lines.code) : ''} (${free} TEU free)</option>`;
   }).join('');
+  const icBtn = (survey && survey.interchange_generated_at && survey.interchange_id)
+    ? `<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇ Interchange</button>`
+    : '';
   return `<div style="border:1px solid rgba(201,162,39,0.35);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--gold-dim)">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
         <strong class="mono" style="color:var(--gold)">${sanitize(b.container) || 'No container on file'}</strong>
         <div style="font-size:11px;color:var(--text-3)">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''} · ${sanitize(b.cargo_type || '—')}</div>
       </div>
-      <span class="sbadge s-approved">surveyed</span>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="sbadge s-approved">surveyed</span>${icBtn}</div>
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text-3)">Allocate a storage slot below to record where this container sits in the yard.</div>
     <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 90px 70px auto;gap:6px;align-items:end">
@@ -5524,7 +5527,7 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
         <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'full_grade' ? 'approved' : 'pending'))} ${sanitize((s.condition_status||'').replace(/_/g,' '))}</td>
-        <td style="padding:6px 8px">${s.interchange_generated_at ? '✓ Generated' : '—'}</td>
+        <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
         <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>
       </tr>`).join('')}</tbody></table></div>`;
   } catch (e) {
@@ -5613,7 +5616,7 @@ async function renderDepOpsMasterList() {
           <td style="padding:6px 8px">${sbadge(b.storage_status==='escalated'?'rejected':b.storage_status==='surveyed'||b.storage_status==='allocated'?'approved':'pending')} ${MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status||'—')}</td>
           <td style="padding:6px 8px">${s ? sanitize((s.condition_status||'').replace(/_/g,' ')) : '—'}</td>
           <td style="padding:6px 8px">${loc}</td>
-          <td style="padding:6px 8px">${s && s.interchange_generated_at ? '✓' : '—'}</td>
+          <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   } catch (e) {
