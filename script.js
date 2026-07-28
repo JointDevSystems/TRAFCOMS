@@ -5148,7 +5148,7 @@ async function saveSurvey(bookingId) {
   }
   const repairItems = repairItemsFor('sv');
   try {
-    await window.bookingDocs.recordSurvey({
+    const survey = await window.bookingDocs.recordSurvey({
       bookingId,
       container,
       containerType: val('sv_ctype'),
@@ -5172,10 +5172,22 @@ async function saveSurvey(bookingId) {
       tariffItems: repairItems,
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
-    toast(heavy ? 'Survey saved — escalated for joint survey' : 'Survey saved — ready for storage allocation', heavy ? 'warning' : 'success');
+
+    // A heavily-damaged finding still needs a second, independent surveyor
+    // to sign off (see saveJointSurvey()) before delivery is confirmed, so
+    // interchange generation waits for that. Every other outcome is final
+    // the moment the survey is saved, so interchange — and the transporter
+    // payment trail it unlocks — is generated automatically right here,
+    // with no separate manual "Generate" step required.
+    if (!heavy && bookingId && survey && survey.id) {
+      await generateInterchangeFromSurvey(bookingId, survey.id);
+    }
+
+    toast(heavy ? 'Survey saved — escalated for joint survey' : 'Survey saved', heavy ? 'warning' : 'success');
     closeModal();
     renderDepOpsAwaitingSurvey();
     renderDepOpsAllocationQueue();
+    renderDepOpsStorageList();
     if (typeof renderDepOpsEscalations === 'function') renderDepOpsEscalations();
   } catch (e) {
     toast(e.message || 'Could not save survey', 'error');
@@ -5216,7 +5228,7 @@ function depOpsAllocationCard(b, zones, survey) {
       </div>
       <span class="sbadge s-approved">surveyed</span>
     </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--text-3)">Allocate a storage slot below — interchange can be generated once this container is confirmed in storage.</div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text-3)">Allocate a storage slot below to record where this container sits in the yard.</div>
     <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 90px 70px auto;gap:6px;align-items:end">
       <div class="fg" style="margin:0"><label>Zone</label><select id="alloc-zone-${b.id}" onchange="depOpsAllocZoneChanged('${b.id}')"><option value="">Select…</option>${zoneOptions}</select></div>
       <div class="fg" style="margin:0"><label>Block</label><select id="alloc-block-${b.id}" onchange="depOpsAllocBlockChanged('${b.id}')"><option value="">Select zone first…</option></select></div>
@@ -5232,31 +5244,42 @@ function depOpsAllocationCard(b, zones, survey) {
 // the legacy state.db.interchange array (same pipeline as the manual
 // "Record Interchange" form) so it goes through the existing admin
 // approval step in the Interchange section before payment is triggered.
+//
+// Called automatically the moment a survey is completed (saveSurvey() for
+// a normal finding, saveJointSurvey() for an accepted heavily-damaged
+// one) — it no longer waits on storage allocation. Storage zone/block/slot
+// is usually still unassigned at that point, so the slip just shows '—'
+// for location until depOpsAllocateBookingToSlot() fills it in; that was
+// always a nice-to-have on the printout, never something generation needed
+// to wait for. The "Generate →" button in the storage list (see
+// renderDepOpsStorageList) is kept as a manual fallback for any survey
+// this didn't fire for, guarded by the same idempotency check below.
 async function generateInterchangeFromSurvey(bookingId, surveyId) {
   try {
     const { data: booking } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
-    if (!booking || booking.storage_status !== 'allocated') {
-      toast('Storage must be allocated before interchange can be generated for this container', 'error', 5000);
-      return;
-    }
+    if (!booking) { toast('Booking not found for this container', 'error'); return; }
     const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
     if (!survey) { toast('No survey found for this container', 'error'); return; }
+    if (survey.interchange_generated_at) { return; }
     const conditionMap = { full_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
     const matchedTruck = state.db.trucks.find(t => (t.reg || '').toUpperCase() === (survey.truck_reg || '').toUpperCase());
     const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
 
-    // Storage location — only known now that allocation has happened, which
-    // is why interchange generation is gated on storage_status === 'allocated'.
+    // Storage location — only known once allocation has happened. Left as
+    // '—' when generated straight off survey completion; never blocks
+    // generation itself.
     let storageLocation = '—';
-    try {
-      const zones = await window.bookingDocs.listZones();
-      const zone = zones.find(z => z.id === booking.storage_zone_id);
-      storageLocation = [
-        zone ? (zone.zone_code || zone.zone_name) : null,
-        booking.storage_block_id ? `Block ${booking.storage_block_id}` : null,
-        booking.storage_slot_number ? `Slot ${booking.storage_slot_number}` : null,
-      ].filter(Boolean).join(' · ') || '—';
-    } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
+    if (booking.storage_status === 'allocated') {
+      try {
+        const zones = await window.bookingDocs.listZones();
+        const zone = zones.find(z => z.id === booking.storage_zone_id);
+        storageLocation = [
+          zone ? (zone.zone_code || zone.zone_name) : null,
+          booking.storage_block_id ? `Block ${booking.storage_block_id}` : null,
+          booking.storage_slot_number ? `Slot ${booking.storage_slot_number}` : null,
+        ].filter(Boolean).join(' · ') || '—';
+      } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
+    }
 
     const icRecord = {
       id: uid('IC'),
@@ -5344,7 +5367,7 @@ async function depOpsAllocateBookingToSlot(bookingId) {
       conditionStatus: survey ? survey.condition_status : 'full_grade',
     });
     addAudit(state.profile.username, 'Storage Allocated', booking ? booking.container : bookingId);
-    toast('Storage allocated — interchange can now be generated from the storage list', 'success', 5000);
+    toast(`Storage allocated${booking && booking.container ? ' for ' + booking.container : ''}`, 'success');
     renderDepOpsAllocationQueue();
     renderDepOpsZones();
     renderDepOpsStorageList();
@@ -5410,10 +5433,19 @@ async function saveJointSurvey(bookingId, surveyId, reject) {
   try {
     await window.bookingDocs.recordJointSurvey({ bookingId, surveyId, jointSurveyBy: by, jointSurveyNotes: notes, finalConditionStatus: condition, reject });
     addAudit(state.profile.username, reject ? 'Container Rejected (joint survey)' : 'Joint Survey Recorded', bookingId);
-    toast(reject ? 'Container rejected' : 'Joint survey recorded — ready for storage allocation', reject ? 'warning' : 'success');
+
+    // A joint survey is the final word for a heavily-damaged container —
+    // if it's accepted (not rejected), that's "survey completion" too, so
+    // generate interchange right here rather than waiting on a manual step.
+    if (!reject && bookingId && surveyId) {
+      await generateInterchangeFromSurvey(bookingId, surveyId);
+    }
+
+    toast(reject ? 'Container rejected' : 'Joint survey recorded — interchange generated', reject ? 'warning' : 'success');
     closeModal();
     renderDepOpsEscalations();
     renderDepOpsAllocationQueue();
+    renderDepOpsStorageList();
   } catch (e) {
     toast(e.message || 'Could not save joint survey', 'error');
   }
