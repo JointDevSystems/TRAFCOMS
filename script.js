@@ -5514,7 +5514,7 @@ async function renderDepOpsSurveyRegister() {
       <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
         <th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Type</th>
         <th style="padding:6px 8px">Consignee</th><th style="padding:6px 8px">Transporter</th><th style="padding:6px 8px">Truck</th>
-        <th style="padding:6px 8px">Clerk</th><th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Interchange</th>
+        <th style="padding:6px 8px">Clerk</th><th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Interchange</th><th style="padding:6px 8px">Photos</th>
       </tr></thead><tbody>${_surveyRegisterData.map(s => `<tr style="border-top:1px solid var(--border)">
         <td style="padding:6px 8px">${fmtDate(s.surveyed_at)}</td>
         <td style="padding:6px 8px" class="mono">${sanitize(s.container||'—')}</td>
@@ -5525,10 +5525,21 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
         <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'full_grade' ? 'approved' : 'pending'))} ${sanitize((s.condition_status||'').replace(/_/g,' '))}</td>
         <td style="padding:6px 8px">${s.interchange_generated_at ? '✓ Generated' : '—'}</td>
+        <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>
       </tr>`).join('')}</tbody></table></div>`;
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
+}
+
+function viewSurveyPhotos(surveyId) {
+  const s = _surveyRegisterData.find(x => x.id === surveyId);
+  if (!s) { toast('Survey not found', 'error'); return; }
+  const photos = Array.isArray(s.photos) ? s.photos : [];
+  const gallery = photos.length
+    ? `<div class="container-img-grid">${photos.map(src => `<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div>`
+    : '<div class="empty-state"><div class="empty-state-label">No photos on file for this survey</div></div>';
+  openModal(`Survey Photos — ${sanitize(s.container || 'Container')}`, `<div style="margin-bottom:10px;font-size:11px;color:var(--text-3)">Surveyed ${fmtDate(s.surveyed_at)} by ${sanitize(s.clerk_name||'—')}</div>${gallery}`);
 }
 
 function printSurveyRegister() {
@@ -5549,11 +5560,12 @@ function printSurveyRegister() {
 
 function downloadSurveyRegisterCSV() {
   if (!_surveyRegisterData.length) { toast('Nothing to download yet', 'error'); return; }
-  const headers = ['Date','Container','Type','Line ID','Consignee','B/L','Vessel','Voyage','Transporter','Truck Reg','Driver','Clerk','Seal','Gate Pass','Condition','Escalated','Interchange Generated'];
+  const headers = ['Date','Container','Type','Line ID','Consignee','B/L','Vessel','Voyage','Transporter','Truck Reg','Driver','Clerk','Seal','Gate Pass','Condition','Escalated','Interchange Generated','Photos'];
   const rows = _surveyRegisterData.map(s => [
     s.surveyed_at, s.container, s.container_type, s.shipping_line_id, s.consignee, s.bl_number, s.vessel, s.voyage,
     s.transporter, s.truck_reg, s.driver_name, s.clerk_name, s.seal_number, s.gate_pass_number, s.condition_status,
     s.escalated ? 'Yes' : 'No', s.interchange_generated_at ? 'Yes' : 'No',
+    Array.isArray(s.photos) ? s.photos.length : 0,
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
