@@ -4547,16 +4547,22 @@ function liveSearch(q) {
   const containerMatches = new Set();
   db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
   db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i=>{ if ((i.container||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase()); });
-  [...containerMatches].slice(0,3).forEach(cont=>{
+  db.interchange.forEach(i=>{
+    if ((i.container||'').toLowerCase().includes(q)
+      || (i.eirNumber||'').toLowerCase().includes(q)
+      || (i.vessel||'').toLowerCase().includes(q)
+      || (i.voyage||'').toLowerCase().includes(q)
+      || (i.blNumber||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase());
+  });
+  [...containerMatches].slice(0,4).forEach(cont=>{
     const live = findLiveTripByContainer(cont);
     results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
   });
 
-  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)||(t.vin||'').toLowerCase().includes(q)||(t.licencePlate||'').toLowerCase().includes(q)).slice(0,3).forEach(t=>{
     results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
   });
-  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
+  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)||(d.licence||'').toLowerCase().includes(q)||(d.idNo||'').toLowerCase().includes(q)).slice(0,3).forEach(d=>{
     results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
   });
   db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
@@ -4599,7 +4605,12 @@ function showContainerDetail(contRaw) {
     shutouts.map(s=>`<div class="activity-row"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${s.reason||'—'}</div><div style="font-size:10px;color:var(--text-3)">${s.vessel||''} ${s.voyage?`· Voyage ${s.voyage}`:''}</div></div>${sbadge(s.status)}<div class="act-time">${fmtDate(s.date)}</div></div>`).join('') : '';
 
   const interchangeHtml = interchange.length ? `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Interchange History (${interchange.length})</div>` +
-    interchange.map(i=>`<div class="activity-row"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)}</div></div>${sbadge(i.status)}<div class="act-time">${fmtDate(i.date)}</div></div>`).join('') : '';
+    interchange.map(i=>{
+      const meta = [i.eirNumber ? `EIR ${i.eirNumber}` : null, (i.vessel || i.voyage) ? `${i.vessel||'—'} / ${i.voyage||'—'}` : null].filter(Boolean).join(' · ');
+      const repairBadge = (i.repairs && i.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${i.repairs.length} damage item${i.repairs.length>1?'s':''} · KSh ${Number(i.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
+      const thumb = i.img ? `<img src="${i.img}" style="width:44px;height:44px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="showContainerPhotos('${i.id}')" />` : `<div style="width:44px;height:44px;border-radius:5px;border:1px dashed var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:16px">📦</div>`;
+      return `<div class="activity-row" style="align-items:flex-start;gap:10px">${thumb}<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div>${sbadge(i.status)}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)} · ${fmtDate(i.date)}</div>${meta?`<div style="font-size:10px;color:var(--text-3);margin-top:2px">${meta}</div>`:''}${repairBadge}${i.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:3px">${i.notes}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${(i.surveyId || i.img)?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="showContainerPhotos('${i.id}')">📷 Photos</button>`:''}${i.surveyId?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInspectionReport('${i.surveyId}')">⬇ Inspection Report</button>`:''}<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInterchangeSlip('${i.id}')">⬇ Slip</button></div></div></div>`;
+    }).join('') : '';
 
 
   const actions = [];
