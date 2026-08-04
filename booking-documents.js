@@ -23,9 +23,23 @@
   }
 
   // Tariff schedule for damage/repair line items captured on the survey
-  // form — mirrors the HTS reference's auto-filled Category → Code → Side/
-  // Item/Hours/Material lookup. Extend this table as KMA/line tariffs change.
-  const TARIFF_SCHEDULE = {
+  // form — Category → Code/Item/Hours/Material lookup, used by the
+  // Category → Code picker on both the survey form and the manual
+  // interchange form (see tariffPickerHtml() in script.js).
+  //
+  // Real data source: window.GHD_TARIFF_SCHEDULE, loaded from
+  // ghd-tariff-schedule.js (auto-generated from the depot's actual GHD
+  // tariff PDF — 72 categories / 537 line items, code/description/hours/
+  // material straight off the rate card). index.html loads that file
+  // *before* this one, so it's already on window by the time this runs.
+  //
+  // The few rows below are only a fallback so the picker still works if
+  // ghd-tariff-schedule.js fails to load (e.g. offline first paint before
+  // the service worker has cached it, or someone forgets to include the
+  // script tag) — they are never the primary source once the real file is
+  // present. The "side" field the fallback rows carry is cosmetic only;
+  // the real GHD schedule doesn't use it and the picker doesn't require it.
+  const FALLBACK_TARIFF_SCHEDULE = {
     'Structural': [
       { code: 'STR-01', side: 'Side Wall',  item: 'Panel replacement (per panel)', hours: 4,   material: 8500 },
       { code: 'STR-02', side: 'Roof',       item: 'Roof panel patch',              hours: 3,   material: 6000 },
@@ -41,15 +55,11 @@
       { code: 'CLN-01', side: 'Interior',   item: 'Standard sweep & wash',         hours: 0.5, material: 500 },
       { code: 'CLN-02', side: 'Interior',   item: 'Chemical / residue wash',       hours: 1.5, material: 2500 },
     ],
-    'Refrigeration (Reefer)': [
-      { code: 'REF-01', side: 'Machinery',  item: 'Compressor service',            hours: 3,   material: 12000 },
-      { code: 'REF-02', side: 'Machinery',  item: 'Thermostat / controller replace', hours: 2, material: 9000 },
-    ],
-    'Paint & Marking': [
-      { code: 'PNT-01', side: 'Exterior',   item: 'Spot repaint (per m²)',         hours: 1,   material: 1500 },
-      { code: 'PNT-02', side: 'Exterior',   item: 'CSC plate / marking restencil', hours: 0.5, material: 800 },
-    ],
   };
+
+  const TARIFF_SCHEDULE = (typeof window !== 'undefined' && window.GHD_TARIFF_SCHEDULE)
+    ? window.GHD_TARIFF_SCHEDULE
+    : FALLBACK_TARIFF_SCHEDULE;
 
 
   function getRequiredDocTypes({ serviceType, origin, destination }) {

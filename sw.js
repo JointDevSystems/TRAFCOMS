@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v8';
+const CACHE_VERSION = 'gargo-shell-v9';
 
 
 const STATIC_FILES = [
@@ -12,6 +12,8 @@ const SHELL_FILES = [
   './index.html',
   './styles.css',
   './script.js',
+  './ghd-tariff-schedule.js',
+  './booking-documents.js',
   './manifest.json',
 ];
 
