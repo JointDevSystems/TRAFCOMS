@@ -11,15 +11,20 @@
   const PORT_LOCATIONS = ['Mombasa Port (KPA)', 'APM Terminals', 'APM Terminals Mombasa'];
 
 
- 
+  // Slot / container condition, set at survey time and carried onto whatever
+  // slot the container is eventually allocated to.
   const CONDITION_STATUSES = ['full_grade', 'under_repair', 'damaged', 'heavily_damaged'];
 
-
+  // KMA Regulatory Guidelines §6.2 — max stacking height by container type.
+  // Reefers are capped lower than dry boxes; used by the Yard Map to flag
+  // any block whose declared height exceeds the regulatory limit.
   function kmaMaxStackHeight(containerType) {
     return /reefer/i.test(containerType || '') ? 6 : 7;
   }
 
-
+  // Tariff schedule for damage/repair line items captured on the survey
+  // form — mirrors the HTS reference's auto-filled Category → Code → Side/
+  // Item/Hours/Material lookup. Extend this table as KMA/line tariffs change.
   const TARIFF_SCHEDULE = {
     'Structural': [
       { code: 'STR-01', side: 'Side Wall',  item: 'Panel replacement (per panel)', hours: 4,   material: 8500 },
@@ -57,10 +62,10 @@
     }
 
     if (serviceType === 'Port Haulage' || serviceType === 'Full Transport Package') {
-      if (destIsPort && !originIsPort) required.push('release_order');  
-      else if (originIsPort && !destIsPort) required.push('delivery_order'); 
-      else if (!originIsPort && !destIsPort) required.push('guarantee_form'); 
-    
+      if (destIsPort && !originIsPort) required.push('release_order');   // going TO port = export
+      else if (originIsPort && !destIsPort) required.push('delivery_order'); // coming FROM port = import
+      else if (!originIsPort && !destIsPort) required.push('guarantee_form'); // depot-to-depot: container still moves in/out of depot custody at one end
+      // both-port case (rare/unlikely) intentionally left unrequired — flag for review if it occurs.
 
       if (serviceType === 'Full Transport Package' && required.indexOf('guarantee_form') === -1) required.push('guarantee_form');
     }
@@ -173,7 +178,7 @@
     return data || [];
   }
 
- 
+  // Back-compat alias for the original pending-only queue.
   async function pendingReviewQueue() {
     return reviewQueue('pending_review');
   }
@@ -309,7 +314,9 @@
       .eq('id', trip.storage_zone_id);
     if (zoneUpdateErr) throw new Error(zoneUpdateErr.message || 'Could not free storage space');
 
-
+    // Best-effort: free whichever slot this container was sitting in, keyed
+    // off the trip itself first (manually-added outbound containers) and
+    // falling back to the originating booking (the common repatriation path).
     await releaseSlotByOccupant({ tripId }).catch(() => {});
     if (trip.booking_id) await releaseSlotByOccupant({ bookingId: trip.booking_id }).catch(() => {});
 
@@ -384,7 +391,10 @@
   }
 
 
-
+  // opts.blockId + opts.slotNumber are optional for back-compat with the old
+  // zone-only/TEU-only callers (e.g. depOpsCreateManualOutbound doesn't deal
+  // in blocks). When given, the specific slot is occupied and its condition
+  // is set from the container's survey (falls back to 'full_grade').
   async function allocateStorage(bookingId, zoneId, teu, opts) {
     opts = opts || {};
     const { data: zone, error: zoneErr } = await client()
@@ -424,7 +434,10 @@
     if (bookingUpdateErr) throw new Error(bookingUpdateErr.message || 'Could not update booking status');
   }
 
-
+  // ── ZONES ──────────────────────────────────────────────────────────────
+  // Zone → shipping line allocation ("Zone A is MSC's"). One zone belongs to
+  // at most one shipping line; a null shipping_line_id means the zone is
+  // unassigned/shared and shows up as an option for any line.
   async function listZones() {
     const { data, error } = await client()
       .from('depot_storage_zones')
@@ -461,7 +474,10 @@
     if (error) throw new Error(error.message || 'Could not update zone');
   }
 
-
+  // ── BLOCKS ─────────────────────────────────────────────────────────────
+  // A block pins a sub-area of a zone to one container type/size, e.g.
+  // "Zone A · Block 1 · 40ft" / "Zone A · Block 2 · 20ft" — copies the
+  // block-level subdivision from the HTS system's Block/Bay/Position model.
   async function listBlocks(zoneId) {
     let query = client().from('depot_blocks').select('*').order('block_code', { ascending: true });
     if (zoneId) query = query.eq('zone_id', zoneId);
@@ -488,7 +504,9 @@
       .single();
     if (error) throw new Error(error.message || 'Could not create block — code may already exist in this zone');
 
-
+    // Generate the block's slot grid up front (mirrors HTS: every position
+    // exists as an empty row from the start, occupied in place rather than
+    // created on demand).
     const slotRows = [];
     for (let i = 1; i <= capacity; i++) slotRows.push({ block_id: block.id, slot_number: i, condition_status: 'empty' });
     if (slotRows.length) {
@@ -518,7 +536,10 @@
     return data || [];
   }
 
-
+  // bookingId/tripId are both optional — a slot can be occupied purely by
+  // container number for containers physically on-site with no matching
+  // booking or trip (manual placement / stock-take), same spirit as
+  // depOpsCreateManualOutbound's no-booking-required manual trips.
   async function occupySlot({ blockId, slotNumber, bookingId, tripId, container, conditionStatus }) {
     if (!blockId || !slotNumber) throw new Error('blockId and slotNumber are required');
     if (!bookingId && !tripId && !container) throw new Error('Provide a bookingId, tripId, or container number');
@@ -560,7 +581,8 @@
     if (error) throw new Error(error.message || 'Could not release slot');
   }
 
-
+  // For manually-placed containers with no booking/trip to key off — release
+  // directly by block + slot number instead.
   async function releaseSlotByNumber(blockId, slotNumber) {
     if (!blockId || !slotNumber) throw new Error('blockId and slotNumber are required');
     const { error } = await client()
@@ -580,7 +602,9 @@
     return data || null;
   }
 
-
+  // ── SURVEY (Awaiting Survey → Surveyed gate) ─────────────────────────────
+  // A container moves here right after being booked in, before it can be
+  // allocated to a zone/block/slot. Mirrors the HTS survey form fields.
   async function recordSurvey(payload) {
     payload = payload || {};
     if (!payload.bookingId && !payload.tripId) throw new Error('bookingId or tripId is required');
@@ -640,7 +664,11 @@
       .single();
     if (error) throw new Error(error.message || 'Could not save survey');
 
-
+    // This is the gate: a saved survey normally moves a booking out of
+    // 'awaiting_survey' and into 'surveyed', which is what unlocks the
+    // storage-allocation queue. A heavily-damaged finding instead routes
+    // to 'escalated' — it needs a second (joint) survey sign-off before
+    // it can be accepted into storage at all.
     if (payload.bookingId) {
       const { error: updErr } = await client()
         .from('public_bookings')
@@ -651,7 +679,31 @@
     return data;
   }
 
+  // Fetches a single depot_surveys row by its own id — used by the
+  // Inspection Report download button wherever it's shown outside a screen
+  // that already has the survey preloaded (e.g. the Interchange section,
+  // which only carries survey_id on each interchange record).
+  async function surveyById(surveyId) {
+    if (!surveyId) return null;
+    const { data, error } = await client().from('depot_surveys').select('*').eq('id', surveyId).maybeSingle();
+    if (error) return null;
+    return data || null;
+  }
 
+  // ── ESCALATION / JOINT SURVEY ─────────────────────────────────────────
+  // Heavily-damaged containers land here instead of the allocation queue.
+  // A second surveyor must record a joint finding before the container is
+  // either accepted into storage (as 'surveyed') or rejected outright.
+  // Returns each escalated (heavy-damage, awaiting joint survey) booking
+  // together with the depot_surveys row that flagged it — specifically its
+  // `id`, since recordJointSurvey() below requires a surveyId and previously
+  // had no way to get one: this function used to return bare public_bookings
+  // rows with no link back to the survey that escalated them, so the "record
+  // joint survey" action failed with "surveyId is required" every time it
+  // was actually attempted, effectively bricking the whole heavy-damage
+  // escalation flow. Each returned row now carries `survey` (the full
+  // depot_surveys record, or null if one genuinely can't be found — which
+  // itself indicates a data problem worth surfacing rather than hiding).
   async function escalatedBookings() {
     const { data: bookings, error } = await client()
       .from('public_bookings')
@@ -684,7 +736,16 @@
     });
   }
 
-
+  // Every open heavy-damage escalation, straight from depot_surveys —
+  // covers both a booking-based survey (bookingId set) and a trip-only
+  // survey (tripId set, no booking behind it, e.g. a container surveyed
+  // mid-haulage). escalatedBookings() above only ever finds the former,
+  // because recordSurvey() only flips public_bookings.storage_status to
+  // 'escalated' when payload.bookingId was actually provided — a trip-only
+  // escalation never sets that status anywhere, so it was structurally
+  // invisible to any queue built on top of public_bookings alone. Prefer
+  // this function for any escalation/joint-survey queue; escalatedBookings()
+  // is kept only for existing callers that specifically want booking rows.
   async function escalatedSurveys() {
     const { data: surveys, error } = await client()
       .from('depot_surveys')
@@ -724,7 +785,11 @@
     });
   }
 
-
+  // bookingId or tripId — whichever the original survey was recorded
+  // against (see escalatedSurveys()/escalatedBookings() above, both now
+  // return the right one to pass back in). At least one is required; a
+  // trip-only escalation has no booking status to update, so that update
+  // is simply skipped for it rather than throwing.
   async function recordJointSurvey({ bookingId, tripId, surveyId, jointSurveyBy, jointSurveyNotes, finalConditionStatus, reject }) {
     if (!bookingId && !tripId) throw new Error('bookingId or tripId is required');
     if (!jointSurveyBy) throw new Error('Joint surveyor name is required');
@@ -752,10 +817,12 @@
         .eq('id', bookingId);
       if (bookingErr) throw new Error(bookingErr.message || 'Joint survey saved, but could not update booking status');
     }
-
+    // No equivalent status field is updated for a trip-only escalation —
+    // the depot_surveys row above (escalated:false, joint findings) is the
+    // authoritative record for it.
   }
 
-
+  // ── SURVEYED CONTAINERS REGISTER (printable / downloadable) ──────────
   async function listAllSurveys() {
     const { data, error } = await client()
       .from('depot_surveys')
@@ -765,7 +832,12 @@
     return data || [];
   }
 
-
+  // ── INTERCHANGE FROM SURVEY ────────────────────────────────────────────
+  // Marks a survey as having produced an interchange record (the app-side
+  // caller does the actual insert into the `interchange` table, since that
+  // table is still synced through the legacy state.db pipeline rather than
+  // queried live here — this just stamps the survey so the button can't
+  // double-fire and so the register/master list can show it was done).
   async function markInterchangeGenerated(surveyId, interchangeId) {
     if (!surveyId) throw new Error('surveyId is required');
     const { error } = await client()
@@ -775,7 +847,9 @@
     if (error) throw new Error(error.message || 'Could not flag interchange as generated');
   }
 
-
+  // ── MASTER CONTAINER LIST ──────────────────────────────────────────────
+  // Every Depot Storage booking regardless of status, left-joined with its
+  // latest survey and slot, for a single at-a-glance register.
   async function masterContainerList() {
     const { data: bookings, error } = await client()
       .from('public_bookings')
@@ -857,7 +931,7 @@
     OUTBOUND_REQUIRED_DOC_TYPES,
     PORT_LOCATIONS,
 
- 
+    // Zones / Blocks / Slots
     listZones,
     createZone,
     updateZone,
@@ -870,21 +944,22 @@
     releaseSlotByNumber,
     slotForOccupant,
 
-    
+    // Survey
     recordSurvey,
     surveyForOccupant,
+    surveyById,
     awaitingSurveyBookings,
     surveyedAwaitingAllocation,
     CONDITION_STATUSES,
     TARIFF_SCHEDULE,
     kmaMaxStackHeight,
 
- 
+    // Escalation / joint survey
     escalatedBookings,
     escalatedSurveys,
     recordJointSurvey,
 
-  
+    // Register / master list / interchange linkage
     listAllSurveys,
     markInterchangeGenerated,
     masterContainerList,
