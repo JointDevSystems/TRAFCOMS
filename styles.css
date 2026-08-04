@@ -725,10 +725,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 0;
 }
 
-/* ── DepOps: Storage Zone / Block slot grid ─────────────────────────────── */
-/* Mirrors the HTS reference's block/bay/position grid (a clickable grid of
-   numbered slots showing occupied vs empty at a glance), re-themed to match
-   Gargo's dark/gold palette instead of copying HTS's own colours. */
+
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
