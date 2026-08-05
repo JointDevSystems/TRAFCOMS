@@ -2157,7 +2157,7 @@ function toggleDispatchOutwardType() {
   const workType = document.getElementById('d_worktype').value;
   const row = document.getElementById('d_outwardtype_row');
   if (!row) return;
-  row.style.display = isOutwardWorkType(workType) ? 'flex' : 'none';
+  row.style.display = isOutwardWorkType(workType) ? 'block' : 'none';
   if (!isOutwardWorkType(workType)) {
     const sel = document.getElementById('d_outwardtype');
     if (sel) sel.value = '';
@@ -6454,7 +6454,7 @@ async function renderDepOpsOutwardTrips() {
       const outwardTypeOptions = OUTWARD_TYPES.map(w => `<option value="${sanitize(w)}">${sanitize(w)}</option>`).join('');
       formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
         <div class="panel-head"><span class="panel-title">Add Outward Container Manually</span></div>
-        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr 1fr 1fr auto;gap:10px;align-items:end">
+        <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end">
           <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>
           <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select…</option>${zoneOptions}</select></div>
           <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>
