@@ -498,7 +498,7 @@
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Work Type</label>
-                                                <select id="d_worktype">
+                                                <select id="d_worktype" onchange="toggleDispatchOutwardType()">
                                                     <option>Port → Depot</option><option>Depot → Port</option><option>Depot → Depot</option>
                                                     <option>Client → Depot</option><option>Depot → Client</option>
                                                     <option>Port → CFS</option><option>CFS → Port</option>
@@ -506,6 +506,14 @@
                                                 </select>
                                             </div>
                                             <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
+                                        </div>
+                                        <div class="form-row-2" id="d_outwardtype_row" style="display:none">
+                                            <div class="fg"><label>Outward Type</label>
+                                                <select id="d_outwardtype">
+                                                    <option value="">Select…</option>
+                                                    <option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>
@@ -837,6 +845,10 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="panel" style="margin-top:14px">
+                            <div class="panel-head"><span class="panel-title">Outward Trips by Type</span><span class="panel-meta">Repatriation to Port · Shippers/Export · Sale units</span></div>
+                            <div id="waOutwardChart" class="wt-bars-grid"></div>
+                        </div>
                     </section>
 
                   
@@ -888,6 +900,7 @@
                                     <div class="fg" style="margin:0"><label>Driver</label><select id="trcDriver"><option value="">All Drivers</option></select></div>
                                     <div class="fg" style="margin:0"><label>Status</label><select id="trcStatus"><option value="">All Statuses</option></select></div>
                                     <div class="fg" style="margin:0"><label>Work Type</label><select id="trcWorkType"><option value="">All Types</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Outward Type</label><select id="trcOutwardType"><option value="">All Outward Types</option><option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option></select></div>
                                 </div>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                                     <button class="action-btn" onclick="trcRunTripReport()">▶ Run Report</button>
@@ -901,7 +914,7 @@
                                 <div class="table-wrap">
                                     <table class="data-table">
                                         <thead><tr>
-                                            <th>Container</th><th>Truck</th><th>Driver</th><th>Work Type</th><th>Route</th><th>Status</th><th>Priority</th><th>Distance</th><th>Started</th><th>ETA</th>
+                                            <th>Container</th><th>Truck</th><th>Driver</th><th>Work Type</th><th>Outward Type</th><th>Route</th><th>Status</th><th>Priority</th><th>Distance</th><th>Started</th><th>ETA</th>
                                         </tr></thead>
                                         <tbody id="trcTripBody"></tbody>
                                     </table>
@@ -1090,7 +1103,7 @@
   </div>
   <div class="ops-notice" style="margin-bottom:14px">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-    Document review and depot storage for both inbound bookings and outbound/repatriation containers. Verifying or rejecting a document here updates the same record the staff portal uses — either place reflects instantly.
+    Document review and depot storage for both inbound bookings and outward/repatriation containers. Verifying or rejecting a document here updates the same record the staff portal uses — either place reflects instantly.
   </div>
 
   <div class="two-col-grid" style="margin-bottom:14px">
@@ -1107,7 +1120,7 @@
 
   <div class="filter-row" style="margin-bottom:16px">
     <button class="filter-btn active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outbound',this)">Outbound / Repatriation</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outward',this)">Outward / Repatriation</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('zones',this)">Zones</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('yard',this)">Yard Map</button>
     <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('escalations',this)">⚠ Escalations</button>
@@ -1154,26 +1167,26 @@
     <div id="depopsZoneAdmin"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
   </div>
 
-  <div class="depops-tab-panel" id="depopsPanel-outbound">
+  <div class="depops-tab-panel" id="depopsPanel-outward">
     <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Eligible for Repatriation</div>
     <div id="depopsEligibleList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
 
     <div id="depopsManualForm" style="margin-top:14px"></div>
 
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Outbound Trips</div>
-    <div id="depopsOutboundTripsList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Outward Trips</div>
+    <div id="depopsOutwardTripsList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
 
     <div class="sec-toolbar" style="margin-top:22px">
       <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Release Order Review</div>
       <div class="filter-row">
-        <button class="filter-btn active" onclick="filterDepOpsOutbound('pending_review',this)">Pending Review</button>
-        <button class="filter-btn" onclick="filterDepOpsOutbound('verified',this)">Verified</button>
-        <button class="filter-btn" onclick="filterDepOpsOutbound('rejected',this)">Rejected</button>
-        <button class="filter-btn" onclick="filterDepOpsOutbound('all',this)">All</button>
-        <button class="action-btn ghost" onclick="renderDepOpsOutbound()">↻ Refresh</button>
+        <button class="filter-btn active" onclick="filterDepOpsOutward('pending_review',this)">Pending Review</button>
+        <button class="filter-btn" onclick="filterDepOpsOutward('verified',this)">Verified</button>
+        <button class="filter-btn" onclick="filterDepOpsOutward('rejected',this)">Rejected</button>
+        <button class="filter-btn" onclick="filterDepOpsOutward('all',this)">All</button>
+        <button class="action-btn ghost" onclick="renderDepOpsOutward()">↻ Refresh</button>
       </div>
     </div>
-    <div id="depopsOutboundQueue"></div>
+    <div id="depopsOutwardQueue"></div>
   </div>
 
   <div class="depops-tab-panel" id="depopsPanel-yard">

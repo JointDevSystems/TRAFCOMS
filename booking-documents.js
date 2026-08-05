@@ -5,7 +5,7 @@
   const DOC_TYPES = ['guarantee_form', 'release_order', 'delivery_order'];
 
 
-  const OUTBOUND_REQUIRED_DOC_TYPES = ['release_order'];
+  const OUTWARD_REQUIRED_DOC_TYPES = ['release_order'];
 
 
   const PORT_LOCATIONS = ['Mombasa Port (KPA)', 'APM Terminals', 'APM Terminals Mombasa'];
@@ -256,7 +256,7 @@
   }
 
 
-  async function outboundReviewQueue(status) {
+  async function outwardReviewQueue(status) {
     let query = client()
       .from('booking_documents')
       .select('*, trips(id, container, container_type, work_type, origin, destination, status, storage_zone_id, storage_teu, storage_released)')
@@ -269,7 +269,7 @@
     query = query.order('uploaded_at', { ascending: status === 'pending_review' });
 
     const { data, error } = await query;
-    if (error) throw new Error(error.message || 'Could not load outbound review queue');
+    if (error) throw new Error(error.message || 'Could not load outward review queue');
     return data || [];
   }
 
@@ -325,7 +325,7 @@
     if (zoneUpdateErr) throw new Error(zoneUpdateErr.message || 'Could not free storage space');
 
     // Best-effort: free whichever slot this container was sitting in, keyed
-    // off the trip itself first (manually-added outbound containers) and
+    // off the trip itself first (manually-added outward containers) and
     // falling back to the originating booking (the common repatriation path).
     await releaseSlotByOccupant({ tripId }).catch(() => {});
     if (trip.booking_id) await releaseSlotByOccupant({ bookingId: trip.booking_id }).catch(() => {});
@@ -402,7 +402,7 @@
 
 
   // opts.blockId + opts.slotNumber are optional for back-compat with the old
-  // zone-only/TEU-only callers (e.g. depOpsCreateManualOutbound doesn't deal
+  // zone-only/TEU-only callers (e.g. depOpsCreateManualOutward doesn't deal
   // in blocks). When given, the specific slot is occupied and its condition
   // is set from the container's survey (falls back to 'full_grade').
   async function allocateStorage(bookingId, zoneId, teu, opts) {
@@ -549,7 +549,7 @@
   // bookingId/tripId are both optional — a slot can be occupied purely by
   // container number for containers physically on-site with no matching
   // booking or trip (manual placement / stock-take), same spirit as
-  // depOpsCreateManualOutbound's no-booking-required manual trips.
+  // depOpsCreateManualOutward's no-booking-required manual trips.
   async function occupySlot({ blockId, slotNumber, bookingId, tripId, container, conditionStatus }) {
     if (!blockId || !slotNumber) throw new Error('blockId and slotNumber are required');
     if (!bookingId && !tripId && !container) throw new Error('Provide a bookingId, tripId, or container number');
@@ -924,7 +924,7 @@
    
     pendingReviewQueue,
     reviewQueue,
-    outboundReviewQueue,
+    outwardReviewQueue,
     readyToProcessBookings,
     documentsForBooking,
     documentsForBookings,
@@ -938,7 +938,7 @@
     releaseStorageForTrip,
     getRequiredDocTypes,
     DOC_TYPES,
-    OUTBOUND_REQUIRED_DOC_TYPES,
+    OUTWARD_REQUIRED_DOC_TYPES,
     PORT_LOCATIONS,
 
     // Zones / Blocks / Slots

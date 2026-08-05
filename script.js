@@ -58,8 +58,14 @@ function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type,
 function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
 function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased }; }
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released }; }
+
+// The three allowed outward_type values, matching the trips_outward_type_check
+// constraint in the DB exactly. Only meaningful when work_type is the
+// outward direction ('Depot → Port'); NULL for everything else.
+const OUTWARD_TYPES = ['Repatriation to Port', 'Shippers/Export', 'Sale units'];
+function isOutwardWorkType(workType) { return workType === 'Depot → Port'; }
 
 function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.type, description:m.desc, priority:m.priority, status:m.status, date:m.date, cost:m.cost, technician:m.tech, resolved_date:m.resolvedDate }; }
 function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
@@ -1332,7 +1338,7 @@ function renderTrips(f){
   if(f!=='all') trips=trips.filter(t=>t.status===f);
   const el=document.getElementById('tripsList');
   if(!el) return;
-  el.innerHTML=trips.map(t=>`<div class="trip-card status-${t.status}" onclick="showTripDetail('${t.id}')"><div class="trip-card-head"><div class="trip-route">${t.origin}<span class="arrow">→</span>${t.dest}</div>${sbadge(t.status)}</div><div class="trip-meta"><span>🚛 ${truckName(t.truckId)}</span><span>👤 ${driverName(t.driverId)}</span><span class="mono" style="font-size:10.5px;color:var(--gold)">${t.container}</span><span>${t.ctype} · ${t.workType}</span><span>🕐 Started ${timeAgo(t.startTime)} · ETA ${fmtTime(t.eta)}</span><span>${t.distance}km · ${sbadge(t.priority.toLowerCase())}</span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🗺️</div><div class="empty-state-label">No trips in this filter</div></div>';
+  el.innerHTML=trips.map(t=>`<div class="trip-card status-${t.status}" onclick="showTripDetail('${t.id}')"><div class="trip-card-head"><div class="trip-route">${t.origin}<span class="arrow">→</span>${t.dest}</div>${sbadge(t.status)}</div><div class="trip-meta"><span>🚛 ${truckName(t.truckId)}</span><span>👤 ${driverName(t.driverId)}</span><span class="mono" style="font-size:10.5px;color:var(--gold)">${t.container}</span><span>${t.ctype} · ${t.workType}${t.outwardType ? ' · ' + sanitize(t.outwardType) : ''}</span><span>🕐 Started ${timeAgo(t.startTime)} · ETA ${fmtTime(t.eta)}</span><span>${t.distance}km · ${sbadge(t.priority.toLowerCase())}</span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🗺️</div><div class="empty-state-label">No trips in this filter</div></div>';
 }
 
 function showTripDetail(id) {
@@ -1343,7 +1349,7 @@ function showTripDetail(id) {
   const gallery = Array.isArray(t.containerImages) && t.containerImages.length
     ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
     : '';
-  openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
+  openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div>${t.outwardType ? `<div class="fg" style="margin:0"><label>Outward Type</label><div style="font-size:12px;color:var(--gold)">${sanitize(t.outwardType)}</div></div>` : ''}<div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
 }
 
 
@@ -2147,6 +2153,17 @@ function renderAwaitingDispatch() {
 }
 
 
+function toggleDispatchOutwardType() {
+  const workType = document.getElementById('d_worktype').value;
+  const row = document.getElementById('d_outwardtype_row');
+  if (!row) return;
+  row.style.display = isOutwardWorkType(workType) ? 'flex' : 'none';
+  if (!isOutwardWorkType(workType)) {
+    const sel = document.getElementById('d_outwardtype');
+    if (sel) sel.value = '';
+  }
+}
+
 function loadTripIntoDispatchForm(tripId) {
   const t = state.db.trips.find(tr=>tr.id===tripId);
   if (!t) { toast('Trip not found', 'error'); return; }
@@ -2162,6 +2179,9 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_ctype').value    = t.ctype || '20ft Dry';
   document.getElementById('d_worktype').value = t.workType || 'Port → Depot';
   document.getElementById('d_line').value     = t.shippingLine || '';
+  const outwardTypeSel = document.getElementById('d_outwardtype');
+  if (outwardTypeSel) outwardTypeSel.value = t.outwardType || '';
+  toggleDispatchOutwardType();
   document.getElementById('d_origin').value   = t.origin && t.origin !== '—' ? t.origin : '';
   document.getElementById('d_dest').value     = t.dest && t.dest !== '—' ? t.dest : '';
   document.getElementById('d_distance').value = t.distance || '';
@@ -2183,6 +2203,9 @@ function cancelDispatchEdit() {
   _dispatchEditingTripId = null;
   clearContainerImgs();
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  const outwardTypeSel = document.getElementById('d_outwardtype');
+  if (outwardTypeSel) outwardTypeSel.value = '';
+  toggleDispatchOutwardType();
   populateDispatchSelects();
   const banner = document.getElementById('dispatchEditBanner');
   if (banner) banner.style.display = 'none';
@@ -2231,6 +2254,12 @@ async function createDispatch() {
   const ref      = document.getElementById('d_ref').value.trim() || `REF-${Date.now().toString().slice(-6)}`;
   const notes    = sanitize(document.getElementById('d_notes').value.trim());
   const images   = [..._dispatchContainerImages];
+  const outwardTypeSel = document.getElementById('d_outwardtype');
+  const outwardType = isOutwardWorkType(workType) ? (outwardTypeSel ? outwardTypeSel.value : '') : null;
+  if (isOutwardWorkType(workType) && !OUTWARD_TYPES.includes(outwardType)) {
+    toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error');
+    return;
+  }
 
   if (editingId) {
 
@@ -2245,7 +2274,7 @@ async function createDispatch() {
         const docs = await window.bookingDocs.documentsForTrip(t.id);
         const hasVerifiedRelease = docs.some(d => d.doc_type === 'release_order' && d.status === 'verified');
         if (!hasVerifiedRelease) {
-          toast('A verified release order is required before this container can be dispatched to port. Upload it from DepOps → Outbound / Repatriation.', 'error', 6000);
+          toast('A verified release order is required before this container can be dispatched to port. Upload it from DepOps → Outward / Repatriation.', 'error', 6000);
           return;
         }
       } catch (e) {
@@ -2254,7 +2283,7 @@ async function createDispatch() {
       }
     }
 
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
     if (tk) tk.status = 'on_trip';
@@ -2272,7 +2301,7 @@ async function createDispatch() {
     const etaMs = Date.now() + (dist/35)*3600000;
     const trip = {
       id: uid('TRIP'), truckId: truck, driverId: driver, container: cont,
-      ctype, workType, origin, dest, shippingLine: line,
+      ctype, workType, outwardType, origin, dest, shippingLine: line,
       status: 'active', startTime: new Date().toISOString(),
       eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
       containerImages: images,
@@ -2290,6 +2319,9 @@ async function createDispatch() {
 
   clearContainerImgs();
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  const outwardTypeResetSel = document.getElementById('d_outwardtype');
+  if (outwardTypeResetSel) outwardTypeResetSel.value = '';
+  toggleDispatchOutwardType();
   renderDispatch();
   refreshAwaitingDispatchUI();
 }
@@ -3611,6 +3643,15 @@ function renderWorkAnalysis(period, btn) {
   if(mat){
     mat.innerHTML=matrixData.map(m=>`<tr><td>${m.wt}</td><td class="mono" style="text-align:center">${m.cnt}</td><td class="mono" style="text-align:center">~${Math.round(1+(Math.random()*2))}h</td><td class="mono" style="text-align:center;color:${m.onTimePct>70?'var(--green)':'var(--amber)'}">${m.onTimePct}%</td><td class="mono" style="color:var(--gold)">${m.topTruck}</td></tr>`).join('')||`<tr><td colspan="5" class="empty-td">No data</td></tr>`;
   }
+  const outwardTrips = trips.filter(t => isOutwardWorkType(t.workType));
+  const outwardTypeCounts = {};
+  OUTWARD_TYPES.forEach(w => { outwardTypeCounts[w] = 0; });
+  outwardTrips.forEach(t => { const key = t.outwardType || 'Unclassified'; outwardTypeCounts[key] = (outwardTypeCounts[key]||0) + 1; });
+  const outwardMax = Math.max(...Object.values(outwardTypeCounts), 1);
+  const outwardChart = document.getElementById('waOutwardChart');
+  if (outwardChart) {
+    outwardChart.innerHTML = Object.entries(outwardTypeCounts).sort((a,b)=>b[1]-a[1]).map(([wt,cnt])=>`<div class="wt-bar-item"><div class="wt-bar-label" title="${sanitize(wt)}">${sanitize(wt)}</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:${Math.round(cnt/outwardMax*100)}%"></div></div><div class="wt-bar-count">${cnt}</div></div>`).join('') || '<div style="padding:12px;color:var(--text-3)">No outward trips for this period</div>';
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -3806,6 +3847,8 @@ async function trcRunTripReport() {
   const driverId  = document.getElementById('trcDriver').value;
   const status    = document.getElementById('trcStatus').value;
   const workType  = document.getElementById('trcWorkType').value;
+  const outwardTypeEl = document.getElementById('trcOutwardType');
+  const outwardType = outwardTypeEl ? outwardTypeEl.value : '';
 
   const btn = document.querySelector('#trcTab-trips .action-btn:not(.ghost)');
   const origLabel = btn ? btn.textContent : '';
@@ -3819,6 +3862,7 @@ async function trcRunTripReport() {
     if (driverId) q = q.eq('driver_id', driverId);
     if (status)   q = q.eq('status', status);
     if (workType) q = q.eq('work_type', workType);
+    if (outwardType) q = q.eq('outward_type', outwardType);
     q = q.order('start_time', { ascending: false }).limit(5000);
 
     const { data, error } = await q;
@@ -3868,6 +3912,7 @@ function trcRenderTripTable(rows) {
     <td>${truckName(t.truckId)}</td>
     <td>${driverName(t.driverId)}</td>
     <td>${t.workType}</td>
+    <td>${t.outwardType || '—'}</td>
     <td style="font-size:11px">${t.origin} → ${t.dest}</td>
     <td>${sbadge(t.status)}</td>
     <td>${t.priority ? sbadge(t.priority.toLowerCase()) : '—'}</td>
@@ -3879,11 +3924,11 @@ function trcRenderTripTable(rows) {
 
 function trcExportTripsCSV() {
   if (!trc.tripRows.length) return;
-  const headers = ['ID','Container','Type','Truck','Driver','Work Type','Origin','Destination','Shipping Line','Status','Priority','Distance (km)','Start Time','ETA','Reference'];
+  const headers = ['ID','Container','Type','Truck','Driver','Work Type','Outward Type','Origin','Destination','Shipping Line','Status','Priority','Distance (km)','Start Time','ETA','Reference'];
   const lines = [headers.join(',')];
   trc.tripRows.forEach(t=>{
     lines.push([
-      t.id, t.container, t.ctype, truckName(t.truckId), driverName(t.driverId), t.workType,
+      t.id, t.container, t.ctype, truckName(t.truckId), driverName(t.driverId), t.workType, t.outwardType || '',
       t.origin, t.dest, lineName(t.shippingLine), t.status, t.priority, t.distance,
       t.startTime, t.eta, t.ref,
     ].map(csvEscape).join(','));
@@ -5123,7 +5168,7 @@ const DEPOPS_DOC_LABELS = {
 
 let _depOpsTab = 'inbound';
 let _depOpsInboundFilter = 'pending_review';
-let _depOpsOutboundFilter = 'pending_review';
+let _depOpsOutwardFilter = 'pending_review';
 
 function depOpsFmtDT(raw) {
   if (!raw) return '—';
@@ -5160,18 +5205,18 @@ async function renderDepOps() {
   else if (_depOpsTab === 'yard') await renderDepOpsYardMap();
   else if (_depOpsTab === 'surveys') await renderDepOpsSurveyRegister();
   else if (_depOpsTab === 'master') await renderDepOpsMasterList();
-  else await renderDepOpsOutbound();
+  else await renderDepOpsOutward();
 }
 
 async function updateDepOpsBadge() {
   const badge = document.getElementById('badge-depops');
   if (!badge || !window.bookingDocs) return;
   try {
-    const [inboundPending, outboundPending] = await Promise.all([
+    const [inboundPending, outwardPending] = await Promise.all([
       window.bookingDocs.reviewQueue('pending_review'),
-      window.bookingDocs.outboundReviewQueue('pending_review'),
+      window.bookingDocs.outwardReviewQueue('pending_review'),
     ]);
-    const count = inboundPending.length + outboundPending.length;
+    const count = inboundPending.length + outwardPending.length;
     badge.textContent = count || '';
     badge.style.display = count ? 'inline' : 'none';
   } catch (e) { /* badge is best-effort, never blocks the section */ }
@@ -5242,11 +5287,11 @@ async function renderDepOpsStorageList() {
 }
 
 // Routes a "Dispatch" click from the storage list to the right place:
-// - If an outbound trip already exists for this booking, jump straight
+// - If an outward trip already exists for this booking, jump straight
 //   into the Dispatch Console with that trip loaded (same as the
 //   "Complete Dispatch" flow used elsewhere).
 // - Otherwise the container needs a destination/TEU picked first, so
-//   send staff to DepOps' Outbound tab, to the same booking's card in
+//   send staff to DepOps' Outward tab, to the same booking's card in
 //   "Eligible for Repatriation" — creating the trip there is what makes
 //   it show up in the Dispatch Console's Awaiting Dispatch queue.
 function depOpsDispatchContainer(bookingId) {
@@ -5256,8 +5301,8 @@ function depOpsDispatchContainer(bookingId) {
     return;
   }
   showSection('depops', document.querySelector('[data-section="depops"]'));
-  switchDepOpsTab('outbound', document.querySelector('.depops-tab-btn:nth-child(2)'));
-  toast('Pick a destination and create the outbound trip below — it will then appear in the Dispatch Console.', 'info', 5000);
+  switchDepOpsTab('outward', document.querySelector('.depops-tab-btn:nth-child(2)'));
+  toast('Pick a destination and create the outward trip below — it will then appear in the Dispatch Console.', 'info', 5000);
   setTimeout(() => {
     const el = document.getElementById('depopsEligibleList');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6196,13 +6241,13 @@ async function showBlockSlotsModal(blockId) {
       const label = occupied ? sanitize(s.container || '•') : s.slot_number;
       let clickAction;
       if (manual) clickAction = `releaseSlotFromGrid('${blockId}',${s.slot_number})`;
-      else if (linked) clickAction = `toast('Linked to a booking/trip — release it from Outbound / Repatriation instead', 'info', 5000)`;
+      else if (linked) clickAction = `toast('Linked to a booking/trip — release it from Outward / Repatriation instead', 'info', 5000)`;
       else clickAction = `manualAssignSlot('${blockId}',${s.slot_number})`;
       const titleTip = !occupied ? 'empty · click to assign' : (manual ? (s.condition_status || '') + ' · click to release' : (s.condition_status || '') + ' · linked booking/trip');
       return `<div class="slot-cell" style="border-color:${colour};color:${occupied ? '#fff' : 'var(--text-3)'};background:${occupied ? colour : 'transparent'}" title="Slot ${s.slot_number} · ${titleTip}" onclick="${clickAction}">${label}</div>`;
     }).join('');
     openModal('Block Slots', `
-      <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Click an empty slot to manually place a container. Slots linked to a booking/trip release automatically through Outbound / Repatriation.</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:10px">Click an empty slot to manually place a container. Slots linked to a booking/trip release automatically through Outward / Repatriation.</div>
       <div class="slot-grid">${grid || '<div class="empty-state"><div class="empty-state-label">No slots</div></div>'}</div>
     `);
   } catch (e) {
@@ -6246,32 +6291,32 @@ async function releaseSlotFromGrid(blockId, slotNumber) {
   }
 }
 
-// ---------- Outbound / repatriation ----------
+// ---------- Outward / repatriation ----------
 
-function filterDepOpsOutbound(status, btn) {
-  _depOpsOutboundFilter = status;
-  document.querySelectorAll('#depopsPanel-outbound .filter-btn').forEach(b => b.classList.remove('active'));
+function filterDepOpsOutward(status, btn) {
+  _depOpsOutwardFilter = status;
+  document.querySelectorAll('#depopsPanel-outward .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderDepOpsOutbound();
+  renderDepOpsOutward();
 }
 
-async function renderDepOpsOutbound() {
+async function renderDepOpsOutward() {
   await renderDepOpsEligible();
-  await renderDepOpsOutboundTrips();
-  const container = document.getElementById('depopsOutboundQueue');
+  await renderDepOpsOutwardTrips();
+  const container = document.getElementById('depopsOutwardQueue');
   if (!container) return;
   container.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
   try {
-    const docs = await window.bookingDocs.outboundReviewQueue(_depOpsOutboundFilter);
-    if (!docs.length) { container.innerHTML = `<div class="empty-state"><div class="empty-state-label">No ${_depOpsOutboundFilter.replace(/_/g,' ')} release orders</div></div>`; return; }
-    container.innerHTML = docs.map(d => depOpsDocCard(d, 'outbound')).join('');
+    const docs = await window.bookingDocs.outwardReviewQueue(_depOpsOutwardFilter);
+    if (!docs.length) { container.innerHTML = `<div class="empty-state"><div class="empty-state-label">No ${_depOpsOutwardFilter.replace(/_/g,' ')} release orders</div></div>`; return; }
+    container.innerHTML = docs.map(d => depOpsDocCard(d, 'outward')).join('');
   } catch (e) {
     container.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
 // Depot-held containers eligible to start a repatriation trip: imported
-// bookings with allocated storage that don't already have an outbound
+// bookings with allocated storage that don't already have an outward
 // trip against them. (See depops-schema.sql notes — public_bookings has
 // no per-booking TEU field, so the TEU to release is re-entered here,
 // same as it was on the original allocateStorage() call.)
@@ -6283,10 +6328,10 @@ async function depOpsRepatriationEligibleBookings() {
     .eq('storage_status', 'allocated')
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message || 'Could not load bookings');
-  const outboundBookingIds = new Set(
+  const outwardBookingIds = new Set(
     state.db.trips.filter(t => t.workType === 'Depot → Port' && t.bookingId).map(t => t.bookingId)
   );
-  return (data || []).filter(b => !outboundBookingIds.has(b.id));
+  return (data || []).filter(b => !outwardBookingIds.has(b.id));
 }
 
 async function renderDepOpsEligible() {
@@ -6309,23 +6354,28 @@ async function renderDepOpsEligible() {
 function depOpsEligibleCard(b, zoneMap) {
   const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
   const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
+  const outwardTypeOptions = OUTWARD_TYPES.map(w => `<option value="${sanitize(w)}">${sanitize(w)}</option>`).join('');
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
     <div><strong>${sanitize(b.container) || 'No container on file'}</strong> <span style="font-size:11px;color:var(--text-3)">· ${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</span></div>
     <div style="font-size:10.5px;color:var(--text-3);margin-top:2px">Booking ${b.id.slice(0,8)} · Currently in ${sanitize(zoneName)}</div>
     <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">
       <input type="number" id="depopsRelTeu-${b.id}" min="1" value="1" title="TEU to release from ${sanitize(zoneName)} once this container departs" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">
       <select id="depopsDest-${b.id}" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">${portOptions}</select>
-      <button class="modal-btn primary" onclick="depOpsCreateOutboundFromBooking('${b.id}')">Create Outbound Trip →</button>
+      <select id="depopsOutwardType-${b.id}" title="Outward type" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px"><option value="">Outward type…</option>${outwardTypeOptions}</select>
+      <button class="modal-btn primary" onclick="depOpsCreateOutwardFromBooking('${b.id}')">Create Outward Trip →</button>
     </div>
   </div>`;
 }
 
-async function depOpsCreateOutboundFromBooking(bookingId) {
+async function depOpsCreateOutwardFromBooking(bookingId) {
   const teuEl = document.getElementById('depopsRelTeu-' + bookingId);
   const destEl = document.getElementById('depopsDest-' + bookingId);
+  const outwardTypeEl = document.getElementById('depopsOutwardType-' + bookingId);
   const teu = teuEl ? parseInt(teuEl.value, 10) : 0;
   const dest = destEl ? destEl.value : '';
+  const outwardType = outwardTypeEl ? outwardTypeEl.value : '';
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error'); return; }
 
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
@@ -6337,7 +6387,7 @@ async function depOpsCreateOutboundFromBooking(bookingId) {
 
   const trip = {
     id: uid('TRIP'), container, ctype: booking.cargo_type || '20ft Dry',
-    workType: 'Depot → Port', origin: 'Depot', dest,
+    workType: 'Depot → Port', outwardType, origin: 'Depot', dest,
     shippingLine: resolveBookingShippingLineId(booking), status: 'active', startTime: new Date().toISOString(),
     eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
     notes: `Repatriation for booking #${booking.id}`, ref: `REPAT-${booking.id.slice(0,8)}`,
@@ -6346,34 +6396,37 @@ async function depOpsCreateOutboundFromBooking(bookingId) {
   };
   state.db.trips.push(trip);
   scheduleSave();
-  toast('Outbound trip created — upload the release order next', 'success');
-  renderDepOpsOutbound();
+  toast('Outward trip created — upload the release order next', 'success');
+  renderDepOpsOutward();
   renderDepOpsStorageList();
   refreshAwaitingDispatchUI();
 }
 
-async function depOpsCreateManualOutbound() {
+async function depOpsCreateManualOutward() {
   const containerEl = document.getElementById('depopsManualContainer');
   const zoneEl = document.getElementById('depopsManualZone');
   const teuEl = document.getElementById('depopsManualTeu');
   const destEl = document.getElementById('depopsManualDest');
   const lineEl = document.getElementById('depopsManualLine');
+  const outwardTypeEl = document.getElementById('depopsManualOutwardType');
   const container = (containerEl.value || '').trim().toUpperCase();
   const zoneId = zoneEl.value;
   const teu = parseInt(teuEl.value, 10);
   const dest = destEl.value;
   const lineId = lineEl ? lineEl.value : '';
+  const outwardType = outwardTypeEl ? outwardTypeEl.value : '';
 
   const containerIssue = containerFormatIssue(container);
   if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
   if (!lineId) { toast('Select the shipping line — without it this container won\u2019t show up under any line\u2019s account', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error'); return; }
   const dupTrip = findLiveTripByContainer(container);
   if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
 
   const trip = {
-    id: uid('TRIP'), container, ctype: '20ft Dry', workType: 'Depot → Port', origin: 'Depot', dest,
+    id: uid('TRIP'), container, ctype: '20ft Dry', workType: 'Depot → Port', outwardType, origin: 'Depot', dest,
     shippingLine: lineId, status: 'active', startTime: new Date().toISOString(),
     eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
     notes: 'Manually added repatriation container (no originating booking)', ref: `REPAT-${container}`,
@@ -6382,15 +6435,15 @@ async function depOpsCreateManualOutbound() {
   };
   state.db.trips.push(trip);
   scheduleSave();
-  toast('Outbound trip created — upload the release order next', 'success');
+  toast('Outward trip created — upload the release order next', 'success');
   containerEl.value = '';
   if (lineEl) lineEl.value = '';
-  renderDepOpsOutbound();
+  renderDepOpsOutward();
   refreshAwaitingDispatchUI();
 }
 
-async function renderDepOpsOutboundTrips() {
-  const wrap = document.getElementById('depopsOutboundTripsList');
+async function renderDepOpsOutwardTrips() {
+  const wrap = document.getElementById('depopsOutwardTripsList');
   const formWrap = document.getElementById('depopsManualForm');
   if (formWrap && !formWrap.dataset.loaded) {
     try {
@@ -6398,15 +6451,17 @@ async function renderDepOpsOutboundTrips() {
       const zoneOptions = zones.map(z => `<option value="${z.id}">${sanitize(z.zone_name)}</option>`).join('');
       const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
       const lineOptions = state.db.shippingLines.filter(l=>l.active).map(l => `<option value="${l.id}">${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
+      const outwardTypeOptions = OUTWARD_TYPES.map(w => `<option value="${sanitize(w)}">${sanitize(w)}</option>`).join('');
       formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
-        <div class="panel-head"><span class="panel-title">Add Outbound Container Manually</span></div>
-        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr 1fr auto;gap:10px;align-items:end">
+        <div class="panel-head"><span class="panel-title">Add Outward Container Manually</span></div>
+        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr 1fr 1fr auto;gap:10px;align-items:end">
           <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>
           <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select…</option>${zoneOptions}</select></div>
           <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>
           <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">${portOptions}</select></div>
           <div class="fg" style="margin:0"><label>Shipping Line</label><select id="depopsManualLine"><option value="">Select…</option>${lineOptions}</select></div>
-          <button class="modal-btn primary" onclick="depOpsCreateManualOutbound()">Create →</button>
+          <div class="fg" style="margin:0"><label>Outward Type</label><select id="depopsManualOutwardType"><option value="">Select…</option>${outwardTypeOptions}</select></div>
+          <button class="modal-btn primary" onclick="depOpsCreateManualOutward()">Create →</button>
         </div>
       </div>`;
       formWrap.dataset.loaded = '1';
@@ -6415,23 +6470,26 @@ async function renderDepOpsOutboundTrips() {
 
   if (!wrap) return;
   const trips = state.db.trips.filter(t => t.workType === 'Depot → Port');
-  if (!trips.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No outbound/repatriation trips yet</div></div>'; return; }
+  if (!trips.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No outward/repatriation trips yet</div></div>'; return; }
   wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
   try {
     const docsByTrip = await window.bookingDocs.documentsForTrips(trips.map(t => t.id));
-    wrap.innerHTML = trips.map(t => depOpsOutboundTripCard(t, docsByTrip[t.id] || [])).join('');
+    wrap.innerHTML = trips.map(t => depOpsOutwardTripCard(t, docsByTrip[t.id] || [])).join('');
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
 }
 
-function depOpsOutboundTripCard(t, docs) {
+function depOpsOutwardTripCard(t, docs) {
   const doc = docs.find(d => d.doc_type === 'release_order');
   const docBlock = doc
     ? docStatusBadge(doc.status)
     : `<button class="modal-btn primary" onclick="depOpsUploadReleaseOrder('${t.id}','${sanitize(t.container)}')">Upload Release Order</button>`;
   const storageBlock = t.storageZoneId
     ? (t.storageReleased ? '<span class="sbadge s-approved">storage released</span>' : `<span class="sbadge s-pending">${t.storageTeu || '?'} TEU pending release</span>`)
+    : '';
+  const outwardTypeBlock = t.outwardType
+    ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--gold-border);color:var(--gold);background:var(--gold-dim)">${sanitize(t.outwardType)}</span>`
     : '';
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -6442,6 +6500,7 @@ function depOpsOutboundTripCard(t, docs) {
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
         ${sbadge(t.status)}
+        ${outwardTypeBlock}
         ${storageBlock}
       </div>
     </div>
@@ -6470,7 +6529,7 @@ async function depOpsConfirmUploadReleaseOrder(tripId, container) {
   try {
     await window.bookingDocs.uploadTripDocument({ tripId, docType: 'release_order', containerNo: container, file });
     msg.textContent = '✓ Uploaded'; msg.style.color = 'var(--green)';
-    setTimeout(() => { closeModal(); renderDepOpsOutbound(); }, 600);
+    setTimeout(() => { closeModal(); renderDepOpsOutward(); }, 600);
   } catch (e) {
     msg.textContent = e.message || 'Upload failed'; msg.style.color = 'var(--red)';
   }
@@ -6521,7 +6580,7 @@ async function depOpsVerifyDoc(docId, kind) {
   try {
     await window.bookingDocs.verifyDocument(docId, null);
     toast('Document verified', 'success');
-    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutbound();
+    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutward();
     updateDepOpsBadge();
   } catch (e) { toast(e.message || 'Could not verify document', 'error'); }
 }
@@ -6542,7 +6601,7 @@ async function depOpsConfirmReject(docId, kind) {
     await window.bookingDocs.rejectDocument(docId, note);
     closeModal();
     toast('Document rejected', 'warning');
-    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutbound();
+    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutward();
     updateDepOpsBadge();
   } catch (e) { toast(e.message || 'Could not reject document', 'error'); }
 }
