@@ -358,8 +358,7 @@ async function clearAllTables() {
   await del('booking_documents', 'id');
   await del('depot_surveys', 'id');
 
-  // Empty out any yard slots occupied by test bookings/trips, but keep
-  // the physical slot grid (block/zone layout) itself intact.
+
   {
     const { error } = await supabase.from('depot_block_slots').update({
       booking_id: null, trip_id: null, container: null,
