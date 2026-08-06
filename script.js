@@ -80,14 +80,7 @@ function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.ve
 function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes }; }
 
 
-// container/line/truck/driver/condition/notes/status/img were the original
-// fields. eir_number, vessel, voyage, bl_number and ctype mirror what every
-// paper interchange form in circulation (Hakika, Noah Depot, Dodwell) always
-// carries — the EIR is worthless for reconciliation without its own
-// reference number, and repairs/repair_total hold the itemised damage/cost
-// breakdown (multiple lines, each with hours + labour + material), replacing
-// the old single free-text "condition" note with the same per-item costing
-// those paper forms use.
+
 function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null }; }
 function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'' }; }
 
@@ -390,7 +383,7 @@ async function clearAllTables() {
   await del('trips', 'id');
   await del('public_bookings', 'id');
 
-  // Yard zones stay, but their occupied_teu counters are now stale.
+  
   {
     const { error } = await supabase.from('depot_storage_zones').update({ occupied_teu: 0 });
     if (error) console.error('depot_storage_zones reset failed:', error.message);
@@ -399,8 +392,7 @@ async function clearAllTables() {
   await del('drivers', 'id');
   await del('trucks', 'id');
 
-  // Zones (kept) may point at shipping_lines — clear the link before
-  // removing shipping lines so the delete below doesn't fail on FK.
+
   {
     const { error } = await supabase.from('depot_storage_zones').update({ shipping_line_id: null }).not('id', 'is', null);
     if (error) console.error('depot_storage_zones link clear failed:', error.message);
@@ -498,11 +490,7 @@ function findLiveTripByContainer(cont, excludeTripId) {
   return state.db.trips.find(t => t.id !== excludeTripId && isTripLive(t) && (t.container || '').toUpperCase() === c) || null;
 }
 
-// ── ISO 6346 container number validation ──────────────────────────────
-// Format: 3-letter owner code + 1 equipment category id (U/J/Z) +
-// 6-digit serial number + 1 check digit = 11 characters total.
-// Check digit is computed per ISO 6346 Annex A (letter values skip
-// multiples of 11, weighted by powers of 2, mod 11, 10→0).
+
 const ISO6346_LETTER_VALUES = {
   A:10,B:12,C:13,D:14,E:15,F:16,G:17,H:18,I:19,J:20,K:21,L:23,M:24,N:25,
   O:26,P:27,Q:28,R:29,S:30,T:31,U:32,V:34,W:35,X:36,Y:37,Z:38,
@@ -520,9 +508,7 @@ function iso6346CheckDigit(first10) {
   return rem === 10 ? 0 : rem;
 }
 
-// Returns null when valid, or a short human-readable reason why not —
-// used both to gate saves and to show a specific error instead of a
-// generic "invalid format" toast.
+
 function containerFormatIssue(cont) {
   const c = (cont || '').trim().toUpperCase();
   if (!c) return 'Container number is required';
@@ -541,8 +527,7 @@ function isValidContainerFormat(cont) {
   return containerFormatIssue(cont) === null;
 }
 
-// Live input feedback: uppercases as you type and colors the border
-// once there's enough to judge (doesn't nag on the first few keystrokes).
+
 function markContainerValidity(el) {
   const start = el.selectionStart, end = el.selectionEnd;
   el.value = el.value.toUpperCase();
@@ -1422,11 +1407,7 @@ async function applyTripStatus(t, status, actorLabel) {
     if (driver) { driver.load = null; driver.tripsToday++; driverChanged = true; }
   }
 
-  // Only write truck/driver rows when this status change actually touches
-  // them. Rewriting untouched rows on every trip step widens the failure
-  // surface for no reason — if that write is rejected (e.g. by an RLS
-  // policy or a stricter role permission on those tables) the whole trip
-  // update was rolled back even though the trip itself was fine.
+
   try {
     const writes = [ supabase.from('trips').update(tripToRow(t)).eq('id', t.id) ];
     if (truck  && truckChanged)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
@@ -2654,13 +2635,7 @@ function renderInterchange(f){
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
-// Container photos captured at survey time (depot_surveys.photos, an array
-// — a clerk can attach several) are only mirrored onto the interchange
-// record's single `img` field as photos[0] (see generateInterchangeFromSurvey),
-// which is enough for the card thumbnail but drops every photo after the
-// first. This pulls the full set back from the linked survey — reusing the
-// same _surveyRegisterData / _surveyLookupCache lookup pattern as
-// downloadInspectionReport() — so nothing is lost off the interchange view.
+
 async function showContainerPhotos(icId) {
   const ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return; }
@@ -2674,9 +2649,7 @@ async function showContainerPhotos(icId) {
     }
     if (s && Array.isArray(s.photos)) photos = s.photos.slice();
   }
-  // ic.img can be a manual upload made directly on the interchange record
-  // (via the card's own upload button) rather than one of the survey
-  // photos — include it too, without duplicating it if it's already there.
+
   if (ic.img && photos.indexOf(ic.img) === -1) photos.unshift(ic.img);
 
   const body = document.getElementById('modalBody');
@@ -2692,10 +2665,7 @@ async function showContainerPhotos(icId) {
     ).join('')}</div>`;
 }
 
-// Full-screen tap-to-close viewer for a single photo, used by
-// showContainerPhotos(). Reads the src straight off the clicked <img> via
-// this.src rather than re-embedding the (often large, base64) data URL in
-// the onclick string a second time.
+
 function openPhotoLightbox(src) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px';
@@ -2797,16 +2767,7 @@ function saveInterchange() {
   toast('Interchange recorded', 'success');
 }
 
-// Generates a downloadable Interchange Equipment Receipt (IER) PDF for a
-// single interchange record — the document a transporter can hand over (or
-// attach to an invoice) as proof of delivery to trigger payment. Layout
-// standardises on the formal boxed-field IER shape used by depot operators
-// in the field (Dodwell's "Inward Interchange" form in particular): a
-// bordered field grid instead of loose label/value lines, a container
-// diagram with damage-location legend driven off each repair item's `side`,
-// and a bordered repair-estimate table. Every value on the page comes from
-// the existing interchange record — no new fields were added to the data
-// model for this template.
+
 function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return; }
@@ -2816,9 +2777,7 @@ function downloadInterchangeSlip(icId) {
   const GOLD = [201, 162, 39];
   const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
 
-  // ---- small helpers -------------------------------------------------
-  // Bordered field box: label in small caps top-left, value bold below —
-  // the unit every field in the Dodwell-style grid is built from.
+
   function fieldBox(x, y, w, h, label, value) {
     doc.setDrawColor(150); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
     doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
@@ -3002,19 +2961,12 @@ function downloadInterchangeSlip(icId) {
   doc.save(`interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf`);
 }
 
-// Generates a downloadable Container Inspection Report PDF for a single
-// survey — mirrors the GARGO HAVEN DEPOT "COIINS" inspection report format
-// (green Report Information panel, blue title banner, boxed info sections,
-// inspector notes, photo grid, per-item damage-report cards, certification
-// block). This is a separate document from the Interchange Equipment
-// Receipt above: the IER is the transporter payment/handover slip, this is
-// the formal condition-inspection record for the container itself.
+
 async function downloadInspectionReport(surveyId) {
   if (!surveyId) { toast('No survey on file for this record', 'error'); return; }
   let s = (_surveyRegisterData.find(x => x.id === surveyId)) || _surveyLookupCache[surveyId];
   if (!s) {
-    // Not preloaded on this screen (e.g. triggered from the Interchange
-    // section, which only carries survey_id) — fetch it directly.
+
     s = await window.bookingDocs.surveyById(surveyId);
     if (s) _surveyLookupCache[s.id] = s;
   }
@@ -3692,11 +3644,7 @@ function renderReport(tab, btn) {
   }
 }
 
-// DepOps report — connects the depot storage/interchange pipeline to
-// Reports & Analytics so occupancy and container-flow metrics don't require
-// digging through the DepOps section tab by tab. Pulls live from Supabase
-// (via window.bookingDocs) rather than the cached state.db blob, same as
-// Trip Reports & Audit Centre does.
+
 async function renderReportDepOps(out) {
   try {
     const [zones, awaitingSurvey, surveyedAwaitingAlloc, escalated] = await Promise.all([
@@ -3755,12 +3703,7 @@ function reportRow(label, val) {
   return `<div class="report-row"><span class="label">${label}</span><span class="val">${val}</span></div>`;
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 24b  TRIP REPORTS & AUDIT CENTRE  (Admin only)
-   Every report/query here hits the live database rather than the cached
-   in-memory state.db, so results always reflect the current server
-   data — including anything written by other sessions/devices.
-────────────────────────────────────────────────────────────────── */
+
 const trc = { tripRows: [], auditRows: [], period: 'hourly', auditPeriod: 'today' };
 
 function trcSwitchTab(tab, btn) {
@@ -4887,13 +4830,7 @@ async function renderPublicBookings() {
 }
 
 
-// Resolve the shipping line a booking should carry onto its trip. Bookings
-// created through TRAFCOMS's relay carry shipping_line_id (a real
-// shipping_lines.id) and/or shipping_line (free text name/code); bookings
-// created through Gargo's own public form currently carry neither, so this
-// safely falls back to null rather than guessing. Fixes containers silently
-// losing their shipping line (and disappearing from line-scoped views) the
-// moment a booking is repatriated into a trip.
+
 function resolveBookingShippingLineId(booking) {
   if (!booking) return null;
   if (booking.shipping_line_id && state.db.shippingLines.some(l => l.id === booking.shipping_line_id)) {
@@ -4920,10 +4857,8 @@ async function importPublicBooking(bookingId) {
   if (error || !booking) { toast('Booking not found', 'error'); return; }
   if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
 
-  // Single source of truth for the "docs verified before import" gate —
-  // DepOps' Inbound tab surfaces the same check via readyToProcessBookings(),
-  // but this is what actually enforces it, so nothing can bypass DepOps and
-  // import straight from Public Bookings with missing/unverified paperwork.
+
+
   try {
     const required = window.bookingDocs.getRequiredDocTypes({
       serviceType: booking.service_type,
@@ -4972,12 +4907,7 @@ async function importPublicBooking(bookingId) {
   }
 
 
-  // Depot Storage bookings never become an Active Trip on import — they go
-  // to the depot storage list (container + zone) via DepOps, and only turn
-  // into a trip later, when repatriation is actually started from there.
-  // Booked-in containers must be surveyed before a zone/block/slot can be
-  // allocated, so this sets the new workflow's starting gate rather than
-  // leaving the container immediately eligible for allocation.
+
   if (booking.service_type === 'Depot Storage') {
     const { error: statusErr } = await supabase
       .from('public_bookings')
@@ -5162,12 +5092,7 @@ async function hardRefreshSystem() {
   window.location.replace(url.toString());
 }
 
-// ================== DEPOPS ==================
-// Fleet-side home for document review + depot storage. Reuses
-// booking-documents.js (window.bookingDocs) for everything that touches
-// booking_documents / depot_storage_zones — the staff portal talks to the
-// exact same tables/functions, so a document verified here shows verified
-// there and vice versa; there's no separate cache or duplicate query.
+
 
 const DEPOPS_DOC_LABELS = {
   guarantee_form: 'Container Guarantee Form',
@@ -5185,9 +5110,7 @@ function depOpsFmtDT(raw) {
   return isNaN(d.getTime()) ? String(raw) : d.toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
-// pending_review/verified/rejected aren't in sbadge()'s status→style map
-// (that map is for trucks/trips/invoices etc.) — reuse its closest existing
-// colour instead of adding new CSS.
+
 function docStatusBadge(status) {
   const styleKey = { verified: 'approved', pending_review: 'pending', rejected: 'rejected' }[status] || 'pending';
   const label = status === 'pending_review' ? 'Pending Review' : (status.charAt(0).toUpperCase() + status.slice(1));
@@ -5256,10 +5179,7 @@ async function renderDepOpsZones() {
   }
 }
 
-// Simple container + zone list of everything currently occupying depot
-// storage (imported bookings with storage allocated, not yet dispatched
-// out again). This is deliberately separate from Active Trips — storage
-// bookings don't become a trip until repatriation is actually started.
+
 async function renderDepOpsStorageList() {
   const wrap = document.getElementById('depopsStorageList');
   if (!wrap) return;
@@ -5295,14 +5215,7 @@ async function renderDepOpsStorageList() {
   }
 }
 
-// Routes a "Dispatch" click from the storage list to the right place:
-// - If an outward trip already exists for this booking, jump straight
-//   into the Dispatch Console with that trip loaded (same as the
-//   "Complete Dispatch" flow used elsewhere).
-// - Otherwise the container needs a destination/TEU picked first, so
-//   send staff to DepOps' Outward tab, to the same booking's card in
-//   "Eligible for Repatriation" — creating the trip there is what makes
-//   it show up in the Dispatch Console's Awaiting Dispatch queue.
+
 function depOpsDispatchContainer(bookingId) {
   const existingTrip = state.db.trips.find(t => t.workType === 'Depot → Port' && t.bookingId === bookingId);
   if (existingTrip) {
@@ -5356,9 +5269,7 @@ async function renderDepOpsReadyToProcess() {
   }
 }
 
-// Storage allocation no longer happens at this pre-import stage — a Depot
-// Storage booking now has to pass through Awaiting Survey → Surveyed before
-// it's eligible for a zone/block/slot, so this card is just the import step.
+
 function depOpsReadyCard(entry) {
   const b = entry.booking;
   return `<div style="border:1px solid rgba(34,197,94,0.35);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(34,197,94,0.05)">
@@ -5378,20 +5289,11 @@ function depOpsReadyCard(entry) {
   </div>`;
 }
 
-// ---------- Awaiting Survey → Surveyed → Storage Allocation ----------
-// New workflow gate copied from the HTS reference: a booked-in Depot
-// Storage container must be surveyed (condition + paperwork capture)
-// before it can be allocated to a zone/block/slot.
+
 
 const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat'];
 
-// Every real interchange/EIR form we were handed (Hakika Transport, Noah
-// Depot, Dodwell) bills damage as a table of separate line items — each
-// with its own hours, labour cost and material cost — never a single
-// "condition" note. This constant and the picker below replace the old
-// one-tariff-row-per-survey capture with the same multi-item shape, and
-// are shared by both the survey form and the manual interchange form so
-// a clerk gets the identical picker either way.
+
 const REPAIR_LABOUR_RATE_PER_HOUR = 300; // KSh/hr — matches the labour rate implied by the Hakika sample (750/2.5hrs, 450/1.5hrs)
 
 // items: array of {category, code, side, item, hours, material}
@@ -5621,12 +5523,7 @@ async function saveSurvey(bookingId) {
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
 
-    // A heavily-damaged finding still needs a second, independent surveyor
-    // to sign off (see saveJointSurvey()) before delivery is confirmed, so
-    // interchange generation waits for that. Every other outcome is final
-    // the moment the survey is saved, so interchange — and the transporter
-    // payment trail it unlocks — is generated automatically right here,
-    // with no separate manual "Generate" step required.
+
     if (!heavy && bookingId && survey && survey.id) {
       await generateInterchangeFromSurvey(bookingId, survey.id);
     }
@@ -5694,21 +5591,7 @@ function depOpsAllocationCard(b, zones, survey) {
   </div>`;
 }
 
-// Generates the interchange record that confirms this container has been
-// delivered and is what enables the transporter to be paid. Pushed into
-// the legacy state.db.interchange array (same pipeline as the manual
-// "Record Interchange" form) so it goes through the existing admin
-// approval step in the Interchange section before payment is triggered.
-//
-// Called automatically the moment a survey is completed (saveSurvey() for
-// a normal finding, saveJointSurvey() for an accepted heavily-damaged
-// one) — it no longer waits on storage allocation. Storage zone/block/slot
-// is usually still unassigned at that point, so the slip just shows '—'
-// for location until depOpsAllocateBookingToSlot() fills it in; that was
-// always a nice-to-have on the printout, never something generation needed
-// to wait for. The "Generate →" button in the storage list (see
-// renderDepOpsStorageList) is kept as a manual fallback for any survey
-// this didn't fire for, guarded by the same idempotency check below.
+
 async function generateInterchangeFromSurvey(bookingId, surveyId) {
   try {
     const { data: booking } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
@@ -5720,9 +5603,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
     const matchedTruck = state.db.trucks.find(t => (t.reg || '').toUpperCase() === (survey.truck_reg || '').toUpperCase());
     const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
 
-    // Storage location — only known once allocation has happened. Left as
-    // '—' when generated straight off survey completion; never blocks
-    // generation itself.
+
     let storageLocation = '—';
     if (booking.storage_status === 'allocated') {
       try {
@@ -6084,11 +5965,7 @@ async function renderDepOpsMasterList() {
   }
 }
 
-// ---------- Zone Management (admin) ----------
-// Admin creates zones (assigned to a shipping line), then blocks within a
-// zone (pinned to a container type/size, e.g. "Zone A · Block 1 · 40ft"),
-// which auto-generates that block's slot grid — the same block/bay/position
-// pattern the HTS reference uses, adapted to Gargo's zone/shipping-line model.
+
 
 async function renderDepOpsZoneAdmin() {
   const wrap = document.getElementById('depopsZoneAdmin');
@@ -6324,11 +6201,7 @@ async function renderDepOpsOutward() {
   }
 }
 
-// Depot-held containers eligible to start a repatriation trip: imported
-// bookings with allocated storage that don't already have an outward
-// trip against them. (See depops-schema.sql notes — public_bookings has
-// no per-booking TEU field, so the TEU to release is re-entered here,
-// same as it was on the original allocateStorage() call.)
+
 async function depOpsRepatriationEligibleBookings() {
   const { data, error } = await supabase
     .from('public_bookings')
