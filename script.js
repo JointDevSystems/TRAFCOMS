@@ -598,6 +598,8 @@ function applyRoleUI() {
   if (isAdmin()) {
     document.querySelectorAll('.nav-item[data-section]').forEach(n=>n.style.display='');
     document.querySelectorAll('.admin-nav-item').forEach(n=>n.style.display='');
+    const adminGroupLabel0=document.getElementById('sidebarAdminGroupLabel');
+    if (adminGroupLabel0) adminGroupLabel0.style.display='';
     return;
   }
   const sidebarAllowed = allowedSidebarSections();
@@ -618,6 +620,13 @@ function applyRoleUI() {
     const visibleBtns = [...grp.querySelectorAll('.admin-nav-item')].some(b=>b.style.display!=='none');
     grp.style.display = visibleBtns ? '' : 'none';
   });
+  const adminGroupLabel=document.getElementById('sidebarAdminGroupLabel');
+  if (adminGroupLabel) {
+    const anyAdminVisible = ['allocation','workanalysis','reports','tripreports','livetracking'].some(sec=>{
+      const b=document.getElementById(`adminBtn-${sec}`); return b && b.style.display!=='none';
+    });
+    adminGroupLabel.style.display = anyAdminVisible ? '' : 'none';
+  }
   const muItem = document.querySelector('.user-menu-item[onclick*="usermgmt"]');
   if (muItem) muItem.style.display = railAllowed.includes('usermgmt') ? '' : 'none';
 
@@ -1059,7 +1068,7 @@ const SECTION_META = {
 function showSection(sec, btn) {
   if (!canSeeSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .admin-nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
   if(el) el.classList.add('active');
   if(btn) btn.classList.add('active');
@@ -1077,7 +1086,7 @@ function showSection(sec, btn) {
 function showAdminSection(sec, btn) {
   if (!canSeeAdminSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.admin-nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .admin-nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
   if(el) el.classList.add('active');
   if(btn) btn.classList.add('active');
