@@ -105,9 +105,6 @@
         mime_type: file.type || null,
         file_size_bytes: file.size || null,
         uploaded_by: userId,
-        status: 'pending_review', // must be set explicitly — reviewQueue()/outwardReviewQueue()
-        // filter with .eq('status', ...), which excludes NULL rows in Postgres, so a
-        // missing/incorrect DB default silently hid new uploads from the Pending Review tab
       })
       .select('*')
       .single();
