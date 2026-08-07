@@ -969,7 +969,7 @@
                         <div class="panel">
                             <div class="panel-head" style="flex-wrap:wrap;gap:8px">
                                 <span class="panel-title">Fleet Map</span>
-                                <span style="font-size:10px;color:var(--text-3)">📱 Positions via driver phones</span>
+                                <span style="font-size:10px;color:var(--text-3)">📱 Driver phones · 📡 Wialon GPS (where fitted)</span>
                                 <span class="panel-meta" id="trackingMeta">0 vehicles tracked</span>
                             </div>
                             <div class="tracking-map">
@@ -977,7 +977,7 @@
                                     <div class="tracking-map-placeholder">
                                         <div style="font-family:var(--font-brand);font-size:22px;color:var(--gold);margin-bottom:8px">GARGO</div>
                                         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:20px">LOADING MAP…</div>
-                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' own phones in real time — no simulation.</div>
+                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' phones in real time, plus dedicated Wialon GPS hardware for any truck it's fitted to — no simulation.</div>
                                     </div>
                                 </div>
                                 <div class="tracking-vehicles" id="trackingVehicles"></div>
@@ -1081,25 +1081,14 @@
                                 <div id="invoiceConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
                                 <button class="submit-btn" style="margin-top:12px" onclick="saveInvoiceConfig()">Save Invoicing Details →</button>
                             </div>
-                            <div class="report-block" style="grid-column:1/-1">
-                                <h3>GPS Integration — Wialon <span id="wialonConnStatus" style="font-size:10px;font-weight:600;margin-left:8px">○ Disabled</span></h3>
-                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:12px;line-height:1.5">Trucks fitted with a dedicated Wialon hardware tracker report their position straight from Wialon. Trucks with no unit assigned keep using the driver's phone GPS automatically — both work side by side.</div>
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                                    <input type="checkbox" id="st_wialonEnabled" style="width:16px;height:16px"/>
-                                    <label for="st_wialonEnabled" style="font-size:11.5px;color:var(--text);margin:0">Enable Wialon truck GPS integration</label>
+                            <div class="report-block">
+                                <h3>GPS Tracking — Wialon Integration</h3>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Driver-phone tracking always stays on for every truck. Connect a Wialon fleet-tracking account here to also pull live positions from dedicated GPS hardware — trucks with a Wialon Unit ID assigned (set from that truck's detail view) are tracked by the hardware unit instead; every other truck keeps using the driver's phone exactly as before. A server-side job checks Wialon every minute, so positions stay fresh even with no browser open.</div>
+                                <div id="wialonConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
+                                <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                                    <button class="submit-btn" style="flex:1;min-width:160px" onclick="saveWialonConfig()">Save GPS Settings →</button>
+                                    <button class="action-btn ghost" onclick="syncWialonNow()">↻ Sync Now</button>
                                 </div>
-                                <div class="form-row-2">
-                                    <div class="fg" style="margin:0"><label>Wialon API Token</label><input id="st_wialonToken" type="password" placeholder="Paste your Wialon Remote API token"/></div>
-                                    <div class="fg" style="margin:0"><label>Wialon Host</label><input id="st_wialonHost" placeholder="https://hst-api.wialon.com"/></div>
-                                </div>
-                                <div style="font-size:9.5px;color:var(--text-3);margin:2px 0 12px;line-height:1.5">Generate a token in your Wialon account under User Settings → Access Keys. Leave Host as the default unless you use a self-hosted / regional Wialon server.</div>
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-                                    <button class="action-btn ghost" id="wialonTestBtn" onclick="testWialonConnection()">Test Connection</button>
-                                    <button class="submit-btn" style="margin:0" onclick="saveWialonSettings()">Save GPS Integration Settings →</button>
-                                </div>
-                                <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px;border-top:1px solid var(--border);padding-top:14px">Assign Truck → Wialon Unit</div>
-                                <div id="wialonUnitMapping" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
-                                <button class="action-btn" style="margin-top:10px" onclick="saveWialonUnitMapping()">Save Unit Assignments</button>
                             </div>
                         </div>
                     </section>
