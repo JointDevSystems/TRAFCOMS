@@ -4613,24 +4613,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
-function liveSearch(q) {
-  const panel = document.getElementById('searchResults');
-  if (!q || !q.trim() || !state.db) { panel.style.display='none'; return; }
-  const qRaw = q.trim();
-  q = qRaw.toLowerCase();
-  if (q.length < 2) { panel.style.display='none'; return; }
+function computeSearchResults(q) {
+  const qRaw = (q || '').trim();
+  const ql = qRaw.toLowerCase();
   const results = [];
+  if (!qRaw || ql.length < 2 || !state.db) return { qRaw, results };
   const db = state.db;
+  const q2 = ql;
 
   const containerMatches = new Set();
-  (db.trips||[]).forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
-  (db.shutouts||[]).forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
+  (db.trips||[]).forEach(t=>{ if ((t.container||'').toLowerCase().includes(q2)) containerMatches.add(t.container.toUpperCase()); });
+  (db.shutouts||[]).forEach(s=>{ if ((s.container||'').toLowerCase().includes(q2)) containerMatches.add(s.container.toUpperCase()); });
   (db.interchange||[]).forEach(i=>{
-    if ((i.container||'').toLowerCase().includes(q)
-      || (i.eirNumber||'').toLowerCase().includes(q)
-      || (i.vessel||'').toLowerCase().includes(q)
-      || (i.voyage||'').toLowerCase().includes(q)
-      || (i.blNumber||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase());
+    if ((i.container||'').toLowerCase().includes(q2)
+      || (i.eirNumber||'').toLowerCase().includes(q2)
+      || (i.vessel||'').toLowerCase().includes(q2)
+      || (i.voyage||'').toLowerCase().includes(q2)
+      || (i.blNumber||'').toLowerCase().includes(q2)) containerMatches.add(i.container.toUpperCase());
   });
   [...containerMatches].slice(0,4).forEach(cont=>{
     const live = findLiveTripByContainer(cont);
@@ -4638,24 +4637,33 @@ function liveSearch(q) {
   });
 
   (db.trucks||[]).filter(t=>
-    (t.reg||'').toLowerCase().includes(q) || (t.id||'').toLowerCase().includes(q) ||
-    (t.make||'').toLowerCase().includes(q) || (t.vin||'').toLowerCase().includes(q) ||
-    (t.licencePlate||'').toLowerCase().includes(q)
+    (t.reg||'').toLowerCase().includes(q2) || (t.id||'').toLowerCase().includes(q2) ||
+    (t.make||'').toLowerCase().includes(q2) || (t.vin||'').toLowerCase().includes(q2) ||
+    (t.licencePlate||'').toLowerCase().includes(q2)
   ).slice(0,4).forEach(t=>{
     results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:sbadgeText(t.status), action: () => showTruckDetail(t.id) });
   });
   (db.drivers||[]).filter(d=>
-    (d.name||'').toLowerCase().includes(q) || (d.phone||'').includes(qRaw) ||
-    (d.licence||'').toLowerCase().includes(q) || (d.idNo||'').toLowerCase().includes(q)
+    (d.name||'').toLowerCase().includes(q2) || (d.phone||'').includes(qRaw) ||
+    (d.licence||'').toLowerCase().includes(q2) || (d.idNo||'').toLowerCase().includes(q2)
   ).slice(0,4).forEach(d=>{
     results.push({ type:'Driver', label:d.name, sub:sbadgeText(d.status), action: () => showDriverDetail(d.id) });
   });
-  (db.trips||[]).filter(t=>(t.origin||'').toLowerCase().includes(q)||(t.dest||'').toLowerCase().includes(q)||(t.ref||'').toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+  (db.trips||[]).filter(t=>(t.origin||'').toLowerCase().includes(q2)||(t.dest||'').toLowerCase().includes(q2)||(t.ref||'').toLowerCase().includes(q2)).slice(0,3).forEach(t=>{
     results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:sbadgeText(t.status), action: () => showTripDetail(t.id) });
   });
-  (db.invoices||[]).filter(i=>(i.client||'').toLowerCase().includes(q)||(i.ref||'').toLowerCase().includes(q)).slice(0,2).forEach(i=>{
+  (db.invoices||[]).filter(i=>(i.client||'').toLowerCase().includes(q2)||(i.ref||'').toLowerCase().includes(q2)).slice(0,2).forEach(i=>{
     results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:sbadgeText(i.status), action: () => showInvoiceDetail(i.id) });
   });
+
+  return { qRaw, results };
+}
+
+function liveSearch(q) {
+  const panel = document.getElementById('searchResults');
+  const { qRaw, results } = computeSearchResults(q);
+  if (!qRaw) { panel.style.display='none'; return; }
+  if (qRaw.length < 2) { panel.style.display='none'; return; }
 
   // Stash the real callbacks (not strings) so we never have to interpolate
   // user data into an onclick="" attribute — that broke on any name/container
@@ -4735,8 +4743,25 @@ function showContainerDetail(contRaw) {
 }
 
 function handleSearch(q) {
-  document.getElementById('searchResults').style.display='none';
-  liveSearch(q);
+  const panel = document.getElementById('searchResults');
+  const { qRaw, results } = computeSearchResults(q);
+  if (!qRaw) { panel.style.display='none'; return; }
+
+  if (!results.length) {
+    // Nothing found — say so right in the dropdown rather than doing nothing.
+    panel.innerHTML = `<div class="search-result-item search-result-empty">No results for "${esc(qRaw)}"</div>`;
+    panel.style.display='block';
+    return;
+  }
+
+  // Enter with a single clear match (or picking a highlighted one) should
+  // go straight to the full detail card — a floating window above the rest
+  // of the app — instead of making the person click the dropdown row too.
+  panel.style.display='none';
+  const gs = document.getElementById('globalSearch');
+  if (gs) gs.blur();
+  results[0].action();
+  if (gs) gs.value='';
 }
 
 /* ──────────────────────────────────────────────────────────────────
