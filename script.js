@@ -4598,83 +4598,61 @@ function closeModal(e) {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 30  GLOBAL SEARCH
+   § 30  GLOBAL SEARCH  (ported 1:1 from Jastar's pattern: search fires
+   only on Enter, the dropdown lists every match, and each row calls back
+   through a safe numeric index — never through data interpolated into
+   an onclick="" string, which is what silently broke Gargo's old search
+   on any name/container containing a quote, e.g. "O'Brien Logistics".)
 ────────────────────────────────────────────────────────────────── */
-let _searchDebounce = null;
-document.addEventListener('DOMContentLoaded', ()=>{
-  const inp = document.getElementById('globalSearch');
-  if (inp) {
-    inp.addEventListener('input', ()=>{
-      clearTimeout(_searchDebounce);
-      _searchDebounce = setTimeout(()=>liveSearch(inp.value), 200);
-    });
-    inp.addEventListener('blur', ()=> setTimeout(()=>{ const p=document.getElementById('searchResults'); if(p)p.style.display='none'; }, 200));
-    inp.addEventListener('focus', ()=>{ if(inp.value) liveSearch(inp.value); });
-  }
-});
-
-function computeSearchResults(q) {
-  const qRaw = (q || '').trim();
-  const ql = qRaw.toLowerCase();
-  const results = [];
-  if (!qRaw || ql.length < 2 || !state.db) return { qRaw, results };
-  const db = state.db;
-  const q2 = ql;
-
-  const containerMatches = new Set();
-  (db.trips||[]).forEach(t=>{ if ((t.container||'').toLowerCase().includes(q2)) containerMatches.add(t.container.toUpperCase()); });
-  (db.shutouts||[]).forEach(s=>{ if ((s.container||'').toLowerCase().includes(q2)) containerMatches.add(s.container.toUpperCase()); });
-  (db.interchange||[]).forEach(i=>{
-    if ((i.container||'').toLowerCase().includes(q2)
-      || (i.eirNumber||'').toLowerCase().includes(q2)
-      || (i.vessel||'').toLowerCase().includes(q2)
-      || (i.voyage||'').toLowerCase().includes(q2)
-      || (i.blNumber||'').toLowerCase().includes(q2)) containerMatches.add(i.container.toUpperCase());
-  });
-  [...containerMatches].slice(0,4).forEach(cont=>{
-    const live = findLiveTripByContainer(cont);
-    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', action: () => showContainerDetail(cont) });
-  });
-
-  (db.trucks||[]).filter(t=>
-    (t.reg||'').toLowerCase().includes(q2) || (t.id||'').toLowerCase().includes(q2) ||
-    (t.make||'').toLowerCase().includes(q2) || (t.vin||'').toLowerCase().includes(q2) ||
-    (t.licencePlate||'').toLowerCase().includes(q2)
-  ).slice(0,4).forEach(t=>{
-    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:sbadgeText(t.status), action: () => showTruckDetail(t.id) });
-  });
-  (db.drivers||[]).filter(d=>
-    (d.name||'').toLowerCase().includes(q2) || (d.phone||'').includes(qRaw) ||
-    (d.licence||'').toLowerCase().includes(q2) || (d.idNo||'').toLowerCase().includes(q2)
-  ).slice(0,4).forEach(d=>{
-    results.push({ type:'Driver', label:d.name, sub:sbadgeText(d.status), action: () => showDriverDetail(d.id) });
-  });
-  (db.trips||[]).filter(t=>(t.origin||'').toLowerCase().includes(q2)||(t.dest||'').toLowerCase().includes(q2)||(t.ref||'').toLowerCase().includes(q2)).slice(0,3).forEach(t=>{
-    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:sbadgeText(t.status), action: () => showTripDetail(t.id) });
-  });
-  (db.invoices||[]).filter(i=>(i.client||'').toLowerCase().includes(q2)||(i.ref||'').toLowerCase().includes(q2)).slice(0,2).forEach(i=>{
-    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:sbadgeText(i.status), action: () => showInvoiceDetail(i.id) });
-  });
-
-  return { qRaw, results };
-}
-
-function liveSearch(q) {
+function handleSearch(q) {
+  q = (q || '').toLowerCase().trim();
   const panel = document.getElementById('searchResults');
-  const { qRaw, results } = computeSearchResults(q);
-  if (!qRaw) { panel.style.display='none'; return; }
-  if (qRaw.length < 2) { panel.style.display='none'; return; }
+  if (!q || !state.db) { panel.style.display = 'none'; return; }
+  const db = state.db;
+  const results = [];
 
-  // Stash the real callbacks (not strings) so we never have to interpolate
-  // user data into an onclick="" attribute — that broke on any name/container
-  // containing a quote (e.g. "O'Brien Logistics"), which silently corrupted
-  // the results list. Clicking now just references a safe numeric index.
-  window._searchResults = results.map(r => r.action);
+  db.trucks.forEach(t => {
+    if ((t.reg||'').toLowerCase().includes(q) || (t.id||'').toLowerCase().includes(q) || (t.make||'').toLowerCase().includes(q) || (t.vin||'').toLowerCase().includes(q) || (t.licencePlate||'').toLowerCase().includes(q)) {
+      results.push({ type: 'Truck', label: `${t.reg} — ${t.make}`, sub: sbadgeText(t.status), action: () => showTruckDetail(t.id) });
+    }
+  });
 
-  panel.innerHTML = results.length
-    ? results.slice(0,12).map((r,i)=>`<div class="search-result-item" onclick="runSearchResult(${i})"><span class="search-result-type">${esc(r.type)}</span><div><div style="font-size:12px;color:var(--text)">${esc(r.label)}</div><div style="font-size:10px;color:var(--text-3)">${esc(r.sub)}</div></div></div>`).join('')
-    : `<div class="search-result-item search-result-empty">No results for "${esc(qRaw)}"</div>`;
-  panel.style.display='block';
+  db.drivers.forEach(d => {
+    if ((d.name||'').toLowerCase().includes(q) || (d.phone||'').includes(q) || (d.licence||'').toLowerCase().includes(q) || (d.idNo||'').toLowerCase().includes(q)) {
+      results.push({ type: 'Driver', label: d.name, sub: sbadgeText(d.status), action: () => showDriverDetail(d.id) });
+    }
+  });
+
+  const containers = new Set();
+  db.trips.forEach(t => { if ((t.container||'').toLowerCase().includes(q)) containers.add(t.container.toUpperCase()); });
+  db.shutouts.forEach(s => { if ((s.container||'').toLowerCase().includes(q)) containers.add(s.container.toUpperCase()); });
+  db.interchange.forEach(i => {
+    if ((i.container||'').toLowerCase().includes(q) || (i.eirNumber||'').toLowerCase().includes(q) || (i.vessel||'').toLowerCase().includes(q) || (i.voyage||'').toLowerCase().includes(q) || (i.blNumber||'').toLowerCase().includes(q))
+      containers.add(i.container.toUpperCase());
+  });
+  [...containers].forEach(c => {
+    const tripCount = db.trips.filter(t => (t.container||'').toUpperCase() === c).length;
+    results.push({ type: 'Container', label: c, sub: tripCount ? `${tripCount} trip(s) on record` : 'View full history', action: () => showContainerDetail(c) });
+  });
+
+  db.trips.forEach(t => {
+    if ((t.origin||'').toLowerCase().includes(q) || (t.dest||'').toLowerCase().includes(q) || (t.ref||'').toLowerCase().includes(q)) {
+      results.push({ type: 'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub: sbadgeText(t.status), action: () => showTripDetail(t.id) });
+    }
+  });
+
+  db.invoices.forEach(i => {
+    if ((i.client||'').toLowerCase().includes(q) || (i.ref||'').toLowerCase().includes(q)) {
+      results.push({ type: 'Invoice', label: `${i.ref} — ${i.client}`, sub: sbadgeText(i.status), action: () => showInvoiceDetail(i.id) });
+    }
+  });
+
+  const shown = results.slice(0, 10);
+  panel.innerHTML = shown.length ? shown.map((r, i) =>
+    `<div class="search-result-item" onclick="runSearchResult(${i})"><span class="search-result-type">${esc(r.type)}</span> ${esc(r.label)}${r.sub ? `<span class="search-result-sub">${esc(r.sub)}</span>` : ''}</div>`
+  ).join('') : `<div class="search-result-item search-result-empty">No matches</div>`;
+  window._searchResults = shown.map(r => r.action);
+  panel.style.display = 'block';
 }
 
 function sbadgeText(status) {
@@ -4683,9 +4661,8 @@ function sbadgeText(status) {
 }
 
 function runSearchResult(i) {
-  const panel = document.getElementById('searchResults'); if (panel) panel.style.display='none';
-  const gs = document.getElementById('globalSearch');
-  if (gs) { gs.value=''; gs.blur(); }
+  const panel = document.getElementById('searchResults'); if (panel) panel.style.display = 'none';
+  const gs = document.getElementById('globalSearch'); if (gs) gs.blur();
   if (window._searchResults && window._searchResults[i]) window._searchResults[i]();
 }
 
@@ -4740,28 +4717,6 @@ function showContainerDetail(contRaw) {
   const actionsHtml = actions.length ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></div>` : '';
 
   openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
-}
-
-function handleSearch(q) {
-  const panel = document.getElementById('searchResults');
-  const { qRaw, results } = computeSearchResults(q);
-  if (!qRaw) { panel.style.display='none'; return; }
-
-  if (!results.length) {
-    // Nothing found — say so right in the dropdown rather than doing nothing.
-    panel.innerHTML = `<div class="search-result-item search-result-empty">No results for "${esc(qRaw)}"</div>`;
-    panel.style.display='block';
-    return;
-  }
-
-  // Enter with a single clear match (or picking a highlighted one) should
-  // go straight to the full detail card — a floating window above the rest
-  // of the app — instead of making the person click the dropdown row too.
-  panel.style.display='none';
-  const gs = document.getElementById('globalSearch');
-  if (gs) gs.blur();
-  results[0].action();
-  if (gs) gs.value='';
 }
 
 /* ──────────────────────────────────────────────────────────────────
