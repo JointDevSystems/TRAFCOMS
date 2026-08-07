@@ -265,6 +265,10 @@
                         <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
                         Interchange <span class="nav-badge" id="badge-interchange"></span>
                     </button>
+                    <button class="nav-item" onclick="showSection('depotreport',this)" data-section="depotreport">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 17V7"/><path d="M13 17v-4"/><path d="M17 17v-8"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                        Depot Report <span class="nav-badge" id="badge-depotreport"></span>
+                    </button>
                     <button class="nav-item" onclick="showSection('shippinglines',this)" data-section="shippinglines">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v5"/><path d="M2 12h20"/></svg>
                         Shipping Lines
@@ -767,6 +771,46 @@
                             </div>
                         </div>
                         <div id="interchangeList"></div>
+                    </section>
+
+                    <!-- DEPOT REPORT — inward/outward register + duplicate validation -->
+                    <section class="section" id="sec-depotreport">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Depot Report — Inward &amp; Outward Register</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" data-tab onclick="switchDepotReportTab('inward',this)">Inward</button>
+                                <button class="filter-btn" data-tab onclick="switchDepotReportTab('outward',this)">Outward</button>
+                                <button class="filter-btn" data-tab onclick="switchDepotReportTab('dupes',this)">⚠ Duplicates <span id="depotReportDupeCount"></span></button>
+                            </div>
+                            <div class="filter-row" style="margin-top:8px">
+                                <button class="filter-btn active" data-range onclick="filterDepotReportRange('all',this)">All Time</button>
+                                <button class="filter-btn" data-range onclick="filterDepotReportRange('7',this)">7 Days</button>
+                                <button class="filter-btn" data-range onclick="filterDepotReportRange('30',this)">30 Days</button>
+                                <button class="filter-btn" data-range onclick="filterDepotReportRange('90',this)">90 Days</button>
+                                <select id="drLineFilter" onchange="filterDepotReportLine()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:11px">
+                                    <option value="all">All Lines</option>
+                                </select>
+                                <button class="action-btn ghost" onclick="printDepotReport()">🖨 Print</button>
+                                <button class="action-btn ghost" onclick="downloadDepotReportCSV()">⬇ Download CSV</button>
+                                <button class="action-btn ghost" onclick="renderDepotReport()">↻ Refresh / Re-scan Duplicates</button>
+                            </div>
+                        </div>
+
+                        <div class="two-col-grid" id="depotReportKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
+
+                        <div id="depotReportTabInward">
+                            <div id="depotReportInwardList"></div>
+                        </div>
+                        <div id="depotReportTabOutward" style="display:none">
+                            <div id="depotReportOutwardList"></div>
+                        </div>
+                        <div id="depotReportTabDupes" style="display:none">
+                            <div class="ops-notice" style="margin-bottom:12px">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                Flags exact repeats (same container + movement type + day) and EIR numbers reused across different containers — covers manual entries, the Inward Console, and bulk/CSV imports alike, since they all write to the same interchange register.
+                            </div>
+                            <div id="depotReportDupesList"></div>
+                        </div>
                     </section>
 
                     <!-- SHIPPING LINES -->

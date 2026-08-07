@@ -566,10 +566,10 @@ function findLineByCode(code, excludeId) {
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
-  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange'],
-  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','fuel'],
-  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'],
+  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','depotreport'],
+  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','depotreport','fuel'],
+  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'],
   finance:  ['trips','shippinglines'],
   viewer:   ['trucks','drivers','trips'],
 };
@@ -1000,6 +1000,7 @@ function buildBadges() {
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
+  set('badge-depotreport',  computeDepotReportDuplicates().length);
 }
 
 function buildAlerts() {
@@ -1053,6 +1054,7 @@ const SECTION_META = {
   depops: ['Operations', 'DepOps'],
   maintenance:['Operations','Maintenance Log'], fuel:['Operations','Fuel Log'],
   shutout:['Container Ops','Shutout'], interchange:['Container Ops','Interchange'],
+  depotreport:['Container Ops','Depot Report'],
   shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
   workshop:['Compliance','Workshop'], invoicing:['Finance','Invoicing'],
   allocation:['Intelligence','Allocation'], workanalysis:['Intelligence','Work Analysis'],
@@ -1106,6 +1108,7 @@ const sectionRenderers = {
   trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
   inward: renderInward,
   fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
+  depotreport: renderDepotReport,
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
   workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
@@ -3195,6 +3198,230 @@ function downloadInterchangeCSV() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `interchange-${_icFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 17b  DEPOT REPORT — inward/outward register + duplicate validation
+   Reads the same `interchange[]` array that the Inward Console, the
+   Record Interchange modal, DepOps, and bulk/CSV imports all write
+   into — so manual entries, inward bulk uploads, and anything else
+   land here automatically with nothing extra to "link". This screen
+   is a consolidated register (inward vs outward) over that single
+   source of truth, plus a standing duplicate audit across the whole
+   table (not just same-day, like the entry-time check does).
+────────────────────────────────────────────────────────────────── */
+const INWARD_IC_TYPES  = ['Gate-In', 'Depot-In'];
+const OUTWARD_IC_TYPES = ['Gate-Out', 'Depot-Out'];
+
+let _depotReportTab   = 'inward';   // inward | outward | dupes
+let _depotReportRange = 'all';      // all | 7 | 30 | 90 (days)
+let _depotReportLine  = 'all';
+let _depotReportDupes = [];
+
+function switchDepotReportTab(tab, btn) {
+  _depotReportTab = tab;
+  document.querySelectorAll('#sec-depotreport .filter-row .filter-btn[data-tab]').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDepotReport();
+}
+
+function filterDepotReportRange(range, btn) {
+  _depotReportRange = range;
+  document.querySelectorAll('#sec-depotreport .filter-row .filter-btn[data-range]').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDepotReport();
+}
+
+function filterDepotReportLine() {
+  const sel = document.getElementById('drLineFilter');
+  _depotReportLine = sel ? sel.value : 'all';
+  renderDepotReport();
+}
+
+function _depotReportInRange(dateStr) {
+  if (_depotReportRange === 'all') return true;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Number(_depotReportRange));
+  return new Date(dateStr) >= cutoff;
+}
+
+function _depotReportEntries(types) {
+  return state.db.interchange
+    .filter(ic => types.includes(ic.type))
+    .filter(ic => _depotReportLine === 'all' || ic.line === _depotReportLine)
+    .filter(ic => _depotReportInRange(ic.date))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+// Tags a record as Bulk vs Manual purely for display — bulk imports (Inward
+// Bulk Entry, legacy CSV/staging migrations) tend to leave a "Bulk import"
+// note or free-text truck/driver fields when no matching fleet record existed.
+function _icSourceTag(ic) {
+  return /bulk import/i.test(ic.notes || '') || ic.truckRegText || ic.driverNameText ? 'Bulk' : 'Manual';
+}
+
+function populateDepotReportLineFilter() {
+  const sel = document.getElementById('drLineFilter');
+  if (!sel || sel.dataset.populated) return;
+  sel.innerHTML = '<option value="all">All Lines</option>' +
+    state.db.shippingLines.map(l => `<option value="${l.id}">${esc(l.code)}</option>`).join('');
+  sel.dataset.populated = '1';
+}
+
+// Flags two kinds of duplicate: (1) the exact same container logged with
+// the exact same movement type on the exact same calendar day — usually a
+// double entry (manual re-submit, or a bulk file re-uploaded); (2) the same
+// EIR/reference number attached to two different container numbers, which
+// almost always means a transcription error at gate entry.
+function computeDepotReportDuplicates() {
+  const all = state.db.interchange;
+
+  const dayGroups = {};
+  all.forEach(ic => {
+    const key = `${(ic.container || '').toUpperCase()}::${ic.type}::${new Date(ic.date).toDateString()}`;
+    (dayGroups[key] = dayGroups[key] || []).push(ic);
+  });
+  const exactDupes = Object.values(dayGroups)
+    .filter(list => list.length > 1)
+    .map(list => ({ kind: 'Same container, type & day', records: list, ids: list.map(i => i.id) }));
+
+  const eirGroups = {};
+  all.forEach(ic => {
+    const eir = (ic.eirNumber || '').trim().toUpperCase();
+    if (!eir) return;
+    (eirGroups[eir] = eirGroups[eir] || []).push(ic);
+  });
+  const eirDupes = Object.entries(eirGroups)
+    .filter(([, list]) => new Set(list.map(i => (i.container || '').toUpperCase())).size > 1)
+    .map(([eir, list]) => ({ kind: `EIR ${eir} reused on different containers`, records: list, ids: list.map(i => i.id) }));
+
+  _depotReportDupes = [...exactDupes, ...eirDupes];
+  return _depotReportDupes;
+}
+
+function renderDepotReport() {
+  populateDepotReportLineFilter();
+  computeDepotReportDuplicates();
+
+  const inward  = _depotReportEntries(INWARD_IC_TYPES);
+  const outward = _depotReportEntries(OUTWARD_IC_TYPES);
+
+  const kpi = document.getElementById('depotReportKpis');
+  if (kpi) {
+    kpi.innerHTML = [
+      kpiCard('Inward Entries', inward.length, INWARD_IC_TYPES.join(' / '), 'kpi-green'),
+      kpiCard('Outward Entries', outward.length, OUTWARD_IC_TYPES.join(' / '), 'kpi-gold'),
+      kpiCard('Net Movement', inward.length - outward.length, 'Inward − outward, in range', 'kpi-blue'),
+      kpiCard('Duplicates Flagged', _depotReportDupes.length, 'Across full register', _depotReportDupes.length ? 'kpi-red' : 'kpi-green'),
+    ].join('');
+  }
+
+  const dupeCountEl = document.getElementById('depotReportDupeCount');
+  if (dupeCountEl) dupeCountEl.textContent = _depotReportDupes.length ? `(${_depotReportDupes.length})` : '';
+
+  const tabInward  = document.getElementById('depotReportTabInward');
+  const tabOutward = document.getElementById('depotReportTabOutward');
+  const tabDupes   = document.getElementById('depotReportTabDupes');
+  if (tabInward)  tabInward.style.display  = _depotReportTab === 'inward'  ? 'block' : 'none';
+  if (tabOutward) tabOutward.style.display = _depotReportTab === 'outward' ? 'block' : 'none';
+  if (tabDupes)   tabDupes.style.display   = _depotReportTab === 'dupes'   ? 'block' : 'none';
+
+  if (_depotReportTab === 'inward')  renderDepotReportTable('depotReportInwardList', inward);
+  if (_depotReportTab === 'outward') renderDepotReportTable('depotReportOutwardList', outward);
+  if (_depotReportTab === 'dupes')   renderDepotReportDupesList();
+}
+
+function renderDepotReportTable(elId, items) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-label">No entries in this range</div></div>';
+    return;
+  }
+  const flaggedIds = new Set(_depotReportDupes.flatMap(d => d.ids));
+  el.innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr>
+      <th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>EIR No.</th><th>Vessel / Voyage</th>
+      <th>Truck</th><th>Driver</th><th>Condition</th><th>Status</th><th>Source</th>
+    </tr></thead><tbody>${items.map(ic => `<tr${flaggedIds.has(ic.id) ? ' style="background:rgba(220,60,60,0.08)"' : ''}>
+      <td class="mono">${fmtDate(ic.date)}</td>
+      <td class="mono" style="color:var(--gold)">${esc(ic.container)}${flaggedIds.has(ic.id) ? ' ⚠' : ''}</td>
+      <td>${esc(ic.type)}</td>
+      <td>${esc(lineName(ic.line))}</td>
+      <td class="mono">${esc(ic.eirNumber || '—')}</td>
+      <td>${esc(ic.vessel || '—')}${ic.voyage ? ' / ' + esc(ic.voyage) : ''}</td>
+      <td>${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')}</td>
+      <td>${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</td>
+      <td>${esc(ic.condition || '—')}</td>
+      <td>${sbadge(ic.status)}</td>
+      <td>${_icSourceTag(ic)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderDepotReportDupesList() {
+  const el = document.getElementById('depotReportDupesList');
+  if (!el) return;
+  if (!_depotReportDupes.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-label">No duplicates found across the register</div></div>';
+    return;
+  }
+  el.innerHTML = _depotReportDupes.map(dup => `
+    <div class="ic-card" style="flex-direction:column;align-items:stretch;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:600;color:var(--red)">${esc(dup.kind)}</div>
+        <div style="font-size:10px;color:var(--text-3)">${dup.records.length} records</div>
+      </div>
+      ${dup.records.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:11px">
+          <div class="mono" style="color:var(--text-2)"><span style="color:var(--gold)">${esc(r.container)}</span> · ${esc(r.type)} · ${fmtDate(r.date)} · EIR ${esc(r.eirNumber || '—')} · ${_icSourceTag(r)}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            ${sbadge(r.status)}
+            ${isAdmin() ? `<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${r.id}')">🗑 Remove</button>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+function printDepotReport() {
+  const items = _depotReportTab === 'outward' ? _depotReportEntries(OUTWARD_IC_TYPES) : _depotReportEntries(INWARD_IC_TYPES);
+  if (!items.length) { toast('Nothing to print yet', 'error'); return; }
+  const rows = items.map(ic => `<tr>
+    <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.type || '—')}</td>
+    <td>${sanitize(lineName(ic.line))}</td><td>${sanitize(ic.eirNumber || '—')}</td>
+    <td>${sanitize(ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'))}</td>
+    <td>${sanitize(ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'))}</td>
+    <td>${sanitize((ic.status || '').toUpperCase())}</td><td>${_icSourceTag(ic)}</td>
+  </tr>`).join('');
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>Depot Report</title><style>
+    body{font-family:Arial,sans-serif;padding:20px;color:#111}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
+    th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
+    h2{margin-bottom:4px}
+  </style></head><body><h2>Gargo Haven Depot — ${_depotReportTab === 'outward' ? 'Outward' : 'Inward'} Register</h2>
+  <div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Range: ${_depotReportRange === 'all' ? 'All time' : `Last ${_depotReportRange} days`} · ${items.length} record(s)</div>
+  <table><thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>EIR No.</th><th>Truck</th><th>Driver</th><th>Status</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
+function downloadDepotReportCSV() {
+  const items = _depotReportTab === 'outward' ? _depotReportEntries(OUTWARD_IC_TYPES) : _depotReportEntries(INWARD_IC_TYPES);
+  if (!items.length) { toast('Nothing to download yet', 'error'); return; }
+  const headers = ['Date', 'Container', 'Type', 'Shipping Line', 'EIR No.', 'Vessel', 'Voyage', 'Truck', 'Driver', 'Condition', 'Status', 'Source'];
+  const rows = items.map(ic => [
+    ic.date, ic.container, ic.type, lineName(ic.line), ic.eirNumber, ic.vessel, ic.voyage,
+    ic.truck ? truckName(ic.truck) : ic.truckRegText, ic.driver ? driverName(ic.driver) : ic.driverNameText,
+    ic.condition, ic.status, _icSourceTag(ic),
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `depot-report-${_depotReportTab}-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
