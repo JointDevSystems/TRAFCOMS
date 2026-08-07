@@ -1081,6 +1081,26 @@
                                 <div id="invoiceConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
                                 <button class="submit-btn" style="margin-top:12px" onclick="saveInvoiceConfig()">Save Invoicing Details →</button>
                             </div>
+                            <div class="report-block" style="grid-column:1/-1">
+                                <h3>GPS Integration — Wialon <span id="wialonConnStatus" style="font-size:10px;font-weight:600;margin-left:8px">○ Disabled</span></h3>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:12px;line-height:1.5">Trucks fitted with a dedicated Wialon hardware tracker report their position straight from Wialon. Trucks with no unit assigned keep using the driver's phone GPS automatically — both work side by side.</div>
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                                    <input type="checkbox" id="st_wialonEnabled" style="width:16px;height:16px"/>
+                                    <label for="st_wialonEnabled" style="font-size:11.5px;color:var(--text);margin:0">Enable Wialon truck GPS integration</label>
+                                </div>
+                                <div class="form-row-2">
+                                    <div class="fg" style="margin:0"><label>Wialon API Token</label><input id="st_wialonToken" type="password" placeholder="Paste your Wialon Remote API token"/></div>
+                                    <div class="fg" style="margin:0"><label>Wialon Host</label><input id="st_wialonHost" placeholder="https://hst-api.wialon.com"/></div>
+                                </div>
+                                <div style="font-size:9.5px;color:var(--text-3);margin:2px 0 12px;line-height:1.5">Generate a token in your Wialon account under User Settings → Access Keys. Leave Host as the default unless you use a self-hosted / regional Wialon server.</div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+                                    <button class="action-btn ghost" id="wialonTestBtn" onclick="testWialonConnection()">Test Connection</button>
+                                    <button class="submit-btn" style="margin:0" onclick="saveWialonSettings()">Save GPS Integration Settings →</button>
+                                </div>
+                                <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px;border-top:1px solid var(--border);padding-top:14px">Assign Truck → Wialon Unit</div>
+                                <div id="wialonUnitMapping" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+                                <button class="action-btn" style="margin-top:10px" onclick="saveWialonUnitMapping()">Save Unit Assignments</button>
+                            </div>
                         </div>
                     </section>
 

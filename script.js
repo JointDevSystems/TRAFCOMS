@@ -33,6 +33,12 @@ let state = {
   _trackingChannel  : null,   
   _liveSyncChannel  : null,   
   geofenceExpanded  : new Set(),
+
+  
+  wialonSid         : null,   
+  wialonPollTimer   : null,   
+  wialonPolling     : false,  
+  wialonUnits       : [],     
 };
 
 
@@ -53,8 +59,8 @@ function defaultBillingRates() {
 
 
 
-function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin, img:t.img||'' }; }
-function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:r.img||'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
+function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin, img:t.img||'', wialon_unit_id:t.wialonUnitId||null }; }
+function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:r.img||'', licencePlate:r.licence_plate, vin:r.vin||'', wialonUnitId:r.wialon_unit_id||'' }; }
 
 function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
 function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
@@ -180,7 +186,7 @@ async function loadDB() {
 
     const trackingPositions = {};
     (trackRes.data || []).forEach(r => {
-      trackingPositions[r.truck_id] = { lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone, lastUpdate: r.last_update };
+      trackingPositions[r.truck_id] = { lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone, lastUpdate: r.last_update, source: r.source || 'driver_app' };
     });
 
     const auditLog = (auditRes.data || [])
@@ -189,8 +195,10 @@ async function loadDB() {
 
     const s = settingsRes.data;
     const settings = s
-      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null }
-      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null };
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null,
+          wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com' }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null,
+          wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com' };
 
   
     const profiles = (profilesRes.data || []).map(p => ({
@@ -257,6 +265,9 @@ async function saveDB() {
         whatsapp: db.settings.whatsapp,
         mpesa: db.settings.mpesa,
         invoice_config: db.settings.invoiceConfig || null,
+        wialon_enabled: !!db.settings.wialonEnabled,
+        wialon_token: db.settings.wialonToken || null,
+        wialon_host: db.settings.wialonHost || 'https://hst-api.wialon.com',
       };
       let { error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' });
       if (error && /invoice_config/i.test(error.message || '')) {
@@ -433,9 +444,13 @@ async function initDB() {
       whatsapp: true,
       mpesa: false,
       companyName: 'Gargo Logistics Ltd',
-      invoiceConfig: null
+      invoiceConfig: null,
+      wialonEnabled: false,
+      wialonToken: '',
+      wialonHost: 'https://hst-api.wialon.com',
     };
   }
+  if (!state.db.settings.wialonHost) state.db.settings.wialonHost = 'https://hst-api.wialon.com';
   if (!state.db.billingRates || !Object.keys(state.db.billingRates).length) {
     state.db.billingRates = defaultBillingRates();
   }
@@ -892,6 +907,7 @@ async function forceLogout(reason) {
 
 async function performLogout(auditDetail) {
   stopDriverTracking();
+  stopWialonPolling();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   await supabase.auth.signOut();
   state.currentUser = null;
@@ -939,6 +955,7 @@ function bootShell() {
   buildAlerts();
   subscribeTrackingRealtime();
   subscribeLiveSync();
+  startWialonPolling();
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
@@ -1191,7 +1208,21 @@ function showTruckDetail(id) {
   if (!t) return;
   const trips = state.db.trips.filter(tr=>tr.truckId===id).slice(-5);
   const maint = state.db.maintenance.filter(m=>m.truckId===id);
-  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
+  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">GPS Source</div>${isAdmin() ? `<div style="display:flex;gap:8px;align-items:center"><input id="td_wialonId_${id}" placeholder="Wialon unit ID (blank = use driver phone)" value="${esc(t.wialonUnitId||'')}" style="flex:1"/><button class="tbl-btn" onclick="saveTruckWialonId('${id}')">Save</button></div><div style="font-size:9.5px;color:var(--text-3);margin-top:6px;line-height:1.5">When set, this truck's live position comes from its dedicated Wialon GPS tracker instead of the driver's phone. Configure the Wialon account under Settings → GPS Integration.</div>` : `<div style="font-size:12px;color:var(--text)">${t.wialonUnitId ? `Truck GPS (Wialon unit #${esc(t.wialonUnitId)})` : 'Driver Phone GPS'}</div>`}</div>${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
+}
+
+function saveTruckWialonId(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const t = state.db.trucks.find(t=>t.id===id);
+  if (!t) return;
+  const input = document.getElementById(`td_wialonId_${id}`);
+  const val = input ? input.value.trim() : '';
+  t.wialonUnitId = val;
+  scheduleSave();
+  addAudit(state.profile.username, 'Wialon Mapping', `${t.reg} → ${val ? `unit #${val}` : 'unassigned (driver phone GPS)'}`);
+  applyWialonPollingState();
+  toast(`${t.reg} GPS source updated`, 'success');
+  showTruckDetail(id);
 }
 
 function quickSetTruckStatus(id, status) {
@@ -1613,7 +1644,13 @@ let _lastZoneVal = null;
 let _lastZoneFetch = 0;
 
 function driverShouldTrack(driver) {
-  return !!(driver && driver.truckId && driver.status !== 'off_duty' && driver.status !== 'suspended');
+  if (!driver || !driver.truckId || driver.status === 'off_duty' || driver.status === 'suspended') return false;
+  // If this truck has a dedicated Wialon GPS unit assigned, the hardware
+  // tracker is the source of truth for its tracking_positions row — the
+  // driver's phone stays quiet so the two feeds don't overwrite each other.
+  const truck = state.db.trucks.find(t => t.id === driver.truckId);
+  if (truck && truck.wialonUnitId) return false;
+  return true;
 }
 
 
@@ -1711,12 +1748,12 @@ async function onDriverPosition(pos) {
     _lastZoneFetch = now;
   }
 
-  const row = { truck_id: driver.truckId, lat: latitude, lng: longitude, speed: kph, heading: hd, zone, last_update: new Date().toISOString() };
+  const row = { truck_id: driver.truckId, lat: latitude, lng: longitude, speed: kph, heading: hd, zone, last_update: new Date().toISOString(), source: 'driver_app' };
   const { error } = await supabase.from('tracking_positions').upsert(row, { onConflict: 'truck_id' });
   if (error) {
     console.error('tracking ping failed:', error.message);
   } else {
-    state.db.trackingPositions[driver.truckId] = { lat: latitude, lng: longitude, speed: kph, heading: hd, zone, lastUpdate: row.last_update };
+    state.db.trackingPositions[driver.truckId] = { lat: latitude, lng: longitude, speed: kph, heading: hd, zone, lastUpdate: row.last_update, source: 'driver_app' };
     if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
   }
   state.trackingActive = true;
@@ -4016,9 +4053,11 @@ function renderTracking() {
       const p = pos[t.id];
       const dr = state.db.drivers.find(d=>d.truckId===t.id);
       const hasFix = !!p;
+      const isWialon = hasFix && p.source === 'wialon';
+      const srcLabel = isWialon ? 'Truck GPS (Wialon)' : 'Driver Phone';
       const srcTag = hasFix
-        ? `<span style="color:var(--green,#3ecf6e)">● Live — Driver Phone · ${timeAgo(p.lastUpdate)}</span>`
-        : `<span style="color:var(--text-3)">No phone signal — driver may be off duty or offline</span>`;
+        ? `<span style="color:var(--green,#3ecf6e)">● Live — ${srcLabel} · ${timeAgo(p.lastUpdate)}</span>`
+        : `<span style="color:var(--text-3)">${t.wialonUnitId ? 'No Wialon signal — check unit power/network' : 'No phone signal — driver may be off duty or offline'}</span>`;
       return `<div class="tv-item" ${hasFix ? `onclick="focusTruckOnMap('${t.id}')"` : ''}>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span class="tv-reg">${esc(t.reg)}</span>${sbadge(t.status)}</div>
         <div style="margin-top:2px">${dr ? esc(dr.name) : 'Unassigned'}</div>
@@ -4121,13 +4160,202 @@ async function refreshTracking() {
   const { data, error } = await supabase.from('tracking_positions').select('*');
   if (error) { toast('Could not refresh tracking data', 'error'); return; }
   const fresh = {};
-  (data || []).forEach(r => { fresh[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update }; });
+  (data || []).forEach(r => { fresh[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update, source:r.source||'driver_app' }; });
   state.db.trackingPositions = fresh;
   renderTracking();
   updateTrackingMarkers();
+  if (state.db.settings?.wialonEnabled) pollWialonPositions();
   toast('Tracking positions refreshed', 'info', 1800);
 }
 
+
+/* ──────────────────────────────────────────────────────────────────
+   § WIALON GPS INTEGRATION — dedicated hardware trackers fitted to
+   trucks report through Wialon's Remote API; trucks without a unit
+   keep using the driver-phone GPS flow above. Both feeds write into
+   the same tracking_positions table (keyed by truck_id), tagged with
+   a `source` column so the UI/map can tell them apart.
+────────────────────────────────────────────────────────────────── */
+const WIALON_POLL_INTERVAL_MS = 30000; // 30s — matches typical hardware unit report cadence
+
+function wialonHost() {
+  return (state.db.settings?.wialonHost || 'https://hst-api.wialon.com').replace(/\/$/, '');
+}
+
+async function wialonLogin() {
+  const token = state.db.settings?.wialonToken;
+  if (!token) throw new Error('No Wialon token configured');
+  const url = `${wialonHost()}/wialon/ajax.html?svc=token/login&params=${encodeURIComponent(JSON.stringify({ token }))}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error || !data.eid) throw new Error(data.reason || `Wialon login failed (error ${data.error})`);
+  state.wialonSid = data.eid;
+  return data.eid;
+}
+
+// flags 1 (base info) + 1024 (last known position) = 1025
+async function wialonFetchUnits() {
+  if (!state.wialonSid) await wialonLogin();
+  const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+  const params = { spec, force: 1, flags: 1025, from: 0, to: 0 };
+  const url = `${wialonHost()}/wialon/ajax.html?svc=core/search_items&params=${encodeURIComponent(JSON.stringify(params))}&sid=${state.wialonSid}`;
+  let res = await fetch(url);
+  let data = await res.json();
+  if (data.error === 1) { // session expired — re-login once and retry
+    await wialonLogin();
+    res = await fetch(`${wialonHost()}/wialon/ajax.html?svc=core/search_items&params=${encodeURIComponent(JSON.stringify(params))}&sid=${state.wialonSid}`);
+    data = await res.json();
+  }
+  if (data.error) throw new Error(data.reason || `Wialon search_items failed (error ${data.error})`);
+  return data.items || [];
+}
+
+// Pulls current positions for every Wialon unit and writes them into
+// tracking_positions for whichever truck each unit is mapped to
+// (trucks.wialonUnitId). Trucks with no mapping, or units with no
+// truck mapped to them, are skipped.
+async function pollWialonPositions() {
+  if (!state.db.settings?.wialonEnabled || !state.db.settings?.wialonToken) return;
+  if (state.wialonPolling) return; // don't overlap requests
+  state.wialonPolling = true;
+  try {
+    const units = await wialonFetchUnits();
+    state.wialonUnits = units;
+    const byId = {};
+    units.forEach(u => { byId[String(u.id)] = u; });
+
+    const rows = [];
+    state.db.trucks.forEach(t => {
+      if (!t.wialonUnitId) return;
+      const u = byId[String(t.wialonUnitId)];
+      if (!u || !u.pos) return; // unit not found or has never reported a position
+      const row = {
+        truck_id: t.id,
+        lat: u.pos.y, lng: u.pos.x,
+        speed: Math.round(u.pos.s || 0),
+        heading: headingToCompass(u.pos.c),
+        zone: t.wialonZoneCache || '',
+        last_update: new Date((u.pos.t || Math.floor(Date.now()/1000)) * 1000).toISOString(),
+        source: 'wialon',
+      };
+      rows.push(row);
+    });
+
+    if (rows.length) {
+      const { error } = await supabase.from('tracking_positions').upsert(rows, { onConflict: 'truck_id' });
+      if (error) { console.error('wialon tracking save failed:', error.message); }
+      else {
+        rows.forEach(r => {
+          state.db.trackingPositions[r.truck_id] = { lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone, lastUpdate: r.last_update, source: 'wialon' };
+        });
+        if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
+      }
+    }
+    return rows.length;
+  } catch (e) {
+    console.error('Wialon poll failed:', e.message);
+    state.wialonSid = null; // force re-login next attempt
+    throw e;
+  } finally {
+    state.wialonPolling = false;
+  }
+}
+
+function startWialonPolling() {
+  if (state.wialonPollTimer) return;
+  if (!state.db.settings?.wialonEnabled || !state.db.settings?.wialonToken) return;
+  pollWialonPositions().catch(()=>{});
+  state.wialonPollTimer = setInterval(() => { pollWialonPositions().catch(()=>{}); }, WIALON_POLL_INTERVAL_MS);
+}
+
+function stopWialonPolling() {
+  if (state.wialonPollTimer) { clearInterval(state.wialonPollTimer); state.wialonPollTimer = null; }
+}
+
+// Re-reads settings and (re)starts/stops polling to match — called after
+// Save Wialon Settings so a toggle/token change takes effect immediately.
+function applyWialonPollingState() {
+  stopWialonPolling();
+  state.wialonSid = null;
+  if (state.db.settings?.wialonEnabled && state.db.settings?.wialonToken) startWialonPolling();
+}
+
+async function testWialonConnection() {
+  const tokenInput = document.getElementById('st_wialonToken');
+  const hostInput  = document.getElementById('st_wialonHost');
+  const btn = document.getElementById('wialonTestBtn');
+  const prevToken = state.db.settings.wialonToken, prevHost = state.db.settings.wialonHost;
+  state.db.settings.wialonToken = tokenInput.value.trim();
+  state.db.settings.wialonHost  = hostInput.value.trim() || 'https://hst-api.wialon.com';
+  state.wialonSid = null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  try {
+    const units = await wialonFetchUnits();
+    toast(`Connected — found ${units.length} unit${units.length===1?'':'s'} on this Wialon account`, 'success', 3500);
+    renderWialonUnitMapping(units);
+  } catch (e) {
+    toast(`Wialon connection failed: ${e.message}`, 'error', 5000);
+  } finally {
+    state.db.settings.wialonToken = prevToken; state.db.settings.wialonHost = prevHost; // restore until explicitly saved
+    if (btn) { btn.disabled = false; btn.textContent = 'Test Connection'; }
+  }
+}
+
+function saveWialonSettings() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const enabled = document.getElementById('st_wialonEnabled').checked;
+  const token   = sanitize(document.getElementById('st_wialonToken').value.trim());
+  const host    = sanitize(document.getElementById('st_wialonHost').value.trim()) || 'https://hst-api.wialon.com';
+  state.db.settings.wialonEnabled = enabled;
+  state.db.settings.wialonToken   = token;
+  state.db.settings.wialonHost    = host;
+  scheduleSave();
+  addAudit(state.profile.username, 'Wialon Settings', enabled ? `Enabled — host ${host}` : 'Disabled');
+  applyWialonPollingState();
+  renderSettings();
+  toast('Wialon GPS settings saved', 'success');
+  if (enabled && token) testWialonConnection();
+}
+
+// Renders the truck ↔ Wialon-unit mapping table so an admin can assign
+// each hardware tracker to the truck it's fitted to, using live unit
+// names/IDs pulled straight from the Wialon account (falls back to a
+// manual-ID entry per truck if the account hasn't been queried yet).
+function renderWialonUnitMapping(units) {
+  const el = document.getElementById('wialonUnitMapping');
+  if (!el) return;
+  const list = units || state.wialonUnits || [];
+  const options = list.map(u => `<option value="${u.id}">${esc(u.nm)} (#${u.id})</option>`).join('');
+  el.innerHTML = state.db.trucks.map(t => `
+    <div class="detail-row" style="align-items:center">
+      <span>${esc(t.reg)} <span style="color:var(--text-3)">· ${esc(t.make)}</span></span>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${list.length ? `
+          <select id="wm_${t.id}" style="max-width:220px">
+            <option value="">— No Wialon unit —</option>
+            ${list.map(u => `<option value="${u.id}" ${String(t.wialonUnitId)===String(u.id)?'selected':''}>${esc(u.nm)} (#${u.id})</option>`).join('')}
+          </select>
+        ` : `<input id="wm_${t.id}" placeholder="Wialon unit ID" value="${esc(t.wialonUnitId||'')}" style="max-width:150px"/>`}
+      </div>
+    </div>
+  `).join('') || '<div style="padding:8px;color:var(--text-3);font-size:11px">No trucks in the fleet yet</div>';
+}
+
+async function saveWialonUnitMapping() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  let changed = 0;
+  state.db.trucks.forEach(t => {
+    const input = document.getElementById(`wm_${t.id}`);
+    if (!input) return;
+    const val = input.value.trim();
+    if ((t.wialonUnitId || '') !== val) { t.wialonUnitId = val; changed++; }
+  });
+  if (!changed) { toast('No changes to save', 'info'); return; }
+  scheduleSave();
+  addAudit(state.profile.username, 'Wialon Mapping', `Updated ${changed} truck GPS unit assignment${changed===1?'':'s'}`);
+  toast(`Saved GPS unit mapping for ${changed} truck${changed===1?'':'s'}`, 'success');
+  applyWialonPollingState();
+}
 
 function subscribeTrackingRealtime() {
   if (state._trackingChannel) return;
@@ -4138,7 +4366,7 @@ function subscribeTrackingRealtime() {
         if (id) delete state.db.trackingPositions[id];
       } else {
         const r = payload.new;
-        state.db.trackingPositions[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update };
+        state.db.trackingPositions[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update, source:r.source||'driver_app' };
       }
       if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
     })
@@ -4235,10 +4463,12 @@ function updateTrackingMarkers() {
     const truck = state.db.trucks.find(t => t.id === truckId);
     const label = truck?.reg || truckId;
     const isMoving = p.speed > 0;
+    const isWialon = p.source === 'wialon';
     const dotColor = isMoving ? '#3ecf6e' : '#8b8b8b';
+    const ringColor = isWialon ? '#C9A227' : 'rgba(255,255,255,.15)'; // gold ring = dedicated truck GPS unit
     const icon = L.divIcon({
       className: 'truck-marker',
-      html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;box-shadow:0 0 0 1px rgba(255,255,255,.15)"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${label}</div></div>`,
+      html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;box-shadow:0 0 0 2px ${ringColor}"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${label}${isWialon?' 📡':''}</div></div>`,
       iconSize: [60, 30],
       iconAnchor: [7, 7],
     });
@@ -4249,7 +4479,8 @@ function updateTrackingMarkers() {
       marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
+        const srcLabel = cur.source === 'wialon' ? 'Truck GPS (Wialon)' : 'Driver Phone';
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${srcLabel} · ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
@@ -4356,10 +4587,36 @@ function renderSettings() {
   const bk = state.db.settings?.backupDate;
   document.getElementById('lastBackup').textContent = bk ? fmtDate(bk) : 'Never';
 
+  const wialonOn = !!state.db.settings?.wialonEnabled && !!state.db.settings?.wialonToken;
+  const wialonTruckCount = state.db.trucks.filter(t=>t.wialonUnitId).length;
   const gpsStatus = document.getElementById('gpsStatusVal');
-  if (gpsStatus) { gpsStatus.textContent = 'Live · Driver GPS'; gpsStatus.style.color = 'var(--green)'; }
+  if (gpsStatus) {
+    gpsStatus.textContent = wialonOn
+      ? `Live · Driver Phone + Wialon (${wialonTruckCount} truck${wialonTruckCount===1?'':'s'})`
+      : 'Live · Driver Phone GPS';
+    gpsStatus.style.color = 'var(--green)';
+  }
 
   renderInvoiceConfigForm();
+  renderWialonSettingsForm();
+}
+
+function renderWialonSettingsForm() {
+  const enabledEl = document.getElementById('st_wialonEnabled');
+  const tokenEl   = document.getElementById('st_wialonToken');
+  const hostEl    = document.getElementById('st_wialonHost');
+  const statusEl  = document.getElementById('wialonConnStatus');
+  if (!enabledEl) return;
+  const s = state.db.settings || {};
+  enabledEl.checked = !!s.wialonEnabled;
+  tokenEl.value = s.wialonToken || '';
+  hostEl.value  = s.wialonHost || 'https://hst-api.wialon.com';
+  if (statusEl) {
+    const on = !!s.wialonEnabled && !!s.wialonToken;
+    statusEl.textContent = on ? '● Enabled' : '○ Disabled';
+    statusEl.style.color = on ? 'var(--green)' : 'var(--text-3)';
+  }
+  renderWialonUnitMapping(state.wialonUnits);
 }
 
 /* Invoicing & billing configuration — editable by any admin, no redeploy needed. */
@@ -4478,7 +4735,8 @@ async function executeClearData() {
     allocationRules: [], trackingPositions: {}, auditLog: [],
     settings: state.db.settings || {
       backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false,
-      companyName: 'Gargo Logistics Ltd', invoiceConfig: null
+      companyName: 'Gargo Logistics Ltd', invoiceConfig: null,
+      wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com',
     },
     profiles: state.db.profiles || [],
   };
