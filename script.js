@@ -32,6 +32,7 @@ let state = {
   _gmapsCallbacks   : [],
   _trackingChannel  : null,   
   _liveSyncChannel  : null,   
+  geofenceExpanded  : new Set(),
 };
 
 
@@ -466,6 +467,8 @@ function sbadge(status) {
   const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery', loaded:'Loaded', offloaded:'Offloaded' };
   return `<span class="sbadge s-${status}">${labels[status]||status}</span>`;
 }
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function truckName(id) { if(!id)return '—'; const t=state.db.trucks.find(t=>t.id===id); return t? `${t.reg} · ${t.make}` :id; }
 function driverName(id) { if(!id)return '—'; const d=state.db.drivers.find(d=>d.id===id); return d?d.name:id; }
@@ -3992,29 +3995,107 @@ function initTrackingSection() {
   initTrackingMap();
 }
 
+// Trucks worth showing on the tracking board — on the road or stopped on
+// the road (breakdown). Parked/off-duty/in-workshop trucks are excluded
+// since there's no driver phone to report a position for them anyway.
+const TRACKABLE_TRUCK_STATUSES = ['available', 'on_trip', 'breakdown'];
+
 function renderTracking() {
-  const pos  = state.db.trackingPositions;
-  const trks = Object.keys(pos);
-  document.getElementById('trackingMeta').textContent = `${trks.length} vehicle${trks.length===1?'':'s'} tracked`;
+  const pos = state.db.trackingPositions || {};
+  const activeTrucks = state.db.trucks.filter(t => TRACKABLE_TRUCK_STATUSES.includes(t.status));
+  const liveCount = activeTrucks.filter(t => pos[t.id]).length;
+  document.getElementById('trackingMeta').textContent =
+    `${activeTrucks.length} vehicle${activeTrucks.length===1?'':'s'} tracked · ${liveCount} reporting live`;
+
   const vehicles = document.getElementById('trackingVehicles');
   if (vehicles) {
-    vehicles.innerHTML = trks.map(id=>{
-      const p = pos[id];
-      const t = state.db.trucks.find(t=>t.id===id);
-      return `<div class="tv-item" onclick="focusTruckOnMap('${id}')"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone} · ${timeAgo(p.lastUpdate)}</div></div>`;
-    }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No drivers currently on duty</div>';
+    // Show every truck that should be on the road, not just the ones that
+    // happen to have a fresh GPS ping — a truck with no signal is exactly
+    // the thing dispatch needs to notice, not something to hide.
+    vehicles.innerHTML = activeTrucks.map(t=>{
+      const p = pos[t.id];
+      const dr = state.db.drivers.find(d=>d.truckId===t.id);
+      const hasFix = !!p;
+      const srcTag = hasFix
+        ? `<span style="color:var(--green,#3ecf6e)">● Live — Driver Phone · ${timeAgo(p.lastUpdate)}</span>`
+        : `<span style="color:var(--text-3)">No phone signal — driver may be off duty or offline</span>`;
+      return `<div class="tv-item" ${hasFix ? `onclick="focusTruckOnMap('${t.id}')"` : ''}>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span class="tv-reg">${esc(t.reg)}</span>${sbadge(t.status)}</div>
+        <div style="margin-top:2px">${dr ? esc(dr.name) : 'Unassigned'}</div>
+        <div style="font-size:9px;margin-top:2px">${srcTag}</div>
+        ${hasFix ? `<div style="font-size:9px;color:var(--text-3);margin-top:2px">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div>` : ''}
+        <button class="tbl-btn" style="margin-top:6px;width:100%" ${hasFix?'':'disabled'} onclick="event.stopPropagation();${hasFix?`showStreetView(${p.lat},${p.lng},'${esc(t.reg)}')`:''}">🧭 Street View</button>
+      </div>`;
+    }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No vehicles to track</div>';
   }
+
   const movements = document.getElementById('trackingMovements');
   if (movements) {
-    movements.innerHTML = trks.map(id=>{
+    const liveIds = Object.keys(pos);
+    movements.innerHTML = liveIds.map(id=>{
       const p=pos[id]; const t=state.db.trucks.find(t=>t.id===id);
-      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${t?.reg||id}</div><div style="font-size:11px;color:var(--text-2)">${p.zone} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
+      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${t?esc(t.reg):id}</div><div style="font-size:11px;color:var(--text-2)">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
     }).join('') || '<div style="padding:12px;color:var(--text-3)">No active movements</div>';
   }
+
   const geofence = document.getElementById('trackingGeofence');
   if (geofence) {
-    geofence.innerHTML = `<div style="padding:12px;color:var(--text-3);font-size:10.5px">Geofence alerting isn't wired up yet — positions above are live GPS from drivers' devices.</div>`;
+    geofence.innerHTML = geofenceEvents().slice(0, 8).map(e => `<div class="geofence-row-wrap">
+      <div class="activity-row" style="cursor:pointer" onclick="toggleGeofenceEvent('${e.id}')">
+        <span class="act-icon">${e.icon}</span><span style="flex:1">${esc(e.text)}</span>
+        <span class="act-time">${timeAgo(e.time)}</span>
+        <span style="margin-left:6px;opacity:0.6;font-size:10px">${state.geofenceExpanded.has(e.id) ? '▲' : '▼'}</span>
+      </div>
+      ${state.geofenceExpanded.has(e.id) ? renderGeofenceEventDetail(e) : ''}
+    </div>`).join('') || '<div style="padding:12px;color:var(--text-3);font-size:10.5px">No gate events recorded</div>';
   }
+}
+
+// Lightweight, status-derived stand-in for real geofence entry/exit
+// detection — no zone/radius math yet, just turns trip status into a
+// plausible gate-style feed so dispatch has something actionable to click.
+function geofenceEvents() {
+  const events = [];
+  (state.db.trips||[]).forEach(t => {
+    events.push({ id: t.id+'-out', tripId: t.id, text: `Gate-out — ${t.container} departed ${t.origin}`, time: t.startTime, icon: '📤' });
+    if (t.status === 'completed') events.push({ id: t.id+'-in', tripId: t.id, text: `Gate-in — ${t.container} arrived ${t.dest}`, time: t.startTime, icon: '📥' });
+    if (t.status === 'delayed') events.push({ id: t.id+'-hold', tripId: t.id, text: `Holding near ${t.dest} — ${t.container} (Delayed)`, time: t.startTime, icon: '⏱️' });
+    if (t.status === 'breakdown') events.push({ id: t.id+'-stop', tripId: t.id, text: `Stopped en route — ${t.container} (Breakdown)`, time: t.startTime, icon: '⚠️' });
+  });
+  events.sort((a,b)=> new Date(b.time) - new Date(a.time));
+  return events;
+}
+
+function toggleGeofenceEvent(id) {
+  if (state.geofenceExpanded.has(id)) state.geofenceExpanded.delete(id); else state.geofenceExpanded.add(id);
+  renderTracking();
+}
+
+function renderGeofenceEventDetail(e) {
+  const t = state.db.trips.find(x=>x.id===e.tripId);
+  if (!t) return '';
+  return `<div style="padding:10px 12px 12px;margin:2px 0 6px;background:var(--surface-2);border-radius:8px">
+    <div class="detail-row"><span>Route</span><b>${esc(t.origin)} → ${esc(t.dest)}</b></div>
+    <div class="detail-row"><span>Truck / Driver</span><b>${esc(truckName(t.truckId))} · ${esc(driverName(t.driverId))}</b></div>
+    <div class="detail-row"><span>Distance</span><b>${t.distance||0} km</b></div>
+    <div class="detail-row"><span>Status</span><b>${sbadge(t.status)}</b></div>
+    <div style="margin-top:10px"><button class="tbl-btn" onclick="event.stopPropagation();closeModal();showTripDetail('${t.id}')">View Trip →</button></div>
+  </div>`;
+}
+
+// Free, no-API-key street-level imagery via Google's public embed — same
+// approach as Jastar. If Google hasn't photographed the exact spot (common
+// at depots/private yards), the iframe just stays blank and the "Open in
+// Google Maps" link still lets dispatch check the surrounding area.
+function showStreetView(lat, lng, label) {
+  const embedUrl = `https://www.google.com/maps?layer=c&cbll=${lat},${lng}&output=svembed`;
+  const openUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+  openModal('Street View' + (label ? ' — ' + esc(label) : ''), `
+    <div style="position:relative;width:100%;padding-top:64%;border-radius:8px;overflow:hidden;background:var(--surface)">
+      <iframe src="${embedUrl}" style="position:absolute;inset:0;width:100%;height:100%;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+    </div>
+    <a class="modal-btn ghost" style="margin-top:12px;width:100%;text-decoration:none;box-sizing:border-box;display:block;text-align:center" href="${openUrl}" target="_blank" rel="noopener">↗ Open Full Street View in Google Maps</a>
+  `);
 }
 
 
@@ -4168,7 +4249,7 @@ function updateTrackingMarkers() {
       marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span></div>`);
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
@@ -4534,16 +4615,17 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 function liveSearch(q) {
   const panel = document.getElementById('searchResults');
-  if (!q || q.length < 2) { panel.style.display='none'; return; }
+  if (!q || !q.trim() || !state.db) { panel.style.display='none'; return; }
+  const qRaw = q.trim();
+  q = qRaw.toLowerCase();
+  if (q.length < 2) { panel.style.display='none'; return; }
   const results = [];
   const db = state.db;
-  q = q.toLowerCase().trim();
-
 
   const containerMatches = new Set();
-  db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
-  db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i=>{
+  (db.trips||[]).forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
+  (db.shutouts||[]).forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
+  (db.interchange||[]).forEach(i=>{
     if ((i.container||'').toLowerCase().includes(q)
       || (i.eirNumber||'').toLowerCase().includes(q)
       || (i.vessel||'').toLowerCase().includes(q)
@@ -4552,25 +4634,51 @@ function liveSearch(q) {
   });
   [...containerMatches].slice(0,4).forEach(cont=>{
     const live = findLiveTripByContainer(cont);
-    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
+    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', action: () => showContainerDetail(cont) });
   });
 
-  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)||(t.vin||'').toLowerCase().includes(q)||(t.licencePlate||'').toLowerCase().includes(q)).slice(0,3).forEach(t=>{
-    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
+  (db.trucks||[]).filter(t=>
+    (t.reg||'').toLowerCase().includes(q) || (t.id||'').toLowerCase().includes(q) ||
+    (t.make||'').toLowerCase().includes(q) || (t.vin||'').toLowerCase().includes(q) ||
+    (t.licencePlate||'').toLowerCase().includes(q)
+  ).slice(0,4).forEach(t=>{
+    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:sbadgeText(t.status), action: () => showTruckDetail(t.id) });
   });
-  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)||(d.licence||'').toLowerCase().includes(q)||(d.idNo||'').toLowerCase().includes(q)).slice(0,3).forEach(d=>{
-    results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
+  (db.drivers||[]).filter(d=>
+    (d.name||'').toLowerCase().includes(q) || (d.phone||'').includes(qRaw) ||
+    (d.licence||'').toLowerCase().includes(q) || (d.idNo||'').toLowerCase().includes(q)
+  ).slice(0,4).forEach(d=>{
+    results.push({ type:'Driver', label:d.name, sub:sbadgeText(d.status), action: () => showDriverDetail(d.id) });
   });
-  db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
-    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
+  (db.trips||[]).filter(t=>(t.origin||'').toLowerCase().includes(q)||(t.dest||'').toLowerCase().includes(q)||(t.ref||'').toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:sbadgeText(t.status), action: () => showTripDetail(t.id) });
   });
-  db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
-    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:i.status, fn: `showInvoiceDetail('${i.id}')` });
+  (db.invoices||[]).filter(i=>(i.client||'').toLowerCase().includes(q)||(i.ref||'').toLowerCase().includes(q)).slice(0,2).forEach(i=>{
+    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:sbadgeText(i.status), action: () => showInvoiceDetail(i.id) });
   });
+
+  // Stash the real callbacks (not strings) so we never have to interpolate
+  // user data into an onclick="" attribute — that broke on any name/container
+  // containing a quote (e.g. "O'Brien Logistics"), which silently corrupted
+  // the results list. Clicking now just references a safe numeric index.
+  window._searchResults = results.map(r => r.action);
+
   panel.innerHTML = results.length
-    ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
-    : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
+    ? results.slice(0,12).map((r,i)=>`<div class="search-result-item" onclick="runSearchResult(${i})"><span class="search-result-type">${esc(r.type)}</span><div><div style="font-size:12px;color:var(--text)">${esc(r.label)}</div><div style="font-size:10px;color:var(--text-3)">${esc(r.sub)}</div></div></div>`).join('')
+    : `<div class="search-result-item search-result-empty">No results for "${esc(qRaw)}"</div>`;
   panel.style.display='block';
+}
+
+function sbadgeText(status) {
+  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial' };
+  return labels[status] || status || '';
+}
+
+function runSearchResult(i) {
+  const panel = document.getElementById('searchResults'); if (panel) panel.style.display='none';
+  const gs = document.getElementById('globalSearch');
+  if (gs) { gs.value=''; gs.blur(); }
+  if (window._searchResults && window._searchResults[i]) window._searchResults[i]();
 }
 
 
