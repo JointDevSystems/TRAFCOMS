@@ -189,10 +189,8 @@ async function loadDB() {
 
     const s = settingsRes.data;
     const settings = s
-      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null,
-          wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com', wialonLastSync: s.wialon_last_sync || null, wialonLastResult: s.wialon_last_result || '' }
-      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null,
-          wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com', wialonLastSync: null, wialonLastResult: '' };
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null, wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com' }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null, wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com' };
 
   
     const profiles = (profilesRes.data || []).map(p => ({
@@ -259,11 +257,6 @@ async function saveDB() {
         whatsapp: db.settings.whatsapp,
         mpesa: db.settings.mpesa,
         invoice_config: db.settings.invoiceConfig || null,
-        // wialon_last_sync / wialon_last_result are NOT written here — the
-        // wialon-sync edge function owns those, and this generic save runs
-        // far more often (any admin edit anywhere) than a Wialon config
-        // change, so writing stale cached values would clobber the real
-        // last-sync breadcrumb.
         wialon_enabled: !!db.settings.wialonEnabled,
         wialon_token: db.settings.wialonToken || null,
         wialon_host: db.settings.wialonHost || 'https://hst-api.wialon.com',
@@ -446,9 +439,7 @@ async function initDB() {
       invoiceConfig: null,
       wialonEnabled: false,
       wialonToken: '',
-      wialonHost: 'https://hst-api.wialon.com',
-      wialonLastSync: null,
-      wialonLastResult: ''
+      wialonHost: 'https://hst-api.wialon.com'
     };
   }
   if (!state.db.billingRates || !Object.keys(state.db.billingRates).length) {
@@ -575,10 +566,10 @@ function findLineByCode(code, excludeId) {
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
-  clerk:    ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange'],
-  dispatch: ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange','fuel'],
-  ops:      ['trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange'],
+  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','fuel'],
+  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   finance:  ['trips','shippinglines'],
   viewer:   ['trucks','drivers','trips'],
 };
@@ -907,6 +898,7 @@ async function forceLogout(reason) {
 
 async function performLogout(auditDetail) {
   stopDriverTracking();
+  stopWialonPolling();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   await supabase.auth.signOut();
   state.currentUser = null;
@@ -954,6 +946,7 @@ function bootShell() {
   buildAlerts();
   subscribeTrackingRealtime();
   subscribeLiveSync();
+  startWialonPolling();
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
@@ -1000,6 +993,7 @@ function buildBadges() {
   set('badge-drivers',      db.drivers.filter(d=>d.status==='on_trip').length);
   set('badge-trips',        db.trips.filter(t=>t.status==='active').length);
   set('badge-dispatch',     awaitingDispatchTrips().length);
+  set('badge-inward',       db.interchange.filter(i => (i.type==='Gate-In'||i.type==='Depot-In') && new Date(i.date).toDateString()===new Date().toDateString()).length);
   set('badge-allocation',   awaitingDispatchTrips().length);
   set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
   set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
@@ -1054,6 +1048,7 @@ function toggleAlerts() {
 const SECTION_META = {
   dashboard:['Operations','Dashboard'], trucks:['Fleet Management','Trucks'], drivers:['Fleet Management','Drivers'],
   trips:['Fleet Management','Active Trips'], dispatch:['Operations','Dispatch Console'],
+  inward: ['Operations', 'Inward Container Entry'],
   publicbookings: ['Operations', 'Public Bookings'],
   depops: ['Operations', 'DepOps'],
   maintenance:['Operations','Maintenance Log'], fuel:['Operations','Fuel Log'],
@@ -1109,6 +1104,7 @@ function renderSection(sec) {
 const sectionRenderers = {
   dashboard:renderDashboard, trucks:()=>renderTrucks('all'), drivers:()=>renderDrivers('all'),
   trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
+  inward: renderInward,
   fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
   workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
@@ -1206,7 +1202,7 @@ function showTruckDetail(id) {
   if (!t) return;
   const trips = state.db.trips.filter(tr=>tr.truckId===id).slice(-5);
   const maint = state.db.maintenance.filter(m=>m.truckId===id);
-  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">GPS Source — Wialon Unit ID</label><div style="font-size:9.5px;color:var(--text-3);margin:4px 0 6px;line-height:1.5">Leave blank to track this truck via the driver's phone. Set a Wialon avl_unit ID to switch this truck to hardware GPS — the phone will automatically stand down while that feed is live and take back over if it goes quiet.</div><div style="display:flex;gap:6px"><input id="td_wialon_${id}" value="${esc(t.wialonUnitId||'')}" placeholder="e.g. 24681012" style="flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"/><button class="tbl-btn" onclick="updateTruckWialonId('${id}')">Save</button></div></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
+  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Wialon GPS Unit</div><div style="font-size:9.5px;color:var(--text-3);margin-bottom:8px;line-height:1.5">If this truck has a dedicated Wialon AVL tracker fitted, enter its Wialon unit ID (from core/search_items) to source its live position from Wialon instead of the driver's phone.</div><div style="display:flex;gap:6px"><input id="tw_wialonId" value="${esc(t.wialonUnitId||'')}" placeholder="Wialon unit ID" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:11.5px"/><button class="tbl-btn" onclick="saveTruckWialonId('${id}')">Save</button></div></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
 }
 
 function quickSetTruckStatus(id, status) {
@@ -1222,23 +1218,8 @@ function quickSetTruckStatus(id, status) {
   toast(`${t.reg} status set to ${status}`, 'success');
 }
 
-function updateTruckWialonId(id) {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
-  const t = state.db.trucks.find(t=>t.id===id);
-  if (!t) return;
-  const input = document.getElementById(`td_wialon_${id}`);
-  const val = sanitize((input?.value || '').trim());
-  const prev = t.wialonUnitId || '';
-  if (val === prev) { toast('No change', 'info', 1200); return; }
-  t.wialonUnitId = val;
-  scheduleSave();
-  addAudit(state.profile.username, 'Wialon Unit Assigned', val ? `${t.reg} → Wialon unit ${val}` : `${t.reg} → GPS unit unassigned (back to driver phone)`);
-  toast(val ? `${t.reg} now tracked via Wialon unit ${val}` : `${t.reg} reverted to driver-phone tracking`, 'success');
-  if (state.currentSection === 'livetracking') { renderTracking(); }
-}
-
 function showAddTruckModal() {
-  openModal('Add New Truck', `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="nt_reg" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="nt_make" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="nt_type"><option>Prime Mover</option><option>Flatbed</option><option>Tipper</option><option>Tanker</option><option>Lowbed</option></select></div><div class="fg"><label>Year</label><input id="nt_year" type="number" placeholder="${new Date().getFullYear()}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="nt_colour" placeholder="White"/></div><div class="fg"><label>Fuel Level %</label><input id="nt_fuel" type="number" placeholder="100" min="0" max="100"/></div></div><div class="fg"><label>Odometer (km)</label><input id="nt_odo" type="number" placeholder="0"/></div><div class="fg"><label>Wialon Unit ID <span style="color:var(--text-3);font-weight:400">(optional — leave blank to track via driver phone)</span></label><input id="nt_wialon" placeholder="e.g. 24681012"/></div><div class="fg"><label>Notes</label><textarea id="nt_notes" rows="2" placeholder="Any notes…"></textarea></div><button class="submit-btn" onclick="saveTruck()">Add Truck →</button>`);
+  openModal('Add New Truck', `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="nt_reg" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="nt_make" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="nt_type"><option>Prime Mover</option><option>Flatbed</option><option>Tipper</option><option>Tanker</option><option>Lowbed</option></select></div><div class="fg"><label>Year</label><input id="nt_year" type="number" placeholder="${new Date().getFullYear()}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="nt_colour" placeholder="White"/></div><div class="fg"><label>Fuel Level %</label><input id="nt_fuel" type="number" placeholder="100" min="0" max="100"/></div></div><div class="fg"><label>Odometer (km)</label><input id="nt_odo" type="number" placeholder="0"/></div><div class="fg"><label>Wialon Unit ID (optional)</label><input id="nt_wialon" placeholder="Leave blank if tracked via driver phone"/></div><div class="fg"><label>Notes</label><textarea id="nt_notes" rows="2" placeholder="Any notes…"></textarea></div><button class="submit-btn" onclick="saveTruck()">Add Truck →</button>`);
 }
 
 function saveTruck() {
@@ -1263,7 +1244,7 @@ function saveTruck() {
     img:'',
     licencePlate: reg,
     vin: '',
-    wialonUnitId: sanitize(document.getElementById('nt_wialon')?.value.trim() || ''),
+    wialonUnitId: document.getElementById('nt_wialon').value.trim(),
   };
   state.db.trucks.push(t);
   scheduleSave();
@@ -1272,6 +1253,7 @@ function saveTruck() {
   closeModal();
   renderTrucks('all');
   toast(`${reg} added to fleet`, 'success');
+  if (t.wialonUnitId && state.db.settings?.wialonEnabled) startWialonPolling();
 }
 
 
@@ -1644,7 +1626,12 @@ let _lastZoneVal = null;
 let _lastZoneFetch = 0;
 
 function driverShouldTrack(driver) {
-  return !!(driver && driver.truckId && driver.status !== 'off_duty' && driver.status !== 'suspended');
+  if (!driver || !driver.truckId || driver.status === 'off_duty' || driver.status === 'suspended') return false;
+  // A truck fitted with its own Wialon GPS tracker is tracked server-side —
+  // don't also drain the driver's phone battery pinging duplicate positions.
+  const truck = state.db?.trucks?.find(t => t.id === driver.truckId);
+  if (truck?.wialonUnitId) return false;
+  return true;
 }
 
 
@@ -1708,16 +1695,9 @@ async function stopDriverTracking(clearRemote) {
   if (clearRemote) {
     const driver = myDriverRecord();
     if (driver?.truckId) {
-      // Only clear a phone-sourced fix. If this truck has hardware GPS
-      // reporting via Wialon, that position is independent of driver duty
-      // status and shouldn't disappear just because the driver went off
-      // duty on their phone.
-      const existing = state.db.trackingPositions[driver.truckId];
-      if (!existing || existing.source !== 'wialon') {
-        const { error } = await supabase.from('tracking_positions').delete().eq('truck_id', driver.truckId);
-        if (error) console.error('tracking_positions clear failed:', error.message);
-        delete state.db.trackingPositions[driver.truckId];
-      }
+      const { error } = await supabase.from('tracking_positions').delete().eq('truck_id', driver.truckId);
+      if (error) console.error('tracking_positions clear failed:', error.message);
+      delete state.db.trackingPositions[driver.truckId];
       if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
     }
   }
@@ -1730,16 +1710,6 @@ function headingToCompass(deg) {
   return dirs[Math.round(deg / 45) % 8];
 }
 
-// A truck fitted with a Wialon GPS unit is polled server-side every minute
-// (see the wialon-sync edge function + cron job) independent of whether
-// anyone has this page open. If that feed is currently fresh, the phone
-// doesn't need to fight it for the single tracking_positions row — but if
-// the hardware unit ever goes quiet (power loss, out of coverage, unit
-// removed), the phone automatically takes back over. Trucks with no Wialon
-// unit assigned are unaffected and always tracked by phone, exactly as
-// before.
-const WIALON_STALE_MS = 3 * 60 * 1000; // 3 missed cron cycles
-
 async function onDriverPosition(pos) {
   const now = Date.now();
   if (now - state.lastGeoSend < GEO_PING_INTERVAL_MS) return; // throttle
@@ -1747,19 +1717,6 @@ async function onDriverPosition(pos) {
 
   const driver = myDriverRecord();
   if (!driverShouldTrack(driver)) { stopDriverTracking(); return; }
-
-  const truck = driver.truckId ? state.db.trucks.find(t => t.id === driver.truckId) : null;
-  if (truck?.wialonUnitId) {
-    const existing = state.db.trackingPositions[driver.truckId];
-    const wialonFresh = existing?.source === 'wialon' && existing.lastUpdate
-      && (now - new Date(existing.lastUpdate).getTime() < WIALON_STALE_MS);
-    if (wialonFresh) {
-      // Hardware GPS is reporting fine — leave it as the source of truth.
-      state.trackingActive = true;
-      renderDutyBar();
-      return;
-    }
-  }
 
   const { latitude, longitude, speed, heading } = pos.coords;
   const kph = (speed != null && speed >= 0 && !isNaN(speed)) ? Math.round(speed * 3.6) : 0;
@@ -1814,6 +1771,188 @@ function reverseGeocodeZone(lat, lng) {
   });
   _nominatimQueue = run;
   return run;
+}
+
+
+/* ──────────────────────────────────────────────────────────────────
+   § WIALON GPS INTEGRATION
+   Trucks fitted with a dedicated Wialon AVL unit (trucks.wialon_unit_id
+   set) get their live position pulled from the Wialon Remote API on a
+   timer instead of relying on the driver's phone. Configured under
+   Settings → GPS Tracking (Wialon): enable toggle, host, API token —
+   all stored in app_settings (wialon_enabled / wialon_host / wialon_token).
+   Positions are written into the same tracking_positions table the
+   driver-phone flow uses, tagged source:'wialon', so the live map,
+   tracking board and everything downstream works unchanged.
+────────────────────────────────────────────────────────────────── */
+const WIALON_POLL_INTERVAL_MS = 25000;
+
+let _wialonSid = null;
+let _wialonPollTimer = null;
+let _wialonLastZoneFetch = {};
+
+function wialonConfig() {
+  const s = state.db?.settings || {};
+  return {
+    enabled: !!s.wialonEnabled,
+    token: (s.wialonToken || '').trim(),
+    host: (s.wialonHost || 'https://hst-api.wialon.com').trim().replace(/\/+$/, ''),
+  };
+}
+
+function wialonTrackedTrucks() {
+  return (state.db?.trucks || []).filter(t => t.wialonUnitId);
+}
+
+async function wialonApi(host, svc, params, sid) {
+  const url = `${host}/wialon/ajax.html?svc=${encodeURIComponent(svc)}&params=${encodeURIComponent(JSON.stringify(params))}${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Wialon HTTP ${res.status}`);
+  const data = await res.json();
+  if (data && typeof data.error === 'number' && data.error !== 0) {
+    const err = new Error(`Wialon error ${data.error}`);
+    err.wialonCode = data.error;
+    throw err;
+  }
+  return data;
+}
+
+// token/login — exchanges the long-lived API token for a session id (sid/eid).
+async function wialonLogin(force) {
+  const { token, host } = wialonConfig();
+  if (!token) throw new Error('No Wialon API token configured');
+  if (_wialonSid && !force) return _wialonSid;
+  const data = await wialonApi(host, 'token/login', { token });
+  if (!data?.eid) throw new Error('Wialon login did not return a session id');
+  _wialonSid = data.eid;
+  return _wialonSid;
+}
+
+// Pulls base info + last known position (flags 1 + 1024 = 1025) for every
+// avl_unit visible to this token in one request, then the caller filters
+// down to the units mapped to our trucks.
+async function wialonFetchAllUnits() {
+  const { host } = wialonConfig();
+  const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+  let sid = await wialonLogin();
+  try {
+    return await wialonApi(host, 'core/search_items', { spec, force: 1, flags: 1025, from: 0, to: 0 }, sid);
+  } catch (e) {
+    if (e.wialonCode === 1 || e.wialonCode === 4) { // 1=not logged in, 4=invalid session — retry once with a fresh login
+      sid = await wialonLogin(true);
+      return await wialonApi(host, 'core/search_items', { spec, force: 1, flags: 1025, from: 0, to: 0 }, sid);
+    }
+    throw e;
+  }
+}
+
+// One polling cycle — fetch every unit, match against trucks.wialon_unit_id,
+// and upsert into tracking_positions the same way a driver-phone ping does.
+async function pollWialonPositions() {
+  const cfg = wialonConfig();
+  if (!cfg.enabled || !cfg.token) return;
+
+  const trackedTrucks = wialonTrackedTrucks();
+  if (!trackedTrucks.length) return;
+
+  let result;
+  try {
+    result = await wialonFetchAllUnits();
+  } catch (e) {
+    console.warn('Wialon poll failed:', e.message);
+    return;
+  }
+
+  const byId = {};
+  (result?.items || []).forEach(u => { byId[String(u.id)] = u; });
+
+  let changed = false;
+  for (const truck of trackedTrucks) {
+    const unit = byId[String(truck.wialonUnitId)];
+    const p = unit?.pos;
+    if (!p) continue; // unit not visible to this token, or no fix reported yet
+
+    const speed = Math.max(0, Math.round(p.s || 0));
+    const heading = headingToCompass(p.c);
+
+    let zone = state.db.trackingPositions?.[truck.id]?.zone;
+    const zoneStale = !zone || (Date.now() - (_wialonLastZoneFetch[truck.id] || 0) > ZONE_LOOKUP_INTERVAL_MS);
+    if (zoneStale) {
+      try { zone = await reverseGeocodeZone(p.y, p.x); } catch { /* keep previous zone on failure */ }
+      _wialonLastZoneFetch[truck.id] = Date.now();
+    }
+
+    const lastUpdate = p.t ? new Date(p.t * 1000).toISOString() : new Date().toISOString();
+    const row = { truck_id: truck.id, lat: p.y, lng: p.x, speed, heading, zone, last_update: lastUpdate, source: 'wialon' };
+    const { error } = await supabase.from('tracking_positions').upsert(row, { onConflict: 'truck_id' });
+    if (error) { console.error('Wialon tracking write failed:', truck.reg, error.message); continue; }
+    state.db.trackingPositions[truck.id] = { lat: p.y, lng: p.x, speed, heading, zone, lastUpdate, source: 'wialon' };
+    changed = true;
+  }
+
+  if (changed && state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
+}
+
+function startWialonPolling() {
+  const cfg = wialonConfig();
+  if (!cfg.enabled || !cfg.token || !wialonTrackedTrucks().length) { stopWialonPolling(); return; }
+  if (_wialonPollTimer) return;
+  pollWialonPositions();
+  _wialonPollTimer = setInterval(pollWialonPositions, WIALON_POLL_INTERVAL_MS);
+}
+
+function stopWialonPolling() {
+  if (_wialonPollTimer) { clearInterval(_wialonPollTimer); _wialonPollTimer = null; }
+  _wialonSid = null;
+}
+
+// "Save & Test" button in Settings — logs in with whatever is currently
+// typed in the form (without needing to save first) so admins get instant
+// feedback on a bad token/host before it's persisted.
+async function testWialonConnection() {
+  const hostEl  = document.getElementById('st_wialonHost');
+  const tokenEl = document.getElementById('st_wialonToken');
+  const host  = (hostEl?.value || 'https://hst-api.wialon.com').trim().replace(/\/+$/, '');
+  const token = (tokenEl?.value || '').trim();
+  if (!token) { toast('Enter a Wialon API token first', 'error'); return; }
+  toast('Testing Wialon connection…', 'info', 1500);
+  try {
+    const data = await wialonApi(host, 'token/login', { token });
+    if (!data?.eid) throw new Error('No session returned');
+    _wialonSid = data.eid;
+    toast(`Connected to Wialon${data.user?.nm ? ' as ' + data.user.nm : ''} ✓`, 'success');
+  } catch (e) {
+    toast(`Wialon connection failed — ${e.message}`, 'error');
+  }
+}
+
+function saveWialonSettings() {
+  const enabled = !!document.getElementById('st_wialonEnabled')?.checked;
+  const host    = (document.getElementById('st_wialonHost')?.value || '').trim() || 'https://hst-api.wialon.com';
+  const token   = (document.getElementById('st_wialonToken')?.value || '').trim();
+
+  state.db.settings = state.db.settings || {};
+  state.db.settings.wialonEnabled = enabled;
+  state.db.settings.wialonHost = host;
+  state.db.settings.wialonToken = token;
+  scheduleSave();
+  addAudit(state.profile.username, 'Wialon Settings', `GPS integration ${enabled ? 'enabled' : 'disabled'}`);
+  toast('Wialon settings saved', 'success');
+  renderSettings();
+  if (enabled) startWialonPolling(); else stopWialonPolling();
+}
+
+// Inline "Wialon Unit ID" editor on the truck detail modal (admin only).
+function saveTruckWialonId(id) {
+  const t = state.db.trucks.find(t => t.id === id);
+  if (!t) return;
+  const val = (document.getElementById('tw_wialonId')?.value || '').trim();
+  t.wialonUnitId = val;
+  scheduleSave();
+  addAudit(state.profile.username, 'Wialon Unit Linked', `${t.reg} → ${val || '(cleared)'}`);
+  toast(val ? `${t.reg} linked to Wialon unit ${val}` : `${t.reg} unlinked from Wialon`, 'success');
+  showTruckDetail(id);
+  if (state.db.settings?.wialonEnabled) startWialonPolling();
 }
 
 
@@ -2531,6 +2670,285 @@ function downloadBulkTemplate() {
   const a   = document.createElement('a');
   a.href     = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   a.download = 'gargo_bulk_template.csv';
+  a.click();
+}
+
+
+/* ──────────────────────────────────────────────────────────────────
+   § INWARD CONTAINER ENTRY
+   A dedicated route for logging containers coming into the depot/yard
+   (Gate-In / Depot-In), laid out the same way as the Dispatch Console —
+   a single-entry form plus a bulk-upload tab. Entries are written into
+   the same `interchange` table the Record Interchange modal and DepOps
+   already use, so they show up everywhere interchange records do.
+────────────────────────────────────────────────────────────────── */
+let _inwardImg = '';
+
+function renderInward() {
+  populateInwardSelects();
+  renderInwardRecent();
+  clearInwardForm(true);
+}
+
+function populateInwardSelects() {
+  fillSelect('iw_truck',  state.db.trucks,  t=>[t.id, t.reg]);
+  fillSelect('iw_driver', state.db.drivers, d=>[d.id, d.name]);
+  fillSelect('iw_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
+}
+
+function renderInwardRecent() {
+  const el   = document.getElementById('inwardRecentList');
+  const meta = document.getElementById('inwardRecentMeta');
+  if (!el) return;
+  const items = state.db.interchange
+    .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
+    .sort((a,b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 8);
+  if (meta) meta.textContent = `${items.length} shown`;
+  el.innerHTML = items.map(ic => `<div class="dispatch-queue-item" onclick="showSection('interchange', document.querySelector('[data-section=&quot;interchange&quot;]'))">
+      <div class="dqi-ref">${esc(ic.container)}</div>
+      <div class="dqi-route">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.type)} · ${esc(lineName(ic.line))}</div>
+        <div style="font-size:10px;color:var(--text-3)">${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')} · ${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</div>
+      </div>
+      ${sbadge(ic.status)}
+      <div class="dqi-time">${timeAgo(ic.date)}</div>
+    </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
+}
+
+function switchInwardTab(tab, btn) {
+  document.getElementById('inwardTabSingle').style.display = tab==='single' ? 'block' : 'none';
+  document.getElementById('inwardTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
+  document.querySelectorAll('#sec-inward .filter-row .filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function createInwardEntry() {
+  const cont = document.getElementById('iw_container').value.trim().toUpperCase();
+  if (!cont) { toast('Container number required', 'error'); return; }
+  const contIssue = containerFormatIssue(cont);
+  if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
+
+  const type = document.getElementById('iw_type').value;
+  const dupIc = state.db.interchange.find(i => (i.container||'').toUpperCase()===cont && i.type===type && new Date(i.date).toDateString()===new Date().toDateString());
+  if (dupIc) { toast(`${cont} already has a ${type} record logged today`, 'warning'); return; }
+
+  const dateInput = document.getElementById('iw_date').value;
+  const dateVal = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
+
+  state.db.interchange.push({
+    id: uid('IC'), container: cont, type,
+    ctype: document.getElementById('iw_ctype').value,
+    line: document.getElementById('iw_line').value,
+    condition: document.getElementById('iw_cond').value,
+    truck:  document.getElementById('iw_truck').value,
+    driver: document.getElementById('iw_driver').value,
+    eirNumber: sanitize(document.getElementById('iw_eir').value.trim()),
+    blNumber: sanitize(document.getElementById('iw_bl').value.trim()),
+    vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
+    voyage: sanitize(document.getElementById('iw_voyage').value.trim()),
+    repairs: [], repairTotal: 0,
+    notes: sanitize(document.getElementById('iw_notes').value.trim()),
+    date: dateVal, status: 'pending', img: _inwardImg || '',
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})`);
+  refreshContainerHistory();
+  toast(`Inward entry recorded — ${cont}`, 'success');
+  clearInwardForm();
+  renderInterchange('all');
+  renderInwardRecent();
+}
+
+function clearInwardForm(skipRepopulate) {
+  ['iw_container','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
+  const typeEl = document.getElementById('iw_type'); if (typeEl) typeEl.value = 'Gate-In';
+  const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
+  _inwardImg = '';
+  const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
+  renderInwardImgPreview();
+  if (!skipRepopulate) populateInwardSelects();
+}
+
+function previewInwardImg(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('Not an image file', 'error'); return; }
+  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => { _inwardImg = ev.target.result; renderInwardImgPreview(); };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function renderInwardImgPreview() {
+  const wrap  = document.getElementById('inwardImgPreview');
+  const label = document.getElementById('inwardImgLabel');
+  if (!wrap) return;
+  if (!_inwardImg) { wrap.style.display = 'none'; wrap.innerHTML=''; if (label) label.textContent = 'Upload container photo'; return; }
+  wrap.style.display = 'block';
+  wrap.innerHTML = `<div class="container-img-thumb"><img src="${_inwardImg}" /><button type="button" class="container-img-remove" onclick="clearInwardImg()" title="Remove">✕</button></div>`;
+  if (label) label.textContent = '1 photo attached';
+}
+
+function clearInwardImg() {
+  _inwardImg = '';
+  const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
+  renderInwardImgPreview();
+}
+
+/* ── Bulk upload: CSV, JSON, and XLSX/XLS (via SheetJS) ── */
+function handleInwardBulkDrop(e) {
+  e.preventDefault();
+  document.getElementById('inwardBulkDrop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processInwardBulkFile(file);
+}
+
+function handleInwardBulkFile(e) {
+  const file = e.target.files[0];
+  if (file) processInwardBulkFile(file);
+}
+
+// Normalizes any header spelling ("Container No.", "B/L Number", "Shipping Line")
+// down to a plain lowercase key (containerno, blnumber, shippingline) so the
+// matcher below doesn't care how the source file's columns were labelled.
+function normalizeRowKeys(rows) {
+  return rows.map(r => {
+    const norm = {};
+    Object.entries(r || {}).forEach(([k, v]) => {
+      const key = String(k).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (key) norm[key] = typeof v === 'string' ? v.trim() : (v == null ? '' : v);
+    });
+    return norm;
+  });
+}
+
+function processInwardBulkFile(file) {
+  if (file.size > 5*1024*1024) { toast('File too large. Max 5MB.', 'error'); return; }
+  const name = file.name.toLowerCase();
+  const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let rows = [];
+      if (isExcel) {
+        if (!window.XLSX) { toast('Spreadsheet reader still loading — try again in a moment', 'error'); return; }
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      } else if (name.endsWith('.json')) {
+        rows = JSON.parse(e.target.result);
+      } else {
+        const lines = e.target.result.split('\n').filter(l=>l.trim());
+        const headers = lines[0].split(',').map(h=>h.trim());
+        rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
+      }
+      rows = normalizeRowKeys(rows);
+      showInwardBulkPreview(rows);
+    } catch(err) { toast('Could not parse file — check format', 'error'); }
+  };
+  if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+}
+
+function showInwardBulkPreview(rows) {
+  if (!rows.length) { toast('No rows found in file', 'error'); return; }
+  const keys = Object.keys(rows[0]);
+  const tbl  = document.getElementById('inwardBulkPreviewTable');
+  tbl.querySelector('thead').innerHTML = `<tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr>`;
+  tbl.querySelector('tbody').innerHTML = rows.slice(0,10).map(r=>`<tr>${keys.map(k=>`<td>${esc(r[k])}</td>`).join('')}</tr>`).join('');
+  document.getElementById('inwardBulkRowCount').textContent = `${rows.length} rows`;
+  document.getElementById('inwardBulkPreview').style.display = 'block';
+  document.getElementById('inwardBulkPreview').dataset.rows = JSON.stringify(rows);
+}
+
+function pickField(r, keys) {
+  for (const k of keys) { if (r[k] != null && String(r[k]).trim() !== '') return String(r[k]).trim(); }
+  return '';
+}
+
+function processBulkInward() {
+  const rows = JSON.parse(document.getElementById('inwardBulkPreview').dataset.rows || '[]');
+  const VALID_TYPES = { 'gatein':'Gate-In', 'gate-in':'Gate-In', 'depotin':'Depot-In', 'depot-in':'Depot-In' };
+  const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair'];
+
+  let created = 0;
+  const skipped = [];
+  const seenInBatch = new Set();
+
+  rows.forEach((r, idx) => {
+    const contRaw = pickField(r, ['container','containerno','containernumber']);
+    const rowLabel = contRaw || `row ${idx+1}`;
+    if (!contRaw) { skipped.push(`${rowLabel}: missing container number`); return; }
+    const cont = contRaw.toUpperCase();
+    const contIssue = containerFormatIssue(cont);
+    if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
+
+    const typeRaw = pickField(r, ['type','movement']).toLowerCase().replace(/[^a-z]/g,'');
+    const type = VALID_TYPES[typeRaw] || 'Gate-In';
+
+    const dupKey = `${cont}::${type}`;
+    if (seenInBatch.has(dupKey)) { skipped.push(`${cont}: duplicate within this file`); return; }
+    const dupIc = state.db.interchange.find(i => (i.container||'').toUpperCase()===cont && i.type===type && new Date(i.date).toDateString()===new Date().toDateString());
+    if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged today`); return; }
+    seenInBatch.add(dupKey);
+
+    const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg']);
+    const driverVal = pickField(r, ['driver','drivername']);
+    const lineVal   = pickField(r, ['line','shippingline','linecode']);
+
+    const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
+    const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase() || d.id===driverVal) : null;
+    const line   = lineVal   ? state.db.shippingLines.find(l => l.code.toLowerCase()===lineVal.toLowerCase() || l.name.toLowerCase()===lineVal.toLowerCase() || l.id===lineVal) : null;
+
+    const ctypeRaw = pickField(r, ['ctype','containertype','size']);
+    const ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeRaw.toLowerCase()) || '20ft Dry';
+
+    const condRaw = pickField(r, ['condition']);
+    const condition = VALID_COND.find(c => c.toLowerCase() === condRaw.toLowerCase()) || 'Good';
+
+    let dateVal = new Date().toISOString();
+    const dateRaw = pickField(r, ['date','entrydate']);
+    if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
+
+    state.db.interchange.push({
+      id: uid('IC'), container: cont, type, ctype,
+      line: line ? line.id : '',
+      condition,
+      truck: truck ? truck.id : '', driver: driver ? driver.id : '',
+      truckRegText: truck ? '' : sanitize(truckVal),
+      driverNameText: driver ? '' : sanitize(driverVal),
+      eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno'])),
+      blNumber:  sanitize(pickField(r, ['bl','blnumber','blno'])),
+      vessel:    sanitize(pickField(r, ['vessel'])),
+      voyage:    sanitize(pickField(r, ['voyage'])),
+      repairs: [], repairTotal: 0,
+      notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
+      date: dateVal, status: 'pending', img: '',
+    });
+    created++;
+  });
+
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Bulk Inward Entry', `${created} entries imported${skipped.length?`, ${skipped.length} skipped`:''}`);
+  if (skipped.length) {
+    toast(`${created} created, ${skipped.length} skipped — see details`, skipped.length && !created ? 'error' : 'warning', 6000);
+    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Skipped Rows (${skipped.length})</div><div style="max-height:240px;overflow-y:auto">${skipped.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
+  } else {
+    toast(`${created} inward entries created`, 'success');
+  }
+  refreshContainerHistory();
+  renderInterchange('all');
+  renderInwardRecent();
+  document.getElementById('inwardBulkPreview').style.display = 'none';
+}
+
+function downloadInwardBulkTemplate() {
+  const csv = 'container,type,ctype,line,truck,driver,eir,bl,vessel,voyage,condition,date,notes\nMSCU1234566,Gate-In,40ft Dry,MSC,KDX 655V,James Otieno,EIR-00123,BL-4471,MSC VESSEL,VA-001,Good,,Delivered in good condition';
+  const a = document.createElement('a');
+  a.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+  a.download = 'gargo_inward_bulk_template.csv';
   a.click();
 }
 
@@ -4061,22 +4479,12 @@ function initTrackingSection() {
 // since there's no driver phone to report a position for them anyway.
 const TRACKABLE_TRUCK_STATUSES = ['available', 'on_trip', 'breakdown'];
 
-function trackingSourceLabel(p) {
-  if (!p) return '';
-  return p.source === 'wialon' ? '📡 Live — Wialon GPS' : '📱 Live — Driver Phone';
-}
-
 function renderTracking() {
   const pos = state.db.trackingPositions || {};
-  // Trucks worth showing: normal on-the-road statuses, PLUS any truck
-  // fitted with a Wialon unit — hardware GPS reports on its own schedule
-  // regardless of duty status, so it's still useful to see e.g. a truck
-  // sitting in the yard or flagged for maintenance.
-  const activeTrucks = state.db.trucks.filter(t => TRACKABLE_TRUCK_STATUSES.includes(t.status) || t.wialonUnitId);
+  const activeTrucks = state.db.trucks.filter(t => TRACKABLE_TRUCK_STATUSES.includes(t.status));
   const liveCount = activeTrucks.filter(t => pos[t.id]).length;
-  const wialonCount = activeTrucks.filter(t => pos[t.id]?.source === 'wialon').length;
   document.getElementById('trackingMeta').textContent =
-    `${activeTrucks.length} vehicle${activeTrucks.length===1?'':'s'} tracked · ${liveCount} reporting live${wialonCount ? ` (${wialonCount} via Wialon GPS)` : ''}`;
+    `${activeTrucks.length} vehicle${activeTrucks.length===1?'':'s'} tracked · ${liveCount} reporting live`;
 
   const vehicles = document.getElementById('trackingVehicles');
   if (vehicles) {
@@ -4087,12 +4495,10 @@ function renderTracking() {
       const p = pos[t.id];
       const dr = state.db.drivers.find(d=>d.truckId===t.id);
       const hasFix = !!p;
-      const noSignalMsg = t.wialonUnitId
-        ? 'No GPS fix yet — check the Wialon unit is powered and reporting'
-        : 'No phone signal — driver may be off duty or offline';
+      const srcLabel = p?.source === 'wialon' ? 'Wialon GPS' : 'Driver Phone';
       const srcTag = hasFix
-        ? `<span style="color:var(--green,#3ecf6e)">● ${trackingSourceLabel(p)} · ${timeAgo(p.lastUpdate)}</span>`
-        : `<span style="color:var(--text-3)">${noSignalMsg}</span>`;
+        ? `<span style="color:var(--green,#3ecf6e)">● Live — ${srcLabel} · ${timeAgo(p.lastUpdate)}</span>`
+        : `<span style="color:var(--text-3)">${t.wialonUnitId ? 'No Wialon signal — unit may be offline' : 'No phone signal — driver may be off duty or offline'}</span>`;
       return `<div class="tv-item" ${hasFix ? `onclick="focusTruckOnMap('${t.id}')"` : ''}>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span class="tv-reg">${esc(t.reg)}</span>${sbadge(t.status)}</div>
         <div style="margin-top:2px">${dr ? esc(dr.name) : 'Unassigned'}</div>
@@ -4108,8 +4514,7 @@ function renderTracking() {
     const liveIds = Object.keys(pos);
     movements.innerHTML = liveIds.map(id=>{
       const p=pos[id]; const t=state.db.trucks.find(t=>t.id===id);
-      const srcIcon = p.source === 'wialon' ? '📡' : '📱';
-      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${srcIcon} ${t?esc(t.reg):id}</div><div style="font-size:11px;color:var(--text-2)">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
+      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${t?esc(t.reg):id}</div><div style="font-size:11px;color:var(--text-2)">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
     }).join('') || '<div style="padding:12px;color:var(--text-3)">No active movements</div>';
   }
 
@@ -4258,6 +4663,7 @@ async function refreshFromServer() {
       buildBadges();
       buildAlerts();
       renderSection(state.currentSection);
+      startWialonPolling();
     }
   } catch (e) {
     console.warn('Live sync refresh failed:', e);
@@ -4310,15 +4716,10 @@ function updateTrackingMarkers() {
     const truck = state.db.trucks.find(t => t.id === truckId);
     const label = truck?.reg || truckId;
     const isMoving = p.speed > 0;
-    const isWialon = p.source === 'wialon';
     const dotColor = isMoving ? '#3ecf6e' : '#8b8b8b';
-    // Wialon-sourced markers get a small gold ring so dispatch can tell
-    // hardware-GPS trucks apart from phone-tracked ones at a glance.
-    const ringStyle = isWialon ? 'box-shadow:0 0 0 1px rgba(255,255,255,.15),0 0 0 3px rgba(201,162,39,.55)' : 'box-shadow:0 0 0 1px rgba(255,255,255,.15)';
-    const srcIcon = isWialon ? '📡' : '📱';
     const icon = L.divIcon({
       className: 'truck-marker',
-      html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;${ringStyle}"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${srcIcon} ${label}</div></div>`,
+      html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;box-shadow:0 0 0 1px rgba(255,255,255,.15)"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${label}</div></div>`,
       iconSize: [60, 30],
       iconAnchor: [7, 7],
     });
@@ -4329,7 +4730,7 @@ function updateTrackingMarkers() {
       marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone||''}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${cur.source==='wialon'?'📡 Wialon GPS':'📱 Driver phone'} · ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${cur.source==='wialon'?'Wialon GPS':'Driver Phone'} · ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
@@ -4436,23 +4837,48 @@ function renderSettings() {
   const bk = state.db.settings?.backupDate;
   document.getElementById('lastBackup').textContent = bk ? fmtDate(bk) : 'Never';
 
-  renderGpsStatus();
+  const gpsStatus = document.getElementById('gpsStatusVal');
+  if (gpsStatus) {
+    const wCfg = wialonConfig();
+    const wCount = wialonTrackedTrucks().length;
+    if (wCfg.enabled && wCfg.token && wCount) {
+      gpsStatus.textContent = `Live · Driver GPS + Wialon (${wCount} unit${wCount===1?'':'s'})`;
+      gpsStatus.style.color = 'var(--green)';
+    } else if (wCfg.enabled && wCfg.token) {
+      gpsStatus.textContent = 'Live · Driver GPS (Wialon enabled, no units linked)';
+      gpsStatus.style.color = 'var(--amber, #d99a2b)';
+    } else {
+      gpsStatus.textContent = 'Live · Driver GPS';
+      gpsStatus.style.color = 'var(--green)';
+    }
+  }
+
   renderInvoiceConfigForm();
-  renderWialonConfigForm();
+  renderWialonSettingsForm();
 }
 
-function renderGpsStatus() {
-  const gpsStatus = document.getElementById('gpsStatusVal');
-  if (!gpsStatus) return;
+function renderWialonSettingsForm() {
+  const el = document.getElementById('wialonConfigForm');
+  if (!el) return;
   const s = state.db.settings || {};
-  const equippedCount = state.db.trucks.filter(t => t.wialonUnitId).length;
-  if (s.wialonEnabled && s.wialonToken) {
-    gpsStatus.textContent = `Live · Driver Phone + Wialon GPS (${equippedCount} unit${equippedCount===1?'':'s'} mapped)`;
-    gpsStatus.style.color = 'var(--green)';
-  } else {
-    gpsStatus.textContent = 'Live · Driver Phone only';
-    gpsStatus.style.color = 'var(--green)';
-  }
+  const trucksWithUnit = wialonTrackedTrucks();
+  el.innerHTML = `
+    <label style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-2);cursor:pointer">
+      <input type="checkbox" id="st_wialonEnabled" ${s.wialonEnabled ? 'checked' : ''} style="accent-color:var(--gold)"/> Enable Wialon GPS integration
+    </label>
+    <div class="fg" style="margin:0"><label>Wialon Host</label><input id="st_wialonHost" value="${esc(s.wialonHost || 'https://hst-api.wialon.com')}" placeholder="https://hst-api.wialon.com"/></div>
+    <div class="fg" style="margin:0"><label>API Token</label><input id="st_wialonToken" type="password" value="${esc(s.wialonToken || '')}" placeholder="Wialon Remote API token"/></div>
+    <div style="font-size:9.5px;color:var(--text-3);line-height:1.5">
+      ${trucksWithUnit.length
+        ? `${trucksWithUnit.length} truck${trucksWithUnit.length===1?'':'s'} linked to a Wialon unit ID — set per-truck under Fleet → truck detail.`
+        : `No trucks are linked to a Wialon unit yet — open a truck's detail card under Fleet and set its Wialon Unit ID.`}
+      Positions refresh every ${WIALON_POLL_INTERVAL_MS/1000}s and appear on the live tracking map tagged "Wialon GPS".
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="action-btn ghost" style="flex:1" onclick="testWialonConnection()">Test Connection</button>
+      <button class="submit-btn" style="flex:1;margin-top:0" onclick="saveWialonSettings()">Save →</button>
+    </div>
+  `;
 }
 
 /* Invoicing & billing configuration — editable by any admin, no redeploy needed. */
@@ -4504,80 +4930,6 @@ function saveInvoiceConfig() {
   scheduleSave();
   addAudit(state.profile.username, 'Invoice Settings', 'Updated company & billing details');
   toast('Invoicing details saved', 'success');
-}
-
-/* Wialon GPS integration — server-side sync (edge function + cron, runs
-   every minute) fetches positions for any truck with a Wialon Unit ID
-   assigned and writes them into tracking_positions with source='wialon'.
-   This panel only manages the connection config; the actual sync never
-   touches the browser except when an admin explicitly hits "Sync Now". */
-function wialonSettings() {
-  const s = state.db.settings || {};
-  return {
-    enabled: !!s.wialonEnabled,
-    token: s.wialonToken || '',
-    host: s.wialonHost || 'https://hst-api.wialon.com',
-    lastSync: s.wialonLastSync || null,
-    lastResult: s.wialonLastResult || '',
-  };
-}
-
-function renderWialonConfigForm() {
-  const el = document.getElementById('wialonConfigForm');
-  if (!el) return;
-  const w = wialonSettings();
-  const equipped = state.db.trucks.filter(t => t.wialonUnitId);
-  el.innerHTML = `
-    <div class="fg" style="margin:0"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input id="wc_enabled" type="checkbox" ${w.enabled?'checked':''} style="width:14px;height:14px"/> Enable Wialon GPS sync</label></div>
-    <div class="fg" style="margin:0"><label>Wialon API Token</label><div style="display:flex;gap:6px"><input id="wc_token" type="password" value="${esc(w.token)}" placeholder="Wialon Remote API token"/><button class="tbl-btn" type="button" onclick="togglePwVis('wc_token', this)">👁</button></div></div>
-    <div class="fg" style="margin:0"><label>Wialon Host</label><input id="wc_host" value="${esc(w.host)}" placeholder="https://hst-api.wialon.com"/></div>
-    <div style="font-size:9.5px;color:var(--text-3);line-height:1.5">${equipped.length} truck${equipped.length===1?'':'s'} currently mapped to a Wialon unit (set per-truck from the truck's detail view). Trucks without a Wialon Unit ID keep tracking via the driver's phone automatically — nothing else changes for them.</div>
-    <div style="font-size:9.5px;color:var(--text-3);margin-top:2px">Last sync: <b style="color:var(--text-2)">${w.lastSync ? timeAgo(w.lastSync) : 'Never'}</b>${w.lastResult ? ` · ${esc(w.lastResult)}` : ''}</div>
-    <div id="wialonSyncStatus" style="font-size:9.5px;margin-top:2px"></div>
-  `;
-}
-
-function saveWialonConfig() {
-  const enabled = document.getElementById('wc_enabled').checked;
-  const token = document.getElementById('wc_token').value.trim();
-  const host = document.getElementById('wc_host').value.trim() || 'https://hst-api.wialon.com';
-  if (enabled && !token) { toast('Add a Wialon API token before enabling sync', 'error'); return; }
-  state.db.settings = state.db.settings || {};
-  state.db.settings.wialonEnabled = enabled;
-  state.db.settings.wialonToken = token;
-  state.db.settings.wialonHost = host;
-  scheduleSave();
-  addAudit(state.profile.username, 'GPS Settings', `Wialon sync ${enabled ? 'enabled' : 'disabled'}`);
-  renderGpsStatus();
-  toast('Wialon settings saved', 'success');
-}
-
-async function syncWialonNow() {
-  const statusEl = document.getElementById('wialonSyncStatus');
-  if (statusEl) { statusEl.style.color = 'var(--text-3)'; statusEl.textContent = 'Syncing…'; }
-  try {
-    const { data, error } = await supabase.functions.invoke('wialon-sync');
-    if (error) throw error;
-    if (data?.skipped) {
-      if (statusEl) { statusEl.style.color = 'var(--amber)'; statusEl.textContent = data.reason || 'Sync skipped'; }
-      toast(data.reason || 'Wialon sync skipped — check your settings are saved', 'info');
-      return;
-    }
-    if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
-    const msg = `${data.positionsWritten}/${data.trucksMapped} unit(s) reporting`;
-    if (statusEl) { statusEl.style.color = 'var(--green)'; statusEl.textContent = `✓ ${msg} (${data.unitsFound} total units on Wialon account)`; }
-    state.db.settings = state.db.settings || {};
-    state.db.settings.wialonLastSync = new Date().toISOString();
-    state.db.settings.wialonLastResult = msg;
-    toast(`Wialon sync complete — ${msg}`, 'success');
-    // Pull the freshly-written positions in so the map/list update immediately.
-    await refreshTracking();
-    renderGpsStatus();
-  } catch (e) {
-    console.error('Wialon manual sync failed:', e);
-    if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = `Sync failed — ${e.message || e}`; }
-    toast('Wialon sync failed — check token/host and try again', 'error');
-  }
 }
 
 function exportAllData() {
@@ -4646,8 +4998,7 @@ async function executeClearData() {
     settings: state.db.settings || {
       backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false,
       companyName: 'Gargo Logistics Ltd', invoiceConfig: null,
-      wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com',
-      wialonLastSync: null, wialonLastResult: ''
+      wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com'
     },
     profiles: state.db.profiles || [],
   };

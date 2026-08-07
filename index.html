@@ -38,6 +38,7 @@
 .yard-slot-heavily_damaged{background:#7f1d1d;box-shadow:0 0 0 1px #ef4444 inset}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -231,6 +232,10 @@
                     <button class="nav-item" onclick="showSection('dispatch',this)" data-section="dispatch">
                         <svg class="nav-icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                         Dispatch Console <span class="nav-badge" id="badge-dispatch"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('inward',this)" data-section="inward">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 12h13"/><polyline points="10 5 17 12 10 19"/><path d="M21 5v14"/></svg>
+                        Inward Container Entry <span class="nav-badge" id="badge-inward"></span>
                     </button>
                     <button class="nav-item" onclick="showSection('publicbookings',this)" data-section="publicbookings">
                         <svg class="nav-icon" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
@@ -571,6 +576,107 @@
                                     </div>
                                     <div class="bulk-template-row">
                                         <button class="action-btn ghost" onclick="downloadBulkTemplate()">⬇ Download CSV Template</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="section" id="sec-inward">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Inward Container Entry</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="switchInwardTab('single',this)">Single Entry</button>
+                                <button class="filter-btn" onclick="switchInwardTab('bulk',this)">Bulk Upload</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice" style="margin-bottom:14px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Log containers entering the depot or yard — Gate-In or Depot-In. Entries are recorded as interchange records and appear in Interchange, DepOps and container history immediately.
+                        </div>
+
+                        <div id="inwardTabSingle">
+                            <div class="panel" id="inwardRecentPanel" style="margin-bottom:14px">
+                                <div class="panel-head"><span class="panel-title">Recent Inward Entries</span><span class="panel-meta" id="inwardRecentMeta"></span></div>
+                                <div id="inwardRecentList"></div>
+                            </div>
+                            <div class="dispatch-layout">
+                                <div class="form-card">
+                                    <div class="form-card-head" style="display:flex;justify-content:space-between;align-items:center">
+                                        <span>New Inward Entry</span>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Container No.</label><input id="iw_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
+                                            <div class="fg"><label>Movement</label>
+                                                <select id="iw_type"><option>Gate-In</option><option>Depot-In</option></select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Container Type/Size</label>
+                                                <select id="iw_ctype">
+                                                    <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
+                                                    <option>20ft Reefer</option><option>40ft Reefer</option>
+                                                    <option>Flat Rack</option><option>Open Top</option><option>Tank</option><option>Hazmat</option>
+                                                </select>
+                                            </div>
+                                            <div class="fg"><label>Shipping Line</label><select id="iw_line"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>EIR / Reference No.</label><input id="iw_eir" placeholder="Transporter's own EIR no." /></div>
+                                            <div class="fg"><label>B/L Number</label><input id="iw_bl" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Vessel</label><input id="iw_vessel" /></div>
+                                            <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Truck</label><select id="iw_truck"></select></div>
+                                            <div class="fg"><label>Driver</label><select id="iw_driver"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
+                                            <div class="fg"><label>Entry Date/Time <span class="label-optional">(optional, defaults to now)</span></label><input id="iw_date" type="datetime-local" /></div>
+                                        </div>
+                                        <div class="fg"><label>Notes</label><textarea id="iw_notes" rows="2" placeholder="Remarks…"></textarea></div>
+                                        <div class="fg">
+                                            <label>Container Photo <span class="label-optional">(optional)</span></label>
+                                            <div class="file-upload-area" id="inwardImgUpload" onclick="document.getElementById('iw_img').click()">
+                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                                <span id="inwardImgLabel">Upload container photo</span>
+                                            </div>
+                                            <input type="file" id="iw_img" accept="image/*" style="display:none" onchange="previewInwardImg(event)" />
+                                        </div>
+                                        <div id="inwardImgPreview" style="display:none;margin-bottom:10px"></div>
+                                        <button class="submit-btn" onclick="createInwardEntry()">Record Inward Entry →</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="inwardTabBulk" style="display:none">
+                            <div class="form-card" style="max-width:600px">
+                                <div class="form-card-head">Bulk Inward Container Upload</div>
+                                <div class="form-card-body">
+                                    <div class="dispatch-bulk-info">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        Upload a CSV, Excel (.xlsx/.xls) or JSON file of inward containers. Columns are matched by name, in any order — container, type, ctype, line, truck, driver, eir, bl, vessel, voyage, condition, date, notes. Truck/driver/shipping line are matched automatically against your fleet records.
+                                    </div>
+                                    <div class="file-upload-area large" id="inwardBulkDrop" onclick="document.getElementById('inwardBulkFile').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleInwardBulkDrop(event)">
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <div class="upload-label">Drop CSV, XLSX or JSON here</div>
+                                        <div class="upload-sub">or click to browse · max 5MB</div>
+                                    </div>
+                                    <input type="file" id="inwardBulkFile" accept=".csv,.xlsx,.xls,.json" style="display:none" onchange="handleInwardBulkFile(event)" />
+                                    <div id="inwardBulkPreview" style="display:none">
+                                        <div class="panel" style="margin-top:14px">
+                                            <div class="panel-head"><span class="panel-title">Preview</span><span class="panel-meta" id="inwardBulkRowCount"></span></div>
+                                            <div class="table-wrap"><table class="data-table" id="inwardBulkPreviewTable"><thead></thead><tbody></tbody></table></div>
+                                        </div>
+                                        <button class="submit-btn" onclick="processBulkInward()">Process All Entries →</button>
+                                    </div>
+                                    <div class="bulk-template-row">
+                                        <button class="action-btn ghost" onclick="downloadInwardBulkTemplate()">⬇ Download CSV Template</button>
                                     </div>
                                 </div>
                             </div>
@@ -969,7 +1075,7 @@
                         <div class="panel">
                             <div class="panel-head" style="flex-wrap:wrap;gap:8px">
                                 <span class="panel-title">Fleet Map</span>
-                                <span style="font-size:10px;color:var(--text-3)">📱 Driver phones · 📡 Wialon GPS (where fitted)</span>
+                                <span style="font-size:10px;color:var(--text-3)">📱 Positions via driver phones</span>
                                 <span class="panel-meta" id="trackingMeta">0 vehicles tracked</span>
                             </div>
                             <div class="tracking-map">
@@ -977,7 +1083,7 @@
                                     <div class="tracking-map-placeholder">
                                         <div style="font-family:var(--font-brand);font-size:22px;color:var(--gold);margin-bottom:8px">GARGO</div>
                                         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:20px">LOADING MAP…</div>
-                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' phones in real time, plus dedicated Wialon GPS hardware for any truck it's fitted to — no simulation.</div>
+                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' own phones in real time — no simulation.</div>
                                     </div>
                                 </div>
                                 <div class="tracking-vehicles" id="trackingVehicles"></div>
@@ -1076,19 +1182,15 @@
                                 <div style="font-size:9.5px;color:var(--text-3);margin-top:14px;line-height:1.5">The live fleet map uses free OpenStreetMap tiles via Leaflet.js — no API key or billing account required. Address lookups use the free Nominatim reverse-geocoding service.</div>
                             </div>
                             <div class="report-block">
+                                <h3>GPS Tracking — Wialon</h3>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Optional. Trucks fitted with a dedicated Wialon AVL tracker can be tracked via the Wialon Remote API instead of the driver's phone. Link a truck's Wialon unit ID from its detail card under Fleet.</div>
+                                <div id="wialonConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
+                            </div>
+                            <div class="report-block">
                                 <h3>Company &amp; Invoicing Details</h3>
                                 <div style="font-size:9.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Used on generated invoices, VAT calculations and auto-billing. Changes apply immediately — no redeploy needed.</div>
                                 <div id="invoiceConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
                                 <button class="submit-btn" style="margin-top:12px" onclick="saveInvoiceConfig()">Save Invoicing Details →</button>
-                            </div>
-                            <div class="report-block">
-                                <h3>GPS Tracking — Wialon Integration</h3>
-                                <div style="font-size:9.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Driver-phone tracking always stays on for every truck. Connect a Wialon fleet-tracking account here to also pull live positions from dedicated GPS hardware — trucks with a Wialon Unit ID assigned (set from that truck's detail view) are tracked by the hardware unit instead; every other truck keeps using the driver's phone exactly as before. A server-side job checks Wialon every minute, so positions stay fresh even with no browser open.</div>
-                                <div id="wialonConfigForm" style="display:flex;flex-direction:column;gap:8px"></div>
-                                <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-                                    <button class="submit-btn" style="flex:1;min-width:160px" onclick="saveWialonConfig()">Save GPS Settings →</button>
-                                    <button class="action-btn ghost" onclick="syncWialonNow()">↻ Sync Now</button>
-                                </div>
                             </div>
                         </div>
                     </section>
