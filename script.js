@@ -5136,6 +5136,7 @@ async function renderDepOps() {
   else if (_depOpsTab === 'yard') await renderDepOpsYardMap();
   else if (_depOpsTab === 'surveys') await renderDepOpsSurveyRegister();
   else if (_depOpsTab === 'master') await renderDepOpsMasterList();
+  else if (_depOpsTab === 'reports') await renderDepOpsReports();
   else await renderDepOpsOutward();
 }
 
@@ -5962,6 +5963,108 @@ async function renderDepOpsMasterList() {
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
+}
+
+// ---------- DepOps Reports (pulls from Interchange, filterable by shipping line) ----------
+
+let _depOpsRptRows = [];
+
+function depOpsReportsPopulateLines() {
+  const sel = document.getElementById('depopsRptLine');
+  if (!sel || sel.dataset.populated) return;
+  state.db.shippingLines.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = `${l.code} — ${l.name}`;
+    sel.appendChild(opt);
+  });
+  sel.dataset.populated = '1';
+}
+
+function depOpsReportsReset() {
+  ['depopsRptLine', 'depopsRptType', 'depopsRptStatus', 'depopsRptFrom', 'depopsRptTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  renderDepOpsReports();
+}
+
+async function renderDepOpsReports() {
+  depOpsReportsPopulateLines();
+
+  const lineId = document.getElementById('depopsRptLine')?.value || '';
+  const type = document.getElementById('depopsRptType')?.value || '';
+  const status = document.getElementById('depopsRptStatus')?.value || '';
+  const from = document.getElementById('depopsRptFrom')?.value || '';
+  const to = document.getElementById('depopsRptTo')?.value || '';
+
+  let rows = (state.db.interchange || []).slice();
+  if (lineId) rows = rows.filter(i => i.line === lineId);
+  if (type) rows = rows.filter(i => i.type === type);
+  if (status) rows = rows.filter(i => i.status === status);
+  if (from) rows = rows.filter(i => new Date(i.date) >= new Date(from));
+  if (to) rows = rows.filter(i => new Date(i.date) <= new Date(to + 'T23:59:59'));
+  rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+  _depOpsRptRows = rows;
+
+  const body = document.getElementById('depopsRptBody');
+  const meta = document.getElementById('depopsRptMeta');
+  const exportBtn = document.getElementById('depopsRptExportBtn');
+  if (meta) meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'}`;
+  if (exportBtn) exportBtn.disabled = !rows.length;
+
+  if (body) {
+    body.innerHTML = rows.length ? rows.map(ic => `<tr>
+      <td class="mono">${fmtDate(ic.date)}</td>
+      <td class="mono" style="color:var(--gold)">${sanitize(ic.container || '—')}</td>
+      <td>${sanitize(ic.type || '—')}</td>
+      <td>${sanitize(ic.ctype || '—')}</td>
+      <td>${sanitize(lineName(ic.line))}</td>
+      <td>${sanitize(ic.condition || '—')}</td>
+      <td>${ic.truck ? sanitize(truckName(ic.truck)) : '—'}</td>
+      <td>${ic.driver ? sanitize(driverName(ic.driver)) : '—'}</td>
+      <td>${sbadge(ic.status)}</td>
+      <td class="mono">${ic.repairTotal ? fmtKsh(ic.repairTotal) : '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="10" class="empty-td">No interchange records match these filters</td></tr>`;
+  }
+
+  const byLine = {};
+  rows.forEach(ic => { const key = lineName(ic.line); byLine[key] = (byLine[key] || 0) + 1; });
+  const repairTotal = rows.reduce((s, ic) => s + (ic.repairTotal || 0), 0);
+
+  const summary = document.getElementById('depopsRptSummary');
+  if (summary) {
+    summary.innerHTML = `<div class="two-col-grid">
+      <div class="report-block">
+        <h3>Summary</h3>
+        ${reportRow('Total Records', rows.length)}
+        ${reportRow('Pending', rows.filter(i => i.status === 'pending').length)}
+        ${reportRow('Approved', rows.filter(i => i.status === 'approved').length)}
+        ${reportRow('Reconciled', rows.filter(i => i.status === 'reconciled').length)}
+        ${reportRow('Repair Costs Total', fmtKsh(repairTotal))}
+      </div>
+      <div class="report-block">
+        <h3>By Shipping Line</h3>
+        ${Object.entries(byLine).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => reportRow(k, v)).join('') || '<div style="color:var(--text-3);font-size:12px">No data for these filters</div>'}
+      </div>
+    </div>`;
+  }
+}
+
+function downloadDepOpsReportCSV() {
+  if (!_depOpsRptRows.length) { toast('Nothing to download yet', 'error'); return; }
+  const headers = ['Date', 'Container', 'Movement', 'Type', 'Shipping Line', 'Condition', 'Truck', 'Driver', 'Status', 'Repair Cost'];
+  const rows = _depOpsRptRows.map(ic => [
+    ic.date, ic.container, ic.type, ic.ctype, lineName(ic.line), ic.condition,
+    ic.truck ? truckName(ic.truck) : '', ic.driver ? driverName(ic.driver) : '', ic.status, ic.repairTotal || 0,
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `depops-interchange-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 

@@ -1119,15 +1119,16 @@
     </div>
   </div>
 
-  <div class="filter-row" style="margin-bottom:16px">
-    <button class="filter-btn active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outward',this)">Outward / Repatriation</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('zones',this)">Zones</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('yard',this)">Yard Map</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('escalations',this)">⚠ Escalations</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('surveys',this)">Surveyed Register</button>
-    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('master',this)">Master List</button>
-  </div>
+  <nav class="depops-nav">
+    <button class="depops-nav-item active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('outward',this)">Outward / Repatriation</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('zones',this)">Zones</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('yard',this)">Yard Map</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('escalations',this)">⚠ Escalations</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('surveys',this)">Surveyed Register</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('master',this)">Master List</button>
+    <button class="depops-nav-item depops-tab-btn" onclick="switchDepOpsTab('reports',this)">📊 Reports</button>
+  </nav>
 
   <div class="depops-tab-panel active" id="depopsPanel-inbound">
     <div class="depops-columns" style="margin-top:14px">
@@ -1228,6 +1229,42 @@
       </div>
     </div>
     <div id="depopsMasterList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-reports">
+    <div class="ops-notice" style="margin:18px 0 14px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Pulled live from the Interchange register. Filter by shipping line and date to see gate/depot movement activity for that line.
+    </div>
+
+    <div class="panel" style="padding:16px;margin-bottom:14px">
+      <div class="trc-filter-grid">
+        <div class="fg" style="margin:0"><label>Shipping Line</label><select id="depopsRptLine"><option value="">All Lines</option></select></div>
+        <div class="fg" style="margin:0"><label>Movement</label><select id="depopsRptType"><option value="">All Movements</option><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div>
+        <div class="fg" style="margin:0"><label>Status</label><select id="depopsRptStatus"><option value="">All Statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="reconciled">Reconciled</option></select></div>
+        <div class="fg" style="margin:0"><label>From</label><input type="date" id="depopsRptFrom" /></div>
+        <div class="fg" style="margin:0"><label>To</label><input type="date" id="depopsRptTo" /></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="action-btn" onclick="renderDepOpsReports()">▶ Run Report</button>
+        <button class="action-btn ghost" onclick="depOpsReportsReset()">↻ Reset Filters</button>
+        <button class="action-btn ghost" id="depopsRptExportBtn" onclick="downloadDepOpsReportCSV()" disabled>⬇ Export CSV</button>
+      </div>
+    </div>
+
+    <div id="depopsRptSummary"></div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Interchange Activity</span><span class="panel-meta" id="depopsRptMeta">0 records</span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Container</th><th>Movement</th><th>Type</th><th>Shipping Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Status</th><th>Repair Cost</th>
+          </tr></thead>
+          <tbody id="depopsRptBody"><tr><td colspan="10" class="empty-td">Run a report to populate</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </section>
 
