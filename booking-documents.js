@@ -74,9 +74,10 @@
 
 
 
-  async function _uploadDocument({ bookingId, tripId, docType, containerNo, file }) {
-    if (!bookingId && !tripId) throw new Error('bookingId or tripId is required');
-    if (bookingId && tripId) throw new Error('Provide either bookingId or tripId, not both');
+  async function _uploadDocument({ bookingId, tripId, interchangeId, docType, containerNo, file }) {
+    const parentCount = [bookingId, tripId, interchangeId].filter(Boolean).length;
+    if (parentCount === 0) throw new Error('bookingId, tripId or interchangeId is required');
+    if (parentCount > 1) throw new Error('Provide exactly one of bookingId, tripId or interchangeId');
     if (!file) throw new Error('No file selected');
     assertDocType(docType);
 
@@ -84,7 +85,7 @@
     const userId = sessionData && sessionData.session ? sessionData.session.user.id : null;
     if (!userId) throw new Error('Please sign in before uploading documents.');
 
-    const parentId = bookingId || tripId;
+    const parentId = bookingId || tripId || interchangeId;
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `${parentId}/${docType}-${Date.now()}-${safeName}`;
 
@@ -98,6 +99,7 @@
       .insert({
         booking_id: bookingId || null,
         trip_id: tripId || null,
+        interchange_id: interchangeId || null,
         doc_type: docType,
         container_no: containerNo || null,
         file_path: path,
@@ -126,6 +128,12 @@
   async function uploadTripDocument({ tripId, docType, containerNo, file }) {
     if (!tripId) throw new Error('tripId is required');
     return _uploadDocument({ tripId, docType, containerNo, file });
+  }
+
+
+  async function uploadInterchangeDocument({ interchangeId, docType, containerNo, file }) {
+    if (!interchangeId) throw new Error('interchangeId is required');
+    return _uploadDocument({ interchangeId, docType, containerNo, file });
   }
 
 
@@ -231,6 +239,36 @@
       byTrip[doc.trip_id].push(doc);
     });
     return byTrip;
+  }
+
+
+  async function documentsForInterchange(interchangeId) {
+    const { data, error } = await client()
+      .from('booking_documents')
+      .select('*')
+      .eq('interchange_id', interchangeId)
+      .order('uploaded_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Could not load documents');
+    return data || [];
+  }
+
+  async function documentsForInterchanges(interchangeIds) {
+    const ids = (interchangeIds || []).filter(Boolean);
+    if (!ids.length) return {};
+
+    const { data, error } = await client()
+      .from('booking_documents')
+      .select('*')
+      .in('interchange_id', ids)
+      .order('uploaded_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Could not load documents');
+
+    const byInterchange = {};
+    (data || []).forEach(function (doc) {
+      if (!byInterchange[doc.interchange_id]) byInterchange[doc.interchange_id] = [];
+      byInterchange[doc.interchange_id].push(doc);
+    });
+    return byInterchange;
   }
 
 
@@ -832,6 +870,7 @@
    
     uploadBookingDocument,
     uploadTripDocument,
+    uploadInterchangeDocument,
     myBookingDocuments,
     storageAvailability,
    
@@ -843,6 +882,8 @@
     documentsForBookings,
     documentsForTrip,
     documentsForTrips,
+    documentsForInterchange,
+    documentsForInterchanges,
     isStaffMember,
     getDownloadUrl,
     verifyDocument,

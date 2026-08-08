@@ -158,8 +158,8 @@ function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.ve
 
 
 
-function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null }; }
-function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'' }; }
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null }; }
 
 function reqToRow(r)   { return { id:r.id, requester:r.requester, requester_id:r.requesterId||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
 function reqFromRow(r) { return { id:r.id, requester:r.requester, requesterId:r.requester_id||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
@@ -2834,13 +2834,20 @@ let _inwardImg = '';
 function renderInward() {
   populateInwardSelects();
   renderInwardRecent();
+  renderInwardAwaitingSurvey();
   clearInwardForm(true);
 }
 
 function populateInwardSelects() {
-  fillSelect('iw_truck',  state.db.trucks,  t=>[t.id, t.reg]);
-  fillSelect('iw_driver', state.db.drivers, d=>[d.id, d.name]);
+  fillDatalist('iwTruckList',  state.db.trucks,  t=>t.reg);
+  fillDatalist('iwDriverList', state.db.drivers, d=>d.name);
   fillSelect('iw_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
+}
+
+function fillDatalist(id, arr, mapFn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = arr.map(i => `<option value="${esc(mapFn(i))}"></option>`).join('');
 }
 
 function renderInwardRecent() {
@@ -2863,6 +2870,62 @@ function renderInwardRecent() {
     </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
 }
 
+// Manually-recorded inward entries flagged with "needs_survey" on the form
+// sit here — same idea as DepOps' Awaiting Survey list, but scoped to
+// interchange records instead of public_bookings, since a gate-recorded
+// container never has a booking behind it.
+async function renderInwardAwaitingSurvey() {
+  const wrap = document.getElementById('inwardAwaitingSurveyList');
+  const meta = document.getElementById('inwardAwaitingSurveyMeta');
+  if (!wrap) return;
+
+  const items = state.db.interchange
+    .filter(i => i.surveyStatus === 'awaiting_survey')
+    .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first — the ones waiting longest surface first
+
+  if (meta) meta.textContent = items.length ? `${items.length} waiting` : '';
+
+  if (!items.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Nothing awaiting survey</div></div>';
+    return;
+  }
+
+  let docsByIc = {};
+  try {
+    if (window.bookingDocs) docsByIc = await window.bookingDocs.documentsForInterchanges(items.map(i => i.id));
+  } catch (e) { /* guarantee-form status is best-effort — list still renders without it */ }
+
+  wrap.innerHTML = items.map(ic => {
+    const hasGuarantee = (docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form');
+    return `<div class="dispatch-queue-item">
+      <div class="dqi-ref">${esc(ic.container)}</div>
+      <div class="dqi-route">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.type)} · ${esc(lineName(ic.line))}</div>
+        <div style="font-size:10px;color:var(--text-3)">${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')} · ${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        ${hasGuarantee ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}
+        <div class="dqi-time" style="margin:0">${timeAgo(ic.date)}</div>
+      </div>
+      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')">Mark Surveyed →</button>
+    </div>`;
+  }).join('');
+}
+
+function markInwardSurveyed(id) {
+  const ic = state.db.interchange.find(i => i.id === id);
+  if (!ic) return;
+  ic.surveyStatus = 'surveyed';
+  ic.surveyedAt = new Date().toISOString();
+  ic.surveyedBy = state.profile.username;
+  ic._dirty = true;
+  scheduleSave();
+  addAudit(state.profile.username, 'Inward Entry Surveyed', ic.container);
+  toast(`${ic.container} marked surveyed`, 'success');
+  renderInwardAwaitingSurvey();
+  renderInwardRecent();
+}
+
 function switchInwardTab(tab, btn) {
   document.getElementById('inwardTabSingle').style.display = tab==='single' ? 'block' : 'none';
   document.getElementById('inwardTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
@@ -2870,7 +2933,7 @@ function switchInwardTab(tab, btn) {
   if (btn) btn.classList.add('active');
 }
 
-function createInwardEntry() {
+async function createInwardEntry() {
   const cont = document.getElementById('iw_container').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
   const contIssue = containerFormatIssue(cont);
@@ -2883,13 +2946,28 @@ function createInwardEntry() {
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
   if (dupIc) { toast(`${cont} already has a ${type} record logged on ${fmtDate(dateVal)}`, 'warning'); return; }
 
+  // Truck/driver are free-text fields now (no dropdown) — match them
+  // against existing fleet records when possible so history, filters and
+  // reports still resolve to the linked truck/driver; otherwise fall back
+  // to storing the typed text, same as the bulk-upload path does.
+  const truckVal  = document.getElementById('iw_truck').value.trim();
+  const driverVal = document.getElementById('iw_driver').value.trim();
+  const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase())   : null;
+  const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase()) : null;
+
+  const needsSurvey = !!document.getElementById('iw_needs_survey').checked;
+  const guaranteeFile = _inwardGuaranteeFile;
+  const icId = uid('IC');
+
   state.db.interchange.push({
-    id: uid('IC'), container: cont, type,
+    id: icId, container: cont, type,
     ctype: document.getElementById('iw_ctype').value,
     line: document.getElementById('iw_line').value,
     condition: document.getElementById('iw_cond').value,
-    truck:  document.getElementById('iw_truck').value,
-    driver: document.getElementById('iw_driver').value,
+    truck:  truck  ? truck.id  : '',
+    driver: driver ? driver.id : '',
+    truckRegText:   truck  ? '' : sanitize(truckVal),
+    driverNameText: driver ? '' : sanitize(driverVal),
     eirNumber: sanitize(document.getElementById('iw_eir').value.trim()),
     blNumber: sanitize(document.getElementById('iw_bl').value.trim()),
     vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
@@ -2897,25 +2975,46 @@ function createInwardEntry() {
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
     date: dateVal, status: 'pending', img: _inwardImg || '',
+    needsSurvey, surveyStatus: needsSurvey ? 'awaiting_survey' : null,
+    surveyedAt: null, surveyedBy: null,
     _dirty: true,
   });
-  scheduleSave(); buildBadges();
-  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})`);
+  buildBadges();
+  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
   refreshContainerHistory();
   toast(`Inward entry recorded — ${cont}`, 'success');
   clearInwardForm();
   renderInterchange('all');
   renderInwardRecent();
+  renderInwardAwaitingSurvey();
+
+  // The guarantee form needs a real row in Supabase to attach to (the
+  // upload is keyed by interchange_id with a foreign key), so flush this
+  // record immediately instead of waiting on the debounced autosave.
+  if (guaranteeFile) {
+    try {
+      await saveNowAwaited();
+      await window.bookingDocs.uploadInterchangeDocument({ interchangeId: icId, docType: 'guarantee_form', containerNo: cont, file: guaranteeFile });
+      toast('Guarantee form uploaded', 'success');
+      renderInwardAwaitingSurvey();
+    } catch (e) {
+      toast(`Entry saved, but guarantee form upload failed: ${e.message || e}`, 'warning');
+    }
+  } else {
+    scheduleSave();
+  }
 }
 
 function clearInwardForm(skipRepopulate) {
-  ['iw_container','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
   const typeEl = document.getElementById('iw_type'); if (typeEl) typeEl.value = 'Gate-In';
   const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
+  const surveyEl = document.getElementById('iw_needs_survey'); if (surveyEl) surveyEl.checked = false;
   _inwardImg = '';
   const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
   renderInwardImgPreview();
+  clearInwardGuaranteeFile();
   if (!skipRepopulate) populateInwardSelects();
 }
 
@@ -2944,6 +3043,38 @@ function clearInwardImg() {
   _inwardImg = '';
   const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
   renderInwardImgPreview();
+}
+
+let _inwardGuaranteeFile = null;
+
+function previewInwardGuaranteeFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  const isImg = file.type.startsWith('image/');
+  if (!isPdf && !isImg) { toast('Upload an image or PDF', 'error'); e.target.value = ''; return; }
+  if (file.size > 5*1024*1024) { toast('File too large — max 5MB', 'error'); e.target.value = ''; return; }
+  _inwardGuaranteeFile = file;
+  renderInwardGuaranteePreview();
+}
+
+function renderInwardGuaranteePreview() {
+  const wrap  = document.getElementById('inwardGuaranteePreview');
+  const label = document.getElementById('inwardGuaranteeLabel');
+  if (!wrap) return;
+  if (!_inwardGuaranteeFile) { wrap.style.display = 'none'; wrap.innerHTML = ''; if (label) label.textContent = 'Upload container guarantee form'; return; }
+  wrap.style.display = 'block';
+  wrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
+      <span>📎 ${esc(_inwardGuaranteeFile.name)} (${(_inwardGuaranteeFile.size/1024).toFixed(0)} KB)</span>
+      <button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="clearInwardGuaranteeFile()">Remove</button>
+    </div>`;
+  if (label) label.textContent = '1 file attached';
+}
+
+function clearInwardGuaranteeFile() {
+  _inwardGuaranteeFile = null;
+  const fileInput = document.getElementById('iw_guarantee_file'); if (fileInput) fileInput.value = '';
+  renderInwardGuaranteePreview();
 }
 
 /* ── Bulk upload: CSV, JSON, and XLSX/XLS (via SheetJS) ── */
@@ -2994,13 +3125,14 @@ function processInwardBulkFile(file) {
         rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
       }
       rows = normalizeRowKeys(rows);
-      showInwardBulkPreview(rows);
+      const looksOutward = /outward|outwrd|_out\b|-out\b/i.test(name) && !/inward/i.test(name);
+      showInwardBulkPreview(rows, looksOutward ? 'out' : 'in');
     } catch(err) { toast('Could not parse file — check format', 'error'); }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
 }
 
-function showInwardBulkPreview(rows) {
+function showInwardBulkPreview(rows, direction) {
   if (!rows.length) { toast('No rows found in file', 'error'); return; }
   const keys = Object.keys(rows[0]);
   const tbl  = document.getElementById('inwardBulkPreviewTable');
@@ -3009,6 +3141,15 @@ function showInwardBulkPreview(rows) {
   document.getElementById('inwardBulkRowCount').textContent = `${rows.length} rows`;
   document.getElementById('inwardBulkPreview').style.display = 'block';
   document.getElementById('inwardBulkPreview').dataset.rows = JSON.stringify(rows);
+  const dirSel = document.getElementById('iw_bulk_direction');
+  dirSel.value = direction === 'out' ? 'out' : 'in';
+  updateBulkDirectionLabel();
+  dirSel.onchange = updateBulkDirectionLabel;
+}
+
+function updateBulkDirectionLabel() {
+  const isOut = document.getElementById('iw_bulk_direction').value === 'out';
+  document.getElementById('iw_bulk_direction_label').textContent = isOut ? 'Gate-Out' : 'Gate-In';
 }
 
 function pickField(r, keys) {
@@ -3018,7 +3159,12 @@ function pickField(r, keys) {
 
 function processBulkInward() {
   const rows = JSON.parse(document.getElementById('inwardBulkPreview').dataset.rows || '[]');
-  const VALID_TYPES = { 'gatein':'Gate-In', 'gate-in':'Gate-In', 'depotin':'Depot-In', 'depot-in':'Depot-In' };
+  const direction = document.getElementById('iw_bulk_direction')?.value === 'out' ? 'out' : 'in';
+  const VALID_TYPES = {
+    'gatein':'Gate-In', 'gate-in':'Gate-In', 'depotin':'Depot-In', 'depot-in':'Depot-In',
+    'gateout':'Gate-Out', 'gate-out':'Gate-Out', 'depotout':'Depot-Out', 'depot-out':'Depot-Out'
+  };
+  const defaultType = direction === 'out' ? 'Gate-Out' : 'Gate-In';
   const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair'];
 
   let created = 0;
@@ -3026,18 +3172,18 @@ function processBulkInward() {
   const seenInBatch = new Set();
 
   rows.forEach((r, idx) => {
-    const contRaw = pickField(r, ['container','containerno','containernumber']);
+    const contRaw = pickField(r, ['container','containerno','containernumber','containernrno']);
     const rowLabel = contRaw || `row ${idx+1}`;
     if (!contRaw) { skipped.push(`${rowLabel}: missing container number`); return; }
     const cont = contRaw.toUpperCase();
     const contIssue = containerFormatIssue(cont);
     if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
 
-    const typeRaw = pickField(r, ['type','movement']).toLowerCase().replace(/[^a-z]/g,'');
-    const type = VALID_TYPES[typeRaw] || 'Gate-In';
+    const typeRaw = pickField(r, ['movement','type']).toLowerCase().replace(/[^a-z]/g,'');
+    const type = VALID_TYPES[typeRaw] || defaultType;
 
     let dateVal = new Date().toISOString();
-    const dateRaw = pickField(r, ['date','entrydate']);
+    const dateRaw = pickField(r, ['date','entrydate','datein','dateout','gateindate','gateoutdate','inwarddate','outwarddate','entrydatetime']);
     if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
 
     // Dedup key includes the row's own date — two different historical dates
@@ -3049,9 +3195,9 @@ function processBulkInward() {
     if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); return; }
     seenInBatch.add(dupKey);
 
-    const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg']);
-    const driverVal = pickField(r, ['driver','drivername']);
-    const lineVal   = pickField(r, ['line','shippingline','linecode']);
+    const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno']);
+    const driverVal = pickField(r, ['driver','drivername','driversname']);
+    const lineVal   = pickField(r, ['line','shippingline','linecode','shippinglines']);
     const vesselVal = pickField(r, ['vessel']);
 
     const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
@@ -3083,10 +3229,10 @@ function processBulkInward() {
       truck: truck ? truck.id : '', driver: driver ? driver.id : '',
       truckRegText: truck ? '' : sanitize(truckVal),
       driverNameText: driver ? '' : sanitize(driverVal),
-      eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno'])),
+      eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno','ineirno','outeirno','outeir','refinno','refoutno','inwardno'])),
       blNumber:  sanitize(pickField(r, ['bl','blnumber','blno'])),
       vessel:    sanitize(pickField(r, ['vessel'])),
-      voyage:    sanitize(pickField(r, ['voyage'])),
+      voyage:    sanitize(pickField(r, ['voyage','voy'])),
       repairs: [], repairTotal: 0,
       notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
       date: dateVal, status: 'pending', img: '',

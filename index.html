@@ -614,6 +614,10 @@
                         </div>
 
                         <div id="inwardTabSingle">
+                            <div class="panel" id="inwardAwaitingSurveyPanel" style="margin-bottom:14px">
+                                <div class="panel-head"><span class="panel-title">Awaiting Survey</span><span class="panel-meta" id="inwardAwaitingSurveyMeta"></span></div>
+                                <div id="inwardAwaitingSurveyList"></div>
+                            </div>
                             <div class="panel" id="inwardRecentPanel" style="margin-bottom:14px">
                                 <div class="panel-head"><span class="panel-title">Recent Inward Entries</span><span class="panel-meta" id="inwardRecentMeta"></span></div>
                                 <div id="inwardRecentList"></div>
@@ -649,8 +653,8 @@
                                             <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Truck</label><select id="iw_truck"></select></div>
-                                            <div class="fg"><label>Driver</label><select id="iw_driver"></select></div>
+                                            <div class="fg"><label>Truck</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" /></div>
+                                            <div class="fg"><label>Driver</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
@@ -666,6 +670,21 @@
                                             <input type="file" id="iw_img" accept="image/*" style="display:none" onchange="previewInwardImg(event)" />
                                         </div>
                                         <div id="inwardImgPreview" style="display:none;margin-bottom:10px"></div>
+                                        <div class="fg">
+                                            <label>Guarantee Form <span class="label-optional">(optional)</span></label>
+                                            <div class="file-upload-area" id="inwardGuaranteeUpload" onclick="document.getElementById('iw_guarantee_file').click()">
+                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                                <span id="inwardGuaranteeLabel">Upload container guarantee form</span>
+                                            </div>
+                                            <input type="file" id="iw_guarantee_file" accept="image/*,.pdf" style="display:none" onchange="previewInwardGuaranteeFile(event)" />
+                                        </div>
+                                        <div id="inwardGuaranteePreview" style="display:none;margin-bottom:10px;font-size:11.5px;color:var(--text-2)"></div>
+                                        <div class="fg" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:14px">
+                                            <input type="checkbox" id="iw_needs_survey" style="margin-top:3px;width:15px;height:15px;flex-shrink:0;accent-color:var(--gold)" />
+                                            <label for="iw_needs_survey" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text-2);cursor:pointer">
+                                                Send to <strong style="color:var(--text)">Awaiting Survey</strong> — this container needs a depot survey before it's considered complete. It'll appear in the Awaiting Survey list below until marked surveyed.
+                                            </label>
+                                        </div>
                                         <button class="submit-btn" onclick="createInwardEntry()">Record Inward Entry →</button>
                                     </div>
                                 </div>
@@ -1483,6 +1502,8 @@
 
    
     <datalist id="containerHistory"></datalist>
+    <datalist id="iwTruckList"></datalist>
+    <datalist id="iwDriverList"></datalist>
 
    
     <div id="toastStack"></div>
