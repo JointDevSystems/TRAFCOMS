@@ -811,6 +811,7 @@
                         </div>
 
                         <div class="two-col-grid" id="depotReportKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
+                        <div class="ops-notice" id="depotReportUnmappedNotice" style="display:none;align-items:center;gap:8px;margin-bottom:16px"></div>
 
                         <div id="depotReportTabInward">
                             <div id="depotReportInwardList"></div>
@@ -834,6 +835,7 @@
                             <div class="filter-row">
                                 <button class="filter-btn active" onclick="filterLines('all',this)">All</button>
                                 <button class="filter-btn" onclick="filterLines('active',this)">Active</button>
+                                <button class="action-btn" id="unmappedVesselsBtn" onclick="openUnmappedVesselsModal()" style="display:none">⚠ Resolve Unmapped Vessels</button>
                                 <button class="action-btn" onclick="showAddLineModal()">+ Add Line</button>
                             </div>
                         </div>

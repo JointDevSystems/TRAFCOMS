@@ -148,6 +148,10 @@ function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver
 
 function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, active:l.active }; }
 function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, active:r.active }; }
+// vessel_line_map: pattern -> shipping line, used to auto-resolve a shipping
+// line from a vessel name when a record (bulk import or manual entry) didn't
+// carry an explicit, matchable "line" value. See resolveLineIdFromVessel().
+function vlmFromRow(r){ return { id:r.id, pattern:r.pattern, matchType:r.match_type, lineId:r.line_id, priority:r.priority, source:r.source }; }
 
 function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.vessel, voyage:s.voyage, line_id:s.line||null, date:s.date, status:s.status, reason:s.reason, truck_id:s.truckId||null, driver_id:s.driverId||null, notes:s.notes }; }
 function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes }; }
@@ -201,6 +205,7 @@ async function loadDB() {
       trucksRes, driversRes, tripsRes, maintRes, fuelRes, linesRes,
       shutoutsRes, icRes, reqRes, wsRes, invRes, invTripsRes,
       billingRes, allocRes, trackRes, auditRes, settingsRes, profilesRes,
+      vlmRes,
     ] = await Promise.all([
       supabase.from('trucks').select('*'),
       supabase.from('drivers').select('*'),
@@ -220,6 +225,7 @@ async function loadDB() {
       supabase.from('audit_log').select('*'),
       supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
       supabase.from('profiles').select('*'),
+      supabase.from('vessel_line_map').select('*'),
     ]);
 
     if (trucksRes.error) throw trucksRes.error;
@@ -233,6 +239,7 @@ async function loadDB() {
     const maintenance    = (maintRes.data || []).map(maintFromRow);
     const fuel           = (fuelRes.data || []).map(fuelFromRow);
     const shippingLines  = (linesRes.data || []).map(lineFromRow);
+    const vesselLineMap  = (vlmRes.data || []).map(vlmFromRow).sort((a, b) => a.priority - b.priority);
     const shutouts       = (shutoutsRes.data || []).map(shutoutFromRow);
     const interchange    = (icRes.data || []).map(icFromRow);
     const requisitions   = (reqRes.data || []).map(reqFromRow);
@@ -276,6 +283,7 @@ async function loadDB() {
       trucks, drivers, trips, maintenance, fuel, shippingLines, shutouts,
       interchange, requisitions, workshop, invoices, billingRates,
       allocationRules, trackingPositions, auditLog, settings, profiles,
+      vesselLineMap,
     };
   } catch (e) {
     console.warn('Failed to load from Supabase:', e);
@@ -561,6 +569,31 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ 
 function truckName(id) { if(!id)return '—'; const t=state.db.trucks.find(t=>t.id===id); return t? `${t.reg} · ${t.make}` :id; }
 function driverName(id) { if(!id)return '—'; const d=state.db.drivers.find(d=>d.id===id); return d?d.name:id; }
 function lineName(id) { if(!id)return '—'; const l=state.db.shippingLines.find(l=>l.id===id); return l? `${l.code} — ${l.name}` :id; }
+
+// Normalizes free-typed vessel text the same way on every path (import,
+// manual entry, the unmapped-vessel report) so "KOTA SEMPENA", "kota  sempena"
+// and " Kota Sempena " all group and match identically.
+function normVessel(v) { return (v || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+
+// Guesses a shipping_line id from a vessel name using vessel_line_map
+// (seeded with brand-name patterns like "KOTA*" → PIL, "*MSC*" → MSC, plus
+// any lines resolved manually via the Unmapped Vessels tool). Returns null
+// when nothing matches — callers should leave the line unset rather than
+// force a guess, since a wrong shipping line on a record misattributes
+// billing/repairs.
+function resolveLineIdFromVessel(vesselText) {
+  const v = normVessel(vesselText);
+  if (!v) return null;
+  const map = state.db.vesselLineMap || [];
+  for (const m of map) {
+    const p = normVessel(m.pattern);
+    if (!p) continue;
+    if (m.matchType === 'prefix'   && v.startsWith(p)) return m.lineId;
+    if (m.matchType === 'contains' && v.includes(p))   return m.lineId;
+    if (m.matchType === 'exact'    && v === p)          return m.lineId;
+  }
+  return null;
+}
 function initials(name) { if(!name)return '?'; return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
 function fuelColour(pct) { if(pct >60)return 'var(--green)'; if(pct >30)return 'var(--amber)'; return 'var(--red)'; }
 function isAdmin() { return state.profile?.role === 'admin'; }
@@ -3019,10 +3052,23 @@ function processBulkInward() {
     const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg']);
     const driverVal = pickField(r, ['driver','drivername']);
     const lineVal   = pickField(r, ['line','shippingline','linecode']);
+    const vesselVal = pickField(r, ['vessel']);
 
     const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
     const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase() || d.id===driverVal) : null;
-    const line   = lineVal   ? state.db.shippingLines.find(l => l.code.toLowerCase()===lineVal.toLowerCase() || l.name.toLowerCase()===lineVal.toLowerCase() || l.id===lineVal) : null;
+    // Normalize both sides (trim + collapse whitespace) so "PIL", " Pil ",
+    // "PIL  " all still match the code — previously an exact toLowerCase()
+    // compare meant any stray whitespace silently dropped the line to null.
+    let line = lineVal
+      ? state.db.shippingLines.find(l => normVessel(l.code).toLowerCase()===normVessel(lineVal).toLowerCase() || normVessel(l.name).toLowerCase()===normVessel(lineVal).toLowerCase() || l.id===lineVal)
+      : null;
+    // No usable "line" column value (missing, blank, or unrecognized code)?
+    // Fall back to guessing from the vessel name — this is what was leaving
+    // thousands of PIL/MSC/etc. records with no shipping line at all.
+    if (!line && vesselVal) {
+      const guessedId = resolveLineIdFromVessel(vesselVal);
+      if (guessedId) line = state.db.shippingLines.find(l => l.id === guessedId);
+    }
 
     const ctypeRaw = pickField(r, ['ctype','containertype','size']);
     const ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeRaw.toLowerCase()) || '20ft Dry';
@@ -3366,7 +3412,7 @@ function _depotReportInRange(dateStr) {
 function _depotReportEntries(types) {
   return state.db.interchange
     .filter(ic => types.includes(ic.type))
-    .filter(ic => _depotReportLine === 'all' || ic.line === _depotReportLine)
+    .filter(ic => _depotReportLine === 'all' || (_depotReportLine === '__unmapped__' ? !ic.line : ic.line === _depotReportLine))
     .filter(ic => _depotReportInRange(ic.date))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
@@ -3382,6 +3428,7 @@ function populateDepotReportLineFilter() {
   const sel = document.getElementById('drLineFilter');
   if (!sel || sel.dataset.populated) return;
   sel.innerHTML = '<option value="all">All Lines</option>' +
+    '<option value="__unmapped__">⚠ No Line Assigned</option>' +
     state.db.shippingLines.map(l => `<option value="${l.id}">${esc(l.code)}</option>`).join('');
   sel.dataset.populated = '1';
 }
@@ -3423,6 +3470,7 @@ function renderDepotReport() {
 
   const inward  = _depotReportEntries(INWARD_IC_TYPES);
   const outward = _depotReportEntries(OUTWARD_IC_TYPES);
+  const unmappedTotal = state.db.interchange.filter(ic => !ic.line).length;
 
   const kpi = document.getElementById('depotReportKpis');
   if (kpi) {
@@ -3432,6 +3480,12 @@ function renderDepotReport() {
       kpiCard('Net Movement', inward.length - outward.length, 'Inward − outward, in range', 'kpi-blue'),
       kpiCard('Duplicates Flagged', _depotReportDupes.length, 'Across full register', _depotReportDupes.length ? 'kpi-red' : 'kpi-green'),
     ].join('');
+  }
+
+  const unmappedEl = document.getElementById('depotReportUnmappedNotice');
+  if (unmappedEl) {
+    unmappedEl.style.display = unmappedTotal ? 'flex' : 'none';
+    unmappedEl.innerHTML = unmappedTotal ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg> ${unmappedTotal} record${unmappedTotal === 1 ? '' : 's'} across the whole register have no shipping line assigned and won't appear under any line filter. <a href="#" onclick="openUnmappedVesselsModal();return false" style="color:var(--gold);font-weight:600">Resolve them →</a>` : '';
   }
 
   const dupeCountEl = document.getElementById('depotReportDupeCount');
@@ -4002,10 +4056,13 @@ function filterLines(f,btn){ _linesFilter=f; document.querySelectorAll('#sec-shi
 
 function renderLines(f){
   let lines=f==='all'?state.db.shippingLines:state.db.shippingLines.filter(l=>l.active);
+  const unmappedTotal = (state.db.interchange||[]).filter(ic=>!ic.line).length;
   const summary=document.getElementById('linesSummary');
   if(summary){
-    summary.innerHTML=`<div class="panel"><div class="panel-head"><span class="panel-title">Summary</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Lines</span><span class="fsr-val">${state.db.shippingLines.length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Active</span><span class="fsr-val">${state.db.shippingLines.filter(l=>l.active).length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Trips (all)</span><span class="fsr-val">${state.db.trips.length}</span></div></div>`;
+    summary.innerHTML=`<div class="panel"><div class="panel-head"><span class="panel-title">Summary</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Lines</span><span class="fsr-val">${state.db.shippingLines.length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Active</span><span class="fsr-val">${state.db.shippingLines.filter(l=>l.active).length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Trips (all)</span><span class="fsr-val">${state.db.trips.length}</span></div>${unmappedTotal?`<div class="fuel-summary-row"><span class="fsr-label" style="color:var(--gold)">⚠ Interchange records with no line</span><span class="fsr-val">${unmappedTotal}</span></div>`:''}</div>`;
   }
+  const unmappedBtn = document.getElementById('unmappedVesselsBtn');
+  if (unmappedBtn) { unmappedBtn.style.display = unmappedTotal ? 'inline-flex' : 'none'; unmappedBtn.textContent = `⚠ Resolve Unmapped Vessels (${unmappedTotal})`; }
   const grid=document.getElementById('linesGrid');
   if(!grid) return;
   grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${isAdmin()?`<button class="tbl-btn" onclick="showEditLineModal('${l.id}')">✎ Edit Rates</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
@@ -4060,6 +4117,113 @@ function saveShippingLine() {
   });
   scheduleSave(); closeModal(); renderLines('all');
   toast(`${code} added`, 'success');
+}
+
+/* ── Resolve Unmapped Vessels ──────────────────────────────────────────
+   Interchange records land with no shipping line whenever a bulk import
+   didn't carry a recognizable "line" value and the vessel name isn't one
+   of the auto-mapped brand patterns (see resolveLineIdFromVessel). This
+   screen groups those leftover records by vessel so an ops person who
+   actually knows the vessel schedule can assign the correct line in bulk
+   — and teaches vessel_line_map so it's remembered for next time. */
+
+// Placeholder vessel values that carry no real information — no vessel
+// name means there's nothing to match on, so these aren't listed as
+// actionable groups (they'd need a source-record fix, not a mapping fix).
+const UNRESOLVABLE_VESSEL_VALUES = new Set(['', 'N/A', 'NA', 'N.A', 'N./A', 'N\\A', 'TBA', 'T.B.A', 'TO BE ADVISED', 'NOT CAPTURED', 'DUMMY', 'EMPTY DUMMY', 'EMPTY DUMMY VESSEL', 'N']);
+
+function _unmappedVesselGroups() {
+  const groups = {};
+  (state.db.interchange || []).forEach(ic => {
+    if (ic.line) return;
+    const norm = normVessel(ic.vessel);
+    if (UNRESOLVABLE_VESSEL_VALUES.has(norm)) return;
+    (groups[norm] = groups[norm] || { vessel: norm, count: 0, ids: [] });
+    groups[norm].count++;
+    groups[norm].ids.push(ic.id);
+  });
+  return Object.values(groups).sort((a, b) => b.count - a.count);
+}
+
+function openUnmappedVesselsModal() {
+  const groups = _unmappedVesselGroups();
+  const noVesselCount = (state.db.interchange || []).filter(ic => !ic.line && UNRESOLVABLE_VESSEL_VALUES.has(normVessel(ic.vessel))).length;
+  const lineOptions = state.db.shippingLines.filter(l => l.active).map(l => `<option value="${l.id}">${esc(l.code)} — ${esc(l.name)}</option>`).join('');
+
+  if (!groups.length) {
+    openModal('Resolve Unmapped Vessels', `<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-label">No vessel names left to resolve</div></div>${noVesselCount ? `<div class="ops-notice" style="margin-top:10px">${noVesselCount} record(s) have no line and no vessel recorded either — those need a data fix at the source, not a mapping.</div>` : ''}`);
+    return;
+  }
+
+  const rows = groups.slice(0, 80).map((g, i) => `
+    <tr id="uvm_row_${i}">
+      <td class="mono" style="max-width:220px">${esc(g.vessel)}</td>
+      <td class="mono" style="text-align:right">${g.count}</td>
+      <td><select id="uvm_sel_${i}" style="min-width:220px"><option value="">— choose line —</option>${lineOptions}</select></td>
+      <td><button class="tbl-btn" onclick="assignVesselToLine(${i})">Assign →</button></td>
+    </tr>`).join('');
+
+  openModal('Resolve Unmapped Vessels', `
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">
+      ${groups.reduce((s, g) => s + g.count, 0)} interchange records across ${groups.length} distinct vessel name${groups.length === 1 ? '' : 's'} have no shipping line. Assigning a vessel here updates every matching record immediately and remembers the mapping for future imports.
+      ${groups.length > 80 ? `<br>Showing the top 80 by record count.` : ''}
+    </div>
+    <div class="table-wrap" style="max-height:420px;overflow-y:auto">
+      <table class="data-table"><thead><tr><th>Vessel</th><th style="text-align:right">Records</th><th>Assign to line</th><th></th></tr></thead>
+      <tbody id="uvmTableBody">${rows}</tbody></table>
+    </div>
+    <div id="uvmGroupsData" style="display:none">${esc(JSON.stringify(groups.slice(0, 80)))}</div>
+  `);
+  window._uvmGroups = groups.slice(0, 80);
+}
+
+async function assignVesselToLine(idx) {
+  const group = (window._uvmGroups || [])[idx];
+  const sel = document.getElementById(`uvm_sel_${idx}`);
+  const lineId = sel ? sel.value : '';
+  if (!group) return;
+  if (!lineId) { toast('Choose a shipping line first', 'error'); return; }
+  const line = state.db.shippingLines.find(l => l.id === lineId);
+  if (!line) { toast('Shipping line not found', 'error'); return; }
+
+  const row = document.getElementById(`uvm_row_${idx}`);
+  const btn = row ? row.querySelector('button') : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+
+  try {
+    // Update the live records directly — these are historical rows already
+    // saved to Supabase, not part of the in-memory "dirty" batch, so this
+    // writes straight to the DB rather than waiting on scheduleSave().
+    const { error } = await supabase.from('interchange')
+      .update({ line_id: lineId })
+      .is('line_id', null)
+      .in('id', group.ids);
+    if (error) throw error;
+
+    // Teach the mapping so future imports/entries with this exact vessel
+    // name resolve automatically without needing this screen again.
+    const { data: inserted, error: mapErr } = await supabase.from('vessel_line_map')
+      .insert({ pattern: group.vessel, match_type: 'exact', line_id: lineId, priority: 100, source: 'manual', created_by: state.profile?.username || null })
+      .select('*').single();
+    if (!mapErr && inserted) state.db.vesselLineMap.push(vlmFromRow(inserted));
+
+    // Reflect it locally without a full reload.
+    const idSet = new Set(group.ids);
+    state.db.interchange.forEach(ic => { if (idSet.has(ic.id)) ic.line = lineId; });
+
+    addAudit(state.profile.username, 'Shipping Line Backfilled', `${group.count} record(s) with vessel "${group.vessel}" → ${line.code}`);
+    toast(`${group.count} record(s) assigned to ${line.code}`, 'success');
+
+    if (row) row.remove();
+    buildBadges();
+    renderLines(_linesFilter);
+    if (document.getElementById('sec-depotreport')?.classList.contains('active')) renderDepotReport();
+    if (document.getElementById('sec-depops')?.classList.contains('active')) renderDepOpsReports();
+  } catch (e) {
+    console.error('assignVesselToLine failed:', e);
+    toast('Could not save — try again', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Assign →'; }
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -5365,6 +5529,7 @@ async function executeClearData() {
   state.db = {
     trucks: [], drivers: [], trips: [], maintenance: [], fuel: [],
     shippingLines: [], shutouts: [], interchange: [], requisitions: [],
+    vesselLineMap: [],
     workshop: [], invoices: [], billingRates: defaultBillingRates(),
     allocationRules: [], trackingPositions: {}, auditLog: [],
     settings: state.db.settings || {
@@ -6981,6 +7146,10 @@ let _depOpsRptRows = [];
 function depOpsReportsPopulateLines() {
   const sel = document.getElementById('depopsRptLine');
   if (!sel || sel.dataset.populated) return;
+  const unmapped = document.createElement('option');
+  unmapped.value = '__unmapped__';
+  unmapped.textContent = '⚠ No Line Assigned';
+  sel.appendChild(unmapped);
   state.db.shippingLines.forEach(l => {
     const opt = document.createElement('option');
     opt.value = l.id;
@@ -7008,7 +7177,8 @@ async function renderDepOpsReports() {
   const to = document.getElementById('depopsRptTo')?.value || '';
 
   let rows = (state.db.interchange || []).slice();
-  if (lineId) rows = rows.filter(i => i.line === lineId);
+  if (lineId === '__unmapped__') rows = rows.filter(i => !i.line);
+  else if (lineId) rows = rows.filter(i => i.line === lineId);
   if (type) rows = rows.filter(i => i.type === type);
   if (status) rows = rows.filter(i => i.status === status);
   if (from) rows = rows.filter(i => new Date(i.date) >= new Date(from));
@@ -7019,7 +7189,8 @@ async function renderDepOpsReports() {
   const body = document.getElementById('depopsRptBody');
   const meta = document.getElementById('depopsRptMeta');
   const exportBtn = document.getElementById('depopsRptExportBtn');
-  if (meta) meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'}`;
+  const unmappedCount = (state.db.interchange || []).filter(i => !i.line).length;
+  if (meta) meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'}` + (unmappedCount ? ` · ${unmappedCount} total with no shipping line — <a href="#" onclick="openUnmappedVesselsModal();return false" style="color:var(--gold)">resolve them →</a>` : '');
   if (exportBtn) exportBtn.disabled = !rows.length;
 
   if (body) {
@@ -7028,7 +7199,7 @@ async function renderDepOpsReports() {
       <td class="mono" style="color:var(--gold)">${sanitize(ic.container || '—')}</td>
       <td>${sanitize(ic.type || '—')}</td>
       <td>${sanitize(ic.ctype || '—')}</td>
-      <td>${sanitize(lineName(ic.line))}</td>
+      <td>${ic.line ? sanitize(lineName(ic.line)) : '<span style="color:var(--danger,#c0392b)">⚠ No Line</span>'}</td>
       <td>${sanitize(ic.condition || '—')}</td>
       <td>${ic.truck ? sanitize(truckName(ic.truck)) : '—'}</td>
       <td>${ic.driver ? sanitize(driverName(ic.driver)) : '—'}</td>
@@ -7038,7 +7209,7 @@ async function renderDepOpsReports() {
   }
 
   const byLine = {};
-  rows.forEach(ic => { const key = lineName(ic.line); byLine[key] = (byLine[key] || 0) + 1; });
+  rows.forEach(ic => { const key = ic.line ? lineName(ic.line) : '⚠ No Line Assigned'; byLine[key] = (byLine[key] || 0) + 1; });
   const repairTotal = rows.reduce((s, ic) => s + (ic.repairTotal || 0), 0);
 
   const summary = document.getElementById('depopsRptSummary');
@@ -7059,6 +7230,7 @@ async function renderDepOpsReports() {
     </div>`;
   }
 }
+
 
 function downloadDepOpsReportCSV() {
   if (!_depOpsRptRows.length) { toast('Nothing to download yet', 'error'); return; }
