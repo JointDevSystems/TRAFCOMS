@@ -1008,6 +1008,7 @@ async function performLogout(auditDetail) {
   document.getElementById('shell').style.display = 'none';
   const dp = document.getElementById('driverPortal');
   if (dp) dp.style.display = 'none';
+  document.body.classList.remove('driver-portal-active');
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -1027,6 +1028,7 @@ function togglePwVis(inputId, btn) {
 function bootShell() {
 
   if (isDriver()) {
+    document.body.classList.add('driver-portal-active');
     const shellEl = document.getElementById('shell');
     if (shellEl) shellEl.style.display = 'none';
     const dp = document.getElementById('driverPortal');
@@ -1037,6 +1039,7 @@ function bootShell() {
     startIdleTimer();
     return;
   }
+  document.body.classList.remove('driver-portal-active');
   const dp = document.getElementById('driverPortal');
   if (dp) dp.style.display = 'none';
   document.getElementById('shell').style.display='flex';
@@ -1168,10 +1171,11 @@ const SECTION_META = {
 function showSection(sec, btn) {
   if (!canSeeSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-item, .admin-nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .admin-nav-item, .mobile-nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
   if(el) el.classList.add('active');
   if(btn) btn.classList.add('active');
+  document.querySelectorAll(`.nav-item[data-section="${sec}"], .mobile-nav-item[data-mobile-section="${sec}"]`).forEach(n=>n.classList.add('active'));
   state.currentSection=sec;
   const [area,title]=SECTION_META[sec]||['Operations',sec];
   const tb=document.getElementById('topbarArea');
@@ -1186,7 +1190,7 @@ function showSection(sec, btn) {
 function showAdminSection(sec, btn) {
   if (!canSeeAdminSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-item, .admin-nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .admin-nav-item, .mobile-nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
   if(el) el.classList.add('active');
   if(btn) btn.classList.add('active');
@@ -1197,6 +1201,7 @@ function showAdminSection(sec, btn) {
   if(tb) tb.textContent=area;
   if(tt) tt.textContent=title;
   renderSection(sec);
+  if(window.innerWidth<900) document.body.classList.remove('sidebar-open');
 }
 
 function renderSection(sec) {
@@ -1220,6 +1225,11 @@ const sectionRenderers = {
 };
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
+
+function mobileNav(sec, btn) {
+  showSection(sec, btn);
+  document.body.classList.remove('sidebar-open');
+}
 
 
 function renderDashboard() {
