@@ -71,6 +71,43 @@ function initTheme() {
 
 document.addEventListener('DOMContentLoaded', initTheme);
 
+/* ══ SCROLL-TO-TOP NAVIGATION ══ */
+function scrollToTop() {
+  var content = document.querySelector('.content');
+  if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
+  var dpBody = document.getElementById('dp_body');
+  if (dpBody) dpBody.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function initScrollToTop() {
+  var btn = document.getElementById('scrollTopBtn');
+  if (!btn) return;
+  var threshold = 360;
+  var scrollTargets = [document.querySelector('.content'), document.getElementById('dp_body'), window].filter(Boolean);
+
+  function currentScrollY() {
+    var max = 0;
+    scrollTargets.forEach(function(el) {
+      var y = el === window ? (window.scrollY || document.documentElement.scrollTop || 0) : el.scrollTop;
+      if (y > max) max = y;
+    });
+    return max;
+  }
+
+  function checkScroll() {
+    if (currentScrollY() > threshold) btn.classList.add('visible');
+    else btn.classList.remove('visible');
+  }
+
+  scrollTargets.forEach(function(el) {
+    el.addEventListener('scroll', checkScroll, { passive: true });
+  });
+  checkScroll();
+}
+
+document.addEventListener('DOMContentLoaded', initScrollToTop);
+
 function defaultBillingRates() {
   return {
     '20ft Dry': { base:0, perKm:0 },
