@@ -8,29 +8,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 window.ghSupabase = supabase;
 
-// Supabase/PostgREST caps any unpaginated select() at 1000 rows by default.
-// Tables like `interchange` now hold 10,000+ rows, so a plain .select('*')
-// silently drops everything past the first page (and, with no explicit
-// .order(), *which* rows come back is arbitrary). fetchAllRows pages through
-// with .range() until a page comes back short, so callers always get the
-// full table. Use this instead of a bare `.select('*')` for any table that
-// can grow past ~1000 rows.
-async function fetchAllRows(table, selectCols, buildQuery) {
-  const PAGE_SIZE = 1000;
-  let all = [];
-  let from = 0;
-  for (;;) {
-    let q = supabase.from(table).select(selectCols || '*');
-    if (buildQuery) q = buildQuery(q);
-    const { data, error } = await q.range(from, from + PAGE_SIZE - 1);
-    if (error) return { data: all, error };
-    all = all.concat(data || []);
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  return { data: all, error: null };
-}
-
 let state = {
   currentUser       : null,
   profile           : null,
@@ -153,24 +130,24 @@ async function loadDB() {
       shutoutsRes, icRes, reqRes, wsRes, invRes, invTripsRes,
       billingRes, allocRes, trackRes, auditRes, settingsRes, profilesRes,
     ] = await Promise.all([
-      fetchAllRows('trucks'),
-      fetchAllRows('drivers'),
-      fetchAllRows('trips'),
-      fetchAllRows('maintenance'),
-      fetchAllRows('fuel_logs'),
-      fetchAllRows('shipping_lines'),
-      fetchAllRows('shutouts'),
-      fetchAllRows('interchange'),
-      fetchAllRows('requisitions'),
-      fetchAllRows('workshop_jobs'),
-      fetchAllRows('invoices'),
-      fetchAllRows('invoice_trips'),
-      fetchAllRows('billing_rates'),
-      fetchAllRows('allocation_rules'),
-      fetchAllRows('tracking_positions'),
-      fetchAllRows('audit_log'),
+      supabase.from('trucks').select('*'),
+      supabase.from('drivers').select('*'),
+      supabase.from('trips').select('*'),
+      supabase.from('maintenance').select('*'),
+      supabase.from('fuel_logs').select('*'),
+      supabase.from('shipping_lines').select('*'),
+      supabase.from('shutouts').select('*'),
+      supabase.from('interchange').select('*'),
+      supabase.from('requisitions').select('*'),
+      supabase.from('workshop_jobs').select('*'),
+      supabase.from('invoices').select('*'),
+      supabase.from('invoice_trips').select('*'),
+      supabase.from('billing_rates').select('*'),
+      supabase.from('allocation_rules').select('*'),
+      supabase.from('tracking_positions').select('*'),
+      supabase.from('audit_log').select('*'),
       supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
-      fetchAllRows('profiles'),
+      supabase.from('profiles').select('*'),
     ]);
 
     if (trucksRes.error) throw trucksRes.error;
@@ -248,7 +225,17 @@ async function saveDB() {
     failures.push(await upsertRows('maintenance',    db.maintenance.map(maintToRow)));
     failures.push(await upsertRows('fuel_logs',      db.fuel.map(fuelToRow)));
     failures.push(await upsertRows('shutouts',       db.shutouts.map(shutoutToRow)));
-    failures.push(await upsertRows('interchange',    db.interchange.map(icToRow)));
+    // interchange can grow into the tens of thousands of rows (bulk CSV imports of
+    // gate movements). Re-upserting the ENTIRE array on every save reliably blew past
+    // Supabase's 8s statement_timeout for the `authenticated` role once the table passed
+    // ~10k rows, so the whole upsert was aborted and nothing in the batch — including
+    // newly-added records — actually persisted. Only send rows that are new or changed.
+    const dirtyInterchange = (db.interchange || []).filter(i => i._dirty);
+    if (dirtyInterchange.length) {
+      const icFailure = await upsertRows('interchange', dirtyInterchange.map(icToRow));
+      if (icFailure) failures.push(icFailure);
+      else dirtyInterchange.forEach(i => { delete i._dirty; });
+    }
     failures.push(await upsertRows('requisitions',   db.requisitions.map(reqToRow)));
     failures.push(await upsertRows('workshop_jobs',  db.workshop.map(wsToRow)));
     failures.push(await upsertRows('invoices',       db.invoices.map(invToRow)));
@@ -2776,6 +2763,7 @@ function createInwardEntry() {
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
     date: dateVal, status: 'pending', img: _inwardImg || '',
+    _dirty: true,
   });
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})`);
@@ -2952,6 +2940,7 @@ function processBulkInward() {
       repairs: [], repairTotal: 0,
       notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
       date: dateVal, status: 'pending', img: '',
+      _dirty: true,
     });
     created++;
   });
@@ -3454,6 +3443,7 @@ function approveInterchange(id) {
   const ic = state.db.interchange.find(i=>i.id===id);
   if (!ic) return;
   ic.status='approved';
+  ic._dirty = true;
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Interchange Approved', ic.container);
   renderInterchange(_icFilter);
@@ -3490,6 +3480,7 @@ function saveInterchange() {
     repairs, repairTotal: repairItemsTotal(repairs),
     notes:  sanitize(document.getElementById('ic_notes').value.trim()),
     date: new Date().toISOString(), status:'pending', img:'',
+    _dirty: true,
   });
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Interchange Recorded', cont);
@@ -5307,12 +5298,25 @@ const DELETE_TABLE_LABELS = {
   invoices:'Invoice',
 };
 
+// Local state.db array keys don't always match the real Supabase table names
+// (e.g. `fuel` -> `fuel_logs`, `shippingLines` -> `shipping_lines`). Deletes
+// used to only splice the local array — saveDB()'s upsert calls have no way
+// to express "this row is gone", so the row was never actually removed from
+// Supabase and would reappear on the next full reload. Delete straight from
+// the right table instead.
+const DELETE_TABLE_SUPABASE_NAMES = {
+  trucks:'trucks', drivers:'drivers', trips:'trips', maintenance:'maintenance',
+  fuel:'fuel_logs', shutouts:'shutouts', interchange:'interchange',
+  shippingLines:'shipping_lines', requisitions:'requisitions', workshop:'workshop_jobs',
+  invoices:'invoices',
+};
+
 function adminDeleteBtn(table, id) {
   if (!isAdmin()) return '';
   return `<button class="modal-btn danger" onclick="confirmDeleteRecord('${table}','${id}')" style="margin-top:10px">🗑 Delete ${DELETE_TABLE_LABELS[table]||'Record'}</button>`;
 }
 
-function confirmDeleteRecord(table, id) {
+async function confirmDeleteRecord(table, id) {
   if (!isAdmin()) { toast('Admin rights required to delete records', 'error'); return; }
   const label = DELETE_TABLE_LABELS[table] || 'record';
   if (!confirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`)) return;
@@ -5320,8 +5324,21 @@ function confirmDeleteRecord(table, id) {
   if (!Array.isArray(arr)) return;
   const idx = arr.findIndex(r=>r.id===id);
   if (idx===-1) { toast('Record not found', 'error'); return; }
+
+  const supaTable = DELETE_TABLE_SUPABASE_NAMES[table];
+  if (supaTable) {
+    toast('Deleting…', 'info', 1500);
+    const { error } = await supabase.from(supaTable).delete().eq('id', id);
+    if (error) {
+      // Most likely another row still references this one (e.g. a trip
+      // pointing at this truck/driver) and the foreign key blocked it.
+      console.error(`${supaTable} delete failed:`, error.message);
+      toast(`Could not delete — ${error.message}`, 'error', 6000);
+      return;
+    }
+  }
+
   arr.splice(idx,1);
-  scheduleSave();
   addAudit(state.profile.username, 'Record Deleted', `${label} — ${id}`);
   buildBadges();
   closeModal();
@@ -5344,6 +5361,7 @@ function triggerImageUpload(table, id, field, afterFn) {
       const rec = state.db[table].find(r=>r.id===id);
       if (!rec) return;
       rec[field] = reader.result;
+      rec._dirty = true;
       scheduleSave();
       toast('Image uploaded', 'success');
       if (state.currentSection) renderSection(state.currentSection);
@@ -6498,6 +6516,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       bookingId: bookingId || null,
       truckRegText: !matchedTruck ? (survey.truck_reg || '') : '',
       driverNameText: !matchedDriver ? (survey.driver_name || '') : '',
+      _dirty: true,
     };
     state.db.interchange.push(icRecord);
     scheduleSave(); buildBadges();

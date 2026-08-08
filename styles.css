@@ -558,10 +558,19 @@ body::before {
 /* ══ TRACKING ══ */
 .tracking-map { background: var(--surface); border-radius: 0 0 var(--radius-lg) var(--radius-lg); height: 440px; display: flex; position: relative; overflow: hidden; }
 .tracking-map-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; flex: 1; height: 100%; }
-.tracking-map-canvas { flex: 1; height: 100%; background: var(--surface); }
+.tracking-map-canvas { flex: 1 1 auto; min-width: 0; height: 100%; background: var(--surface); }
 .tracking-map-canvas .leaflet-container { width: 100%; height: 100%; background: var(--surface); font-family: var(--font-ui, sans-serif); }
 .tracking-map-canvas .leaflet-popup-content-wrapper { border-radius: 8px; }
-.tracking-vehicles { position: absolute; right: 0; top: 0; bottom: 0; width: 200px; background: var(--card); border-left: 1px solid var(--border); overflow-y: auto; padding: 10px; }
+/* Was `position: absolute; right: 0` — floating on top of the map canvas, which
+   rendered full-width underneath and covered the plate/driver list. Now a real
+   flex sibling with a fixed width, so the map only fills the remaining space. */
+.tracking-vehicles { position: static; flex: 0 0 200px; width: 200px; height: 100%; background: var(--card); border-left: 1px solid var(--border); overflow-y: auto; padding: 10px; z-index: 1; }
+
+@media (max-width: 640px) {
+  .tracking-map { flex-direction: column; height: auto; }
+  .tracking-map-canvas { height: 260px; flex: none; }
+  .tracking-vehicles { flex: none; width: 100%; height: 220px; border-left: none; border-top: 1px solid var(--border); }
+}
 .tv-item { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-2); cursor: pointer; }
 .tv-item:hover { color: var(--text); }
 .tv-reg { font-family: var(--font-mono); font-size: 10px; color: var(--gold); font-weight: 700; }
