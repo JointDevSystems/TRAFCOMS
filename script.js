@@ -225,7 +225,17 @@ async function saveDB() {
     failures.push(await upsertRows('maintenance',    db.maintenance.map(maintToRow)));
     failures.push(await upsertRows('fuel_logs',      db.fuel.map(fuelToRow)));
     failures.push(await upsertRows('shutouts',       db.shutouts.map(shutoutToRow)));
-    failures.push(await upsertRows('interchange',    db.interchange.map(icToRow)));
+    // interchange can grow into the tens of thousands of rows (bulk CSV imports of
+    // gate movements). Re-upserting the ENTIRE array on every save reliably blew past
+    // Supabase's 8s statement_timeout for the `authenticated` role once the table passed
+    // ~10k rows, so the whole upsert was aborted and nothing in the batch — including
+    // newly-added records — actually persisted. Only send rows that are new or changed.
+    const dirtyInterchange = (db.interchange || []).filter(i => i._dirty);
+    if (dirtyInterchange.length) {
+      const icFailure = await upsertRows('interchange', dirtyInterchange.map(icToRow));
+      if (icFailure) failures.push(icFailure);
+      else dirtyInterchange.forEach(i => { delete i._dirty; });
+    }
     failures.push(await upsertRows('requisitions',   db.requisitions.map(reqToRow)));
     failures.push(await upsertRows('workshop_jobs',  db.workshop.map(wsToRow)));
     failures.push(await upsertRows('invoices',       db.invoices.map(invToRow)));
@@ -533,6 +543,25 @@ function containerFormatIssue(cont) {
 
 function isValidContainerFormat(cont) {
   return containerFormatIssue(cont) === null;
+}
+
+// Single source of truth for "is this container movement already logged?" —
+// same container + same movement type + same calendar day. Every entry path
+// (manual, inward, bulk import) must call this with the actual date the
+// record is being logged for, not "today" — a previous version of this check
+// always compared against today's date even when bulk-importing historical
+// rows, which meant it silently let through duplicates on any date other
+// than today. excludeId lets an edit-in-place skip matching itself.
+function findDuplicateInterchange(container, type, dateVal, excludeId) {
+  const cont = (container || '').trim().toUpperCase();
+  if (!cont || !type) return null;
+  const day = new Date(dateVal || Date.now()).toDateString();
+  return state.db.interchange.find(i =>
+    i.id !== excludeId &&
+    (i.container || '').toUpperCase() === cont &&
+    i.type === type &&
+    new Date(i.date).toDateString() === day
+  ) || null;
 }
 
 
@@ -2733,11 +2762,11 @@ function createInwardEntry() {
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
 
   const type = document.getElementById('iw_type').value;
-  const dupIc = state.db.interchange.find(i => (i.container||'').toUpperCase()===cont && i.type===type && new Date(i.date).toDateString()===new Date().toDateString());
-  if (dupIc) { toast(`${cont} already has a ${type} record logged today`, 'warning'); return; }
-
   const dateInput = document.getElementById('iw_date').value;
   const dateVal = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
+
+  const dupIc = findDuplicateInterchange(cont, type, dateVal);
+  if (dupIc) { toast(`${cont} already has a ${type} record logged on ${fmtDate(dateVal)}`, 'warning'); return; }
 
   state.db.interchange.push({
     id: uid('IC'), container: cont, type,
@@ -2753,6 +2782,7 @@ function createInwardEntry() {
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
     date: dateVal, status: 'pending', img: _inwardImg || '',
+    _dirty: true,
   });
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})`);
@@ -2891,10 +2921,17 @@ function processBulkInward() {
     const typeRaw = pickField(r, ['type','movement']).toLowerCase().replace(/[^a-z]/g,'');
     const type = VALID_TYPES[typeRaw] || 'Gate-In';
 
-    const dupKey = `${cont}::${type}`;
-    if (seenInBatch.has(dupKey)) { skipped.push(`${cont}: duplicate within this file`); return; }
-    const dupIc = state.db.interchange.find(i => (i.container||'').toUpperCase()===cont && i.type===type && new Date(i.date).toDateString()===new Date().toDateString());
-    if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged today`); return; }
+    let dateVal = new Date().toISOString();
+    const dateRaw = pickField(r, ['date','entrydate']);
+    if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
+
+    // Dedup key includes the row's own date — two different historical dates
+    // for the same container+type are legitimate separate movements, not
+    // duplicates, so date has to be part of both the in-file and in-DB checks.
+    const dupKey = `${cont}::${type}::${new Date(dateVal).toDateString()}`;
+    if (seenInBatch.has(dupKey)) { skipped.push(`${cont}: duplicate within this file (same container, type & date)`); return; }
+    const dupIc = findDuplicateInterchange(cont, type, dateVal);
+    if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); return; }
     seenInBatch.add(dupKey);
 
     const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg']);
@@ -2911,10 +2948,6 @@ function processBulkInward() {
     const condRaw = pickField(r, ['condition']);
     const condition = VALID_COND.find(c => c.toLowerCase() === condRaw.toLowerCase()) || 'Good';
 
-    let dateVal = new Date().toISOString();
-    const dateRaw = pickField(r, ['date','entrydate']);
-    if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
-
     state.db.interchange.push({
       id: uid('IC'), container: cont, type, ctype,
       line: line ? line.id : '',
@@ -2929,6 +2962,7 @@ function processBulkInward() {
       repairs: [], repairTotal: 0,
       notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
       date: dateVal, status: 'pending', img: '',
+      _dirty: true,
     });
     created++;
   });
@@ -3070,7 +3104,7 @@ function renderShutout(f){
   let items=f==='all'?state.db.shutouts:state.db.shutouts.filter(s=>s.status===f);
   const el=document.getElementById('shutoutList');
   if(!el) return;
-  el.innerHTML=items.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">Reason: ${s.reason}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-3)"><span>${fmtDate(s.date)}</span><span>${truckName(s.truckId)}</span></div>${s.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:6px;font-style:italic">${s.notes}</div>`:''}${isAdmin()?`<button class="modal-btn danger" style="margin-top:8px" onclick="confirmDeleteRecord('shutouts','${s.id}')">🗑 Delete</button>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No shutout records</div></div>';
+  el.innerHTML=items.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">Reason: ${s.reason}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-3)"><span>${fmtDate(s.date)}</span><span>${truckName(s.truckId)}</span></div>${s.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:6px;font-style:italic">${s.notes}</div>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No shutout records</div></div>';
 }
 
 function showAddShutoutModal() {
@@ -3115,7 +3149,7 @@ function renderInterchange(f){
   el.innerHTML=items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
-    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img)?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`;
+    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img)?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
@@ -3376,7 +3410,6 @@ function renderDepotReportDupesList() {
           <div class="mono" style="color:var(--text-2)"><span style="color:var(--gold)">${esc(r.container)}</span> · ${esc(r.type)} · ${fmtDate(r.date)} · EIR ${esc(r.eirNumber || '—')} · ${_icSourceTag(r)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             ${sbadge(r.status)}
-            ${isAdmin() ? `<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${r.id}')">🗑 Remove</button>` : ''}
           </div>
         </div>`).join('')}
     </div>`).join('');
@@ -3431,6 +3464,7 @@ function approveInterchange(id) {
   const ic = state.db.interchange.find(i=>i.id===id);
   if (!ic) return;
   ic.status='approved';
+  ic._dirty = true;
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Interchange Approved', ic.container);
   renderInterchange(_icFilter);
@@ -3449,7 +3483,7 @@ function saveInterchange() {
   if (!cont) { toast('Container number required', 'error'); return; }
   const contIssue = containerFormatIssue(cont);
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
-  const dupIc = state.db.interchange.find(i=>(i.container||'').toUpperCase()===cont && i.type===document.getElementById('ic_type').value && new Date(i.date).toDateString()===new Date().toDateString());
+  const dupIc = findDuplicateInterchange(cont, document.getElementById('ic_type').value, new Date().toISOString());
   if (dupIc) { toast(`${cont} already has a ${document.getElementById('ic_type').value} interchange record logged today`, 'warning'); return; }
   const repairs = window._repairItems.ic || [];
   state.db.interchange.push({
@@ -3467,6 +3501,7 @@ function saveInterchange() {
     repairs, repairTotal: repairItemsTotal(repairs),
     notes:  sanitize(document.getElementById('ic_notes').value.trim()),
     date: new Date().toISOString(), status:'pending', img:'',
+    _dirty: true,
   });
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Interchange Recorded', cont);
@@ -3891,7 +3926,35 @@ function renderLines(f){
   }
   const grid=document.getElementById('linesGrid');
   if(!grid) return;
-  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${isAdmin()?`<button class="tbl-btn" style="color:var(--red)" onclick="confirmDeleteRecord('shippingLines','${l.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${isAdmin()?`<button class="tbl-btn" onclick="showEditLineModal('${l.id}')">✎ Edit Rates</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+}
+
+function showEditLineModal(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l) { toast('Shipping line not found', 'error'); return; }
+  openModal(`Edit ${esc(l.code)} — ${esc(l.name)}`, `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sle_code" value="${esc(l.code)}" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sle_name" value="${esc(l.name)}"/></div></div><div class="fg"><label>Contact Email</label><input id="sle_email" type="email" value="${esc(l.contact||'')}"/></div><div class="form-row-2"><div class="fg"><label>20ft Rate (KSh)</label><input id="sle_r20" type="number" min="0" value="${l.rate20}"/></div><div class="fg"><label>40ft Rate (KSh)</label><input id="sle_r40" type="number" min="0" value="${l.rate40}"/></div></div><div class="fg"><label>40ft HC Rate (KSh)</label><input id="sle_rhc" type="number" min="0" value="${l.rateHC}"/></div><div class="fg"><label>Status</label><select id="sle_active"><option value="true" ${l.active?'selected':''}>Active</option><option value="false" ${!l.active?'selected':''}>Inactive</option></select></div><button class="submit-btn" onclick="saveShippingLineEdit('${l.id}')">Save Changes →</button>`);
+}
+
+function saveShippingLineEdit(id) {
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l) { toast('Shipping line not found', 'error'); return; }
+  const code = document.getElementById('sle_code').value.trim().toUpperCase();
+  const name = document.getElementById('sle_name').value.trim();
+  if (!code || !name) { toast('Code and name required', 'error'); return; }
+  if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
+  const dupLine = findLineByCode(code, id);
+  if (dupLine) { toast(`Code ${code} is already used by ${dupLine.name}`, 'error'); return; }
+  l.code = code;
+  l.name = name;
+  l.contact = sanitize(document.getElementById('sle_email').value.trim());
+  l.rate20 = Math.max(0, parseInt(document.getElementById('sle_r20').value) || 0);
+  l.rate40 = Math.max(0, parseInt(document.getElementById('sle_r40').value) || 0);
+  l.rateHC = Math.max(0, parseInt(document.getElementById('sle_rhc').value) || 0);
+  l.active = document.getElementById('sle_active').value === 'true';
+  scheduleSave(); closeModal(); renderLines(_linesFilter);
+  addAudit(state.profile.username, 'Shipping Line Rates Updated', `${code} — 20ft KSh ${fmt(l.rate20)} · 40ft KSh ${fmt(l.rate40)} · HC KSh ${fmt(l.rateHC)}`);
+  toast(`${code} rates updated`, 'success');
 }
 
 function showAddLineModal() {
@@ -5284,12 +5347,26 @@ const DELETE_TABLE_LABELS = {
   invoices:'Invoice',
 };
 
+// Local state.db array keys don't always match the real Supabase table names
+// (e.g. `fuel` -> `fuel_logs`, `shippingLines` -> `shipping_lines`). Deletes
+// used to only splice the local array — saveDB()'s upsert calls have no way
+// to express "this row is gone", so the row was never actually removed from
+// Supabase and would reappear on the next full reload. Delete straight from
+// the right table instead.
+const DELETE_TABLE_SUPABASE_NAMES = {
+  trucks:'trucks', drivers:'drivers', trips:'trips', maintenance:'maintenance',
+  fuel:'fuel_logs', shutouts:'shutouts', interchange:'interchange',
+  shippingLines:'shipping_lines', requisitions:'requisitions', workshop:'workshop_jobs',
+  invoices:'invoices',
+};
+
 function adminDeleteBtn(table, id) {
-  if (!isAdmin()) return '';
-  return `<button class="modal-btn danger" onclick="confirmDeleteRecord('${table}','${id}')" style="margin-top:10px">🗑 Delete ${DELETE_TABLE_LABELS[table]||'Record'}</button>`;
+  // Deletion is disabled by policy — admins can edit/correct records but not
+  // remove them outright, so this always renders nothing now.
+  return '';
 }
 
-function confirmDeleteRecord(table, id) {
+async function confirmDeleteRecord(table, id) {
   if (!isAdmin()) { toast('Admin rights required to delete records', 'error'); return; }
   const label = DELETE_TABLE_LABELS[table] || 'record';
   if (!confirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`)) return;
@@ -5297,8 +5374,21 @@ function confirmDeleteRecord(table, id) {
   if (!Array.isArray(arr)) return;
   const idx = arr.findIndex(r=>r.id===id);
   if (idx===-1) { toast('Record not found', 'error'); return; }
+
+  const supaTable = DELETE_TABLE_SUPABASE_NAMES[table];
+  if (supaTable) {
+    toast('Deleting…', 'info', 1500);
+    const { error } = await supabase.from(supaTable).delete().eq('id', id);
+    if (error) {
+      // Most likely another row still references this one (e.g. a trip
+      // pointing at this truck/driver) and the foreign key blocked it.
+      console.error(`${supaTable} delete failed:`, error.message);
+      toast(`Could not delete — ${error.message}`, 'error', 6000);
+      return;
+    }
+  }
+
   arr.splice(idx,1);
-  scheduleSave();
   addAudit(state.profile.username, 'Record Deleted', `${label} — ${id}`);
   buildBadges();
   closeModal();
@@ -5321,6 +5411,7 @@ function triggerImageUpload(table, id, field, afterFn) {
       const rec = state.db[table].find(r=>r.id===id);
       if (!rec) return;
       rec[field] = reader.result;
+      rec._dirty = true;
       scheduleSave();
       toast('Image uploaded', 'success');
       if (state.currentSection) renderSection(state.currentSection);
@@ -6475,6 +6566,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       bookingId: bookingId || null,
       truckRegText: !matchedTruck ? (survey.truck_reg || '') : '',
       driverNameText: !matchedDriver ? (survey.driver_name || '') : '',
+      _dirty: true,
     };
     state.db.interchange.push(icRecord);
     scheduleSave(); buildBadges();
