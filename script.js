@@ -36,6 +36,41 @@ let state = {
 };
 
 
+/* ══ THEME (light / dark) ══ */
+function applyTheme(mode) {
+  var root = document.documentElement;
+  var isLight = mode === 'light';
+  if (isLight) root.setAttribute('data-theme', 'light');
+  else root.removeAttribute('data-theme');
+
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isLight ? '#FBF6E9' : '#06080F');
+
+  var sun = document.querySelector('#themeBtn .theme-icon-sun');
+  var moon = document.querySelector('#themeBtn .theme-icon-moon');
+  if (sun && moon) {
+    sun.style.display = isLight ? 'none' : '';
+    moon.style.display = isLight ? '' : 'none';
+  }
+  var btn = document.getElementById('themeBtn');
+  if (btn) btn.title = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+}
+
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  var next = current === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('gargo-theme', next); } catch(e) {}
+  applyTheme(next);
+}
+
+function initTheme() {
+  var saved = 'dark';
+  try { saved = localStorage.getItem('gargo-theme') === 'light' ? 'light' : 'dark'; } catch(e) {}
+  applyTheme(saved);
+}
+
+document.addEventListener('DOMContentLoaded', initTheme);
+
 function defaultBillingRates() {
   return {
     '20ft Dry': { base:0, perKm:0 },

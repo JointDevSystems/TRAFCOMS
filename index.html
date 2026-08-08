@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gargo · Fleet Operations</title>
+    <script>
+      (function(){
+        try {
+          var t = localStorage.getItem('gargo-theme');
+          if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        } catch(e) {}
+      })();
+    </script>
 
 
     <link rel="manifest" href="manifest.json" />
@@ -167,6 +175,10 @@
                     <input class="search-input" id="globalSearch" placeholder="Search trucks, drivers, containers…" onkeydown="if(event.key==='Enter')handleSearch(this.value)" />
                     <div class="search-results-panel" id="searchResults" style="display:none"></div>
                 </div>
+                <button class="rail-theme-btn" onclick="toggleTheme()" title="Toggle light / dark mode" id="themeBtn">
+                    <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                    <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                </button>
                 <button class="rail-alert-btn" onclick="toggleAlerts()" title="Alerts" id="alertBtn">
                     <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
                     <div class="alert-dot" id="alertDot" style="display:none"></div>
