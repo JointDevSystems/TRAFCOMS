@@ -3579,11 +3579,14 @@ function populateDepotReportLineFilter() {
   sel.dataset.populated = '1';
 }
 
-// Flags two kinds of duplicate: (1) the exact same container logged with
-// the exact same movement type on the exact same calendar day — usually a
-// double entry (manual re-submit, or a bulk file re-uploaded); (2) the same
-// EIR/reference number attached to two different container numbers, which
-// almost always means a transcription error at gate entry.
+// Flags the exact same container logged with the exact same movement type
+// on the exact same calendar day — usually a double entry (manual
+// re-submit, or a bulk file re-uploaded).
+//
+// NOTE: reused EIR/reference numbers are intentionally NOT flagged here.
+// Shipping-line source files (e.g. bulk COSCO dispatch/received imports)
+// legitimately reuse EIR/reference numbers across entries — that's expected
+// for this data and isn't an error, so it's excluded from the anomaly report.
 function computeDepotReportDuplicates() {
   const all = state.db.interchange;
 
@@ -3596,17 +3599,7 @@ function computeDepotReportDuplicates() {
     .filter(list => list.length > 1)
     .map(list => ({ kind: 'Same container, type & day', records: list, ids: list.map(i => i.id) }));
 
-  const eirGroups = {};
-  all.forEach(ic => {
-    const eir = (ic.eirNumber || '').trim().toUpperCase();
-    if (!eir) return;
-    (eirGroups[eir] = eirGroups[eir] || []).push(ic);
-  });
-  const eirDupes = Object.entries(eirGroups)
-    .filter(([, list]) => new Set(list.map(i => (i.container || '').toUpperCase())).size > 1)
-    .map(([eir, list]) => ({ kind: `EIR ${eir} reused on different containers`, records: list, ids: list.map(i => i.id) }));
-
-  _depotReportDupes = [...exactDupes, ...eirDupes];
+  _depotReportDupes = [...exactDupes];
   return _depotReportDupes;
 }
 
@@ -6610,7 +6603,7 @@ function depOpsReadyCard(entry) {
 
 
 
-const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat'];
+const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat', 'Heavy Duty', 'LCL', 'Platform'];
 
 
 const REPAIR_LABOUR_RATE_PER_HOUR = 300; // KSh/hr — matches the labour rate implied by the Hakika sample (750/2.5hrs, 450/1.5hrs)
