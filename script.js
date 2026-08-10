@@ -2889,6 +2889,28 @@ function readAllExcelSheetsAsRows(wb) {
   return allRows;
 }
 
+// Sanity-checks a parsed bulk-import date and pushes a review flag if it
+// looks like a data-entry error rather than a real date — e.g. a mistyped
+// year (2027/2028/2030 instead of 2026) or an implausibly old record. This
+// does NOT block the import or alter the date — legitimate far-future
+// dispatch bookings do exist in these registers — it only surfaces the row
+// under Flagged for a human to glance at, which is the check that was
+// missing and let bad years land silently in the DB before.
+function flagIfImplausibleDate(dt, issueTags, flagged, label) {
+  if (!dt) return;
+  const now = new Date();
+  const monthsAhead = (dt.getFullYear() - now.getFullYear()) * 12 + (dt.getMonth() - now.getMonth());
+  if (monthsAhead > 12) {
+    const msg = `date unusually far in the future (${dt.toISOString().slice(0,10)}) — verify year`;
+    issueTags.push(msg);
+    if (flagged) flagged.push(`${label}: ${msg}`);
+  } else if (dt.getFullYear() < 2015) {
+    const msg = `date unusually far in the past (${dt.toISOString().slice(0,10)}) — verify year`;
+    issueTags.push(msg);
+    if (flagged) flagged.push(`${label}: ${msg}`);
+  }
+}
+
 // Parses a date the way Kenyan gate/depot registers actually write them —
 // DD/MM/YYYY (or DD/MM/YY) — instead of relying on JavaScript's native
 // Date parsing, which assumes the US MM/DD/YYYY convention for slash-
@@ -3132,7 +3154,7 @@ async function processBulkDispatch() {
 
     let dateVal = dateOutVal || new Date().toISOString();
     const dateRaw = pickField(r, ['date','dispatchdate','startdate','starttime','datedispatched','datein','entrydate','dategatein']);
-    { const d = parseFlexibleDate(dateRaw); if (d) dateVal = d.toISOString(); }
+    { const d = parseFlexibleDate(dateRaw); if (d) { dateVal = d.toISOString(); flagIfImplausibleDate(d, issueTags, flagged, rowLabel); } }
 
     const notesParts = ['Bulk import'];
     if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
@@ -3719,7 +3741,7 @@ function processBulkInward() {
 
     let dateVal = new Date().toISOString();
     const dateRaw = pickField(r, ['date','entrydate','datein','dateout','gateindate','gateoutdate','inwarddate','outwarddate','entrydatetime']);
-    { const d = parseFlexibleDate(dateRaw); if (d) dateVal = d.toISOString(); }
+    { const d = parseFlexibleDate(dateRaw); if (d) { dateVal = d.toISOString(); flagIfImplausibleDate(d, issueTags, flagged, rowLabel); } }
 
     // Dedup key includes the row's own date — two different historical dates
     // for the same container+type are legitimate separate movements, not
