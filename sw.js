@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v22';
+const CACHE_VERSION = 'gargo-shell-v23';
 
 
 const STATIC_FILES = [
