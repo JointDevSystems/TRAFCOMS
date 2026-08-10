@@ -5321,7 +5321,12 @@ function trcInit() {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   trcPopulateFilterOptions();
   if (!document.getElementById('trcFrom').value) {
-    trcSetPeriod('hourly', document.querySelector('#trcTab-trips .trc-period-row .filter-btn'));
+    // Was 'hourly' — but bulk-imported historical dispatches carry their own
+    // real (often old) start_time, not the upload time. Defaulting to a
+    // 1-hour window meant Reports looked completely empty right after every
+    // bulk import, even though the trips were saved correctly. 'all' shows
+    // everything on first load; the period buttons still let you narrow it.
+    trcSetPeriod('all', document.querySelector('#trcTab-trips .trc-period-row .filter-btn'));
   }
   if (!document.getElementById('trcAuditFrom').value) {
     trcSetAuditPeriod('today', document.querySelector('#trcTab-audit .trc-period-row .filter-btn'));
@@ -5370,7 +5375,8 @@ function trcSetPeriod(period, btn) {
   if (period === 'custom') return; // leave from/to as-is for manual editing
   const now = new Date();
   let from;
-  if (period === 'hourly')       from = new Date(now.getTime() - 3600000);
+  if (period === 'all')          from = new Date(2000,0,1); // covers any historical bulk-imported start_time
+  else if (period === 'hourly')  from = new Date(now.getTime() - 3600000);
   else if (period === 'daily')   { from = new Date(now); from.setHours(0,0,0,0); }
   else if (period === 'weekly')  { from = new Date(now); const day=(from.getDay()+6)%7; from.setDate(from.getDate()-day); from.setHours(0,0,0,0); }
   else if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth(), 1);
