@@ -320,7 +320,22 @@ async function saveDB() {
     failures.push(await upsertRows('shipping_lines', db.shippingLines.map(lineToRow)));
     failures.push(await upsertRows('trucks',         db.trucks.map(truckToRow)));
     failures.push(await upsertRows('drivers',        db.drivers.map(driverToRow)));
-    failures.push(await upsertRows('trips',          db.trips.map(tripToRow)));
+    // trips has the identical unbounded-growth risk as interchange below (bulk
+    // dispatch imports can add thousands of historical rows). Re-upserting the
+    // ENTIRE array, UNCHUNKED, in one request on every debounced save —
+    // including saves triggered by completely unrelated edits elsewhere in
+    // the app — blows Supabase's statement_timeout once the table is large,
+    // and then keeps failing on every subsequent save from then on.
+    // NOTE: unlike interchange below, this is NOT filtered to dirty-only rows.
+    // Trips are created/edited from ~10 different call sites across the app
+    // and only the bulk importer currently tags `_dirty` — switching to a
+    // dirty-only filter here would silently stop persisting trips from every
+    // other call site until each one is audited and updated to set `_dirty`
+    // too. Chunking alone (splitting the same full payload into safely-sized
+    // batches) fixes the timeout without requiring that wider change; do the
+    // dirty-only optimization as a deliberate follow-up once every trip
+    // mutation site is confirmed to set `_dirty`.
+    failures.push(await upsertRowsChunked('trips', db.trips.map(tripToRow)));
     failures.push(await upsertRows('maintenance',    db.maintenance.map(maintToRow)));
     failures.push(await upsertRows('fuel_logs',      db.fuel.map(fuelToRow)));
     failures.push(await upsertRows('shutouts',       db.shutouts.map(shutoutToRow)));
@@ -2988,7 +3003,13 @@ async function processBulkDispatch() {
   // full-table save — a large historical file (thousands of rows) sent as
   // one request can exceed Supabase's statement timeout and silently drop
   // the whole import.
-  const saveResult = await upsertRowsChunked('trips', newTrips.map(tripToRow));
+  _bulkWriteInProgress = true;
+  let saveResult;
+  try {
+    saveResult = await upsertRowsChunked('trips', newTrips.map(tripToRow));
+  } finally {
+    _bulkWriteInProgress = false;
+  }
   newTrips.forEach(t => { delete t._dirty; });
   buildBadges();
   addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported${flagged.length?`, ${flagged.length} flagged for review`:''} (batch ${importBatchId})`);
@@ -5656,6 +5677,12 @@ function subscribeTrackingRealtime() {
 
 
 let _liveSyncDebounce = null;
+// Set true for the duration of any bulk import (see processBulkDispatch /
+// processBulkInward). While true, realtime-triggered refreshes are skipped
+// entirely — a bulk write can fire hundreds of postgres_changes events, and
+// there's nothing useful to refresh mid-import anyway since the importer
+// updates the UI itself once it's done.
+let _bulkWriteInProgress = false;
 
 function subscribeLiveSync() {
   if (state._liveSyncChannel) return;
@@ -5670,20 +5697,36 @@ function subscribeLiveSync() {
     channel = channel.on(
       'postgres_changes', { event: '*', schema: 'public', table: t },
       () => {
+        if (_bulkWriteInProgress) return; // the importer will refresh the UI itself when done
         // Debounced — a bulk import touching many rows triggers one
-        // refresh, not one per row.
+        // refresh, not one per row. 2s comfortably outlasts a burst of
+        // realtime events from a single chunked upsert.
         clearTimeout(_liveSyncDebounce);
-        _liveSyncDebounce = setTimeout(refreshFromServer, 700);
+        _liveSyncDebounce = setTimeout(refreshFromServer, 2000);
       }
     );
   });
   state._liveSyncChannel = channel.subscribe();
 }
 
+let _refreshInFlight = false;
+let _refreshQueuedAgain = false;
+
 async function refreshFromServer() {
 
   const modalOpen = document.getElementById('modalOverlay')?.classList.contains('active');
   if (modalOpen) { _liveSyncDebounce = setTimeout(refreshFromServer, 1500); return; }
+
+  // A burst of realtime events (e.g. a bulk import writing hundreds of rows)
+  // can re-trigger this faster than one loadDB() round-trip completes. Without
+  // this guard, overlapping loadDB() calls stack up — each firing ~19 parallel
+  // full-table queries — and exhaust Supabase's connection pool, which then
+  // makes *every* query on *every* table start timing out, including the
+  // write that triggered this refresh in the first place. Coalesce instead:
+  // if a refresh is already running, just remember to run one more after it
+  // finishes, rather than starting a second one now.
+  if (_refreshInFlight) { _refreshQueuedAgain = true; return; }
+  _refreshInFlight = true;
 
   try {
     const fresh = await loadDB();
@@ -5696,6 +5739,13 @@ async function refreshFromServer() {
     }
   } catch (e) {
     console.warn('Live sync refresh failed:', e);
+  } finally {
+    _refreshInFlight = false;
+    if (_refreshQueuedAgain) {
+      _refreshQueuedAgain = false;
+      clearTimeout(_liveSyncDebounce);
+      _liveSyncDebounce = setTimeout(refreshFromServer, 700);
+    }
   }
 }
 
