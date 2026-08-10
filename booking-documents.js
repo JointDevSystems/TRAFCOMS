@@ -74,7 +74,7 @@
 
 
 
-  async function _uploadDocument({ bookingId, tripId, interchangeId, docType, containerNo, file }) {
+  async function _uploadDocument({ bookingId, tripId, interchangeId, docType, containerNo, file, autoVerify }) {
     const parentCount = [bookingId, tripId, interchangeId].filter(Boolean).length;
     if (parentCount === 0) throw new Error('bookingId, tripId or interchangeId is required');
     if (parentCount > 1) throw new Error('Provide exactly one of bookingId, tripId or interchangeId');
@@ -94,20 +94,35 @@
       .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
     if (uploadErr) throw new Error(uploadErr.message || 'Upload failed — please try again');
 
+    // autoVerify is for documents captured by depot staff at the point of
+    // physical handling (e.g. a guarantee form scanned in at gate entry, or
+    // a release order scanned in at dispatch) — those never need to sit in
+    // the DepOps review queue since someone already checked the physical
+    // copy when they recorded the movement. Documents coming in through the
+    // public booking portal always go through the normal pending_review
+    // queue since nobody at the depot has laid eyes on them yet.
+    const insertPayload = {
+      booking_id: bookingId || null,
+      trip_id: tripId || null,
+      interchange_id: interchangeId || null,
+      doc_type: docType,
+      container_no: containerNo || null,
+      file_path: path,
+      file_name: file.name,
+      mime_type: file.type || null,
+      file_size_bytes: file.size || null,
+      uploaded_by: userId,
+    };
+    if (autoVerify) {
+      insertPayload.status = 'verified';
+      insertPayload.reviewed_by = userId;
+      insertPayload.reviewed_at = new Date().toISOString();
+      insertPayload.review_notes = 'Verified at point of entry — recorded by depot staff.';
+    }
+
     const { data: row, error: insertErr } = await client()
       .from('booking_documents')
-      .insert({
-        booking_id: bookingId || null,
-        trip_id: tripId || null,
-        interchange_id: interchangeId || null,
-        doc_type: docType,
-        container_no: containerNo || null,
-        file_path: path,
-        file_name: file.name,
-        mime_type: file.type || null,
-        file_size_bytes: file.size || null,
-        uploaded_by: userId,
-      })
+      .insert(insertPayload)
       .select('*')
       .single();
 
@@ -125,15 +140,15 @@
   }
 
 
-  async function uploadTripDocument({ tripId, docType, containerNo, file }) {
+  async function uploadTripDocument({ tripId, docType, containerNo, file, autoVerify }) {
     if (!tripId) throw new Error('tripId is required');
-    return _uploadDocument({ tripId, docType, containerNo, file });
+    return _uploadDocument({ tripId, docType, containerNo, file, autoVerify });
   }
 
 
-  async function uploadInterchangeDocument({ interchangeId, docType, containerNo, file }) {
+  async function uploadInterchangeDocument({ interchangeId, docType, containerNo, file, autoVerify }) {
     if (!interchangeId) throw new Error('interchangeId is required');
-    return _uploadDocument({ interchangeId, docType, containerNo, file });
+    return _uploadDocument({ interchangeId, docType, containerNo, file, autoVerify });
   }
 
 

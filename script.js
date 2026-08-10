@@ -131,8 +131,8 @@ function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type,
 function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
 function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased }; }
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null }; }
 
 // The three allowed outward_type values, matching the trips_outward_type_check
 // constraint in the DB exactly. Only meaningful when work_type is the
@@ -158,8 +158,8 @@ function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.ve
 
 
 
-function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null }; }
-function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null }; }
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'' }; }
 
 function reqToRow(r)   { return { id:r.id, requester:r.requester, requester_id:r.requesterId||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
 function reqFromRow(r) { return { id:r.id, requester:r.requester, requesterId:r.requester_id||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
@@ -2420,6 +2420,7 @@ function populateDispatchSelects() {
   fillSelect('d_truck',  avlTrucks,  t=>[t.id, `${t.reg} — ${t.make} (Fuel: ${t.fuelPct}%)`]);
   fillSelect('d_driver', avlDrivers, d=>[d.id, d.name]);
   fillSelect('d_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
+  populateSizeTypeSelects('d_size', 'd_type');
 }
 
 function fillSelect(id, arr, mapFn) {
@@ -2515,7 +2516,7 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_truck').value    = t.truckId || '';
   document.getElementById('d_driver').value   = t.driverId || '';
   document.getElementById('d_container').value= t.container && !t.container.startsWith('PUB-') ? t.container : '';
-  document.getElementById('d_ctype').value    = t.ctype || '20ft Dry';
+  populateSizeTypeSelects('d_size', 'd_type', t.ctype || '20ft Dry');
   document.getElementById('d_worktype').value = t.workType || 'Port → Depot';
   document.getElementById('d_line').value     = t.shippingLine || '';
   const outwardTypeSel = document.getElementById('d_outwardtype');
@@ -2527,6 +2528,12 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_priority').value = t.priority || 'Normal';
   document.getElementById('d_ref').value      = t.ref || '';
   document.getElementById('d_notes').value    = t.notes || '';
+  document.getElementById('d_eir').value        = t.eirNumber || '';
+  document.getElementById('d_receiving').value  = t.receivingParty || '';
+  document.getElementById('d_release_no').value = t.releaseOrderNo || '';
+  document.getElementById('d_vessel').value     = t.vessel || '';
+  document.getElementById('d_voyage').value     = t.voyage || '';
+  const dateOutEl = document.getElementById('d_dateout'); if (dateOutEl) dateOutEl.value = '';
 
   renderContainerImgGrid();
 
@@ -2541,7 +2548,8 @@ function loadTripIntoDispatchForm(tripId) {
 function cancelDispatchEdit() {
   _dispatchEditingTripId = null;
   clearContainerImgs();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  clearDispatchReleaseFile();
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeSel = document.getElementById('d_outwardtype');
   if (outwardTypeSel) outwardTypeSel.value = '';
   toggleDispatchOutwardType();
@@ -2562,8 +2570,13 @@ async function createDispatch() {
   const dist   = parseInt(document.getElementById('d_distance').value)||0;
   const editingId = _dispatchEditingTripId;
 
-  if (!truck || !driver || !cont || !origin || !dest) {
-    toast('Fill in all required fields', 'error');
+  // Container No. is the only field that's still mandatory — everything
+  // else (truck, driver, origin, destination, EIR, vessel/voyage, receiving
+  // party, release order no.) can be filled in later or left blank; trips
+  // without a truck/driver simply surface in "Awaiting Dispatch" until
+  // they're matched up.
+  if (!cont) {
+    toast('Container number is required', 'error');
     return;
   }
   const contIssue = containerFormatIssue(cont);
@@ -2576,29 +2589,39 @@ async function createDispatch() {
     toast(`${cont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}, status: ${dupTrip.status.replace('_',' ')}). Complete or resolve it before re-dispatching this container.`, 'error');
     return;
   }
-  const dupTruck = state.db.trucks.find(tr=>tr.id===truck);
+  const dupTruck = truck ? state.db.trucks.find(tr=>tr.id===truck) : null;
   if (dupTruck && dupTruck.status !== 'available') {
     toast(`${dupTruck.reg} is no longer available (status: ${dupTruck.status.replace('_',' ')}). Refresh and pick another truck.`, 'error');
     return;
   }
-  const dupDriver = state.db.drivers.find(d=>d.id===driver);
+  const dupDriver = driver ? state.db.drivers.find(d=>d.id===driver) : null;
   if (dupDriver && dupDriver.status !== 'available') {
     toast(`${dupDriver.name} is no longer available (status: ${dupDriver.status.replace('_',' ')}). Refresh and pick another driver.`, 'error');
     return;
   }
-  const ctype    = document.getElementById('d_ctype').value;
+  const ctype    = composeCtype(document.getElementById('d_size').value, document.getElementById('d_type').value);
   const workType = document.getElementById('d_worktype').value;
   const line     = document.getElementById('d_line').value;
   const priority = document.getElementById('d_priority').value;
   const ref      = document.getElementById('d_ref').value.trim() || `REF-${Date.now().toString().slice(-6)}`;
   const notes    = sanitize(document.getElementById('d_notes').value.trim());
   const images   = [..._dispatchContainerImages];
+  const eirNumber      = sanitize(document.getElementById('d_eir').value.trim());
+  const receivingParty = sanitize(document.getElementById('d_receiving').value.trim());
+  const releaseOrderNo = sanitize(document.getElementById('d_release_no').value.trim());
+  const vessel          = sanitize(document.getElementById('d_vessel').value.trim());
+  const voyage           = sanitize(document.getElementById('d_voyage').value.trim());
+  const dateOutInput    = document.getElementById('d_dateout').value;
+  const dateOut         = dateOutInput ? new Date(dateOutInput).toISOString() : new Date().toISOString();
+  const releaseFile     = _dispatchReleaseFile;
   const outwardTypeSel = document.getElementById('d_outwardtype');
   const outwardType = isOutwardWorkType(workType) ? (outwardTypeSel ? outwardTypeSel.value : '') : null;
   if (isOutwardWorkType(workType) && !OUTWARD_TYPES.includes(outwardType)) {
     toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error');
     return;
   }
+
+  let newTripId = null;
 
   if (editingId) {
 
@@ -2608,12 +2631,14 @@ async function createDispatch() {
     // Depot -> Port containers can't be dispatched without a verified
     // release order on file for this trip — enforced here so it can't be
     // bypassed by completing dispatch straight from the Dispatch Console.
-    if (workType === 'Depot → Port') {
+    // Attaching the release order right here in this submission counts too,
+    // since it gets auto-verified below (staff has the physical copy).
+    if (workType === 'Depot → Port' && !releaseFile) {
       try {
         const docs = await window.bookingDocs.documentsForTrip(t.id);
         const hasVerifiedRelease = docs.some(d => d.doc_type === 'release_order' && d.status === 'verified');
         if (!hasVerifiedRelease) {
-          toast('A verified release order is required before this container can be dispatched to port. Upload it from DepOps → Outward / Repatriation.', 'error', 6000);
+          toast('A verified release order is required before this container can be dispatched to port — upload it below, or from DepOps → Outward / Repatriation.', 'error', 6000);
           return;
         }
       } catch (e) {
@@ -2622,7 +2647,7 @@ async function createDispatch() {
       }
     }
 
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut });
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
     if (tk) tk.status = 'on_trip';
@@ -2631,21 +2656,26 @@ async function createDispatch() {
     buildBadges();
     addAudit(state.profile.username, 'Dispatch Completed', `${cont} — ${origin} → ${dest}`);
     toast(`Dispatch completed — ${cont}`, 'success');
+    newTripId = t.id;
     _dispatchEditingTripId = null;
     const banner = document.getElementById('dispatchEditBanner');
     if (banner) banner.style.display = 'none';
     const btn = document.getElementById('dispatchSubmitBtn');
     if (btn) btn.textContent = 'Create Dispatch Order →';
   } else {
+    if (workType === 'Depot → Port' && !releaseFile) {
+      toast('A release order is required for Depot → Port dispatches — upload it below, or complete this later once the container is matched to a trip in DepOps → Outward / Repatriation.', 'warning', 6000);
+    }
     const etaMs = Date.now() + (dist/35)*3600000;
     const trip = {
       id: uid('TRIP'), truckId: truck, driverId: driver, container: cont,
       ctype, workType, outwardType, origin, dest, shippingLine: line,
       status: 'active', startTime: new Date().toISOString(),
       eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
-      containerImages: images,
+      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut,
     };
     state.db.trips.push(trip);
+    newTripId = trip.id;
     const t = state.db.trucks.find(t=>t.id===truck);
     const d = state.db.drivers.find(d=>d.id===driver);
     if (t) t.status = 'on_trip';
@@ -2656,13 +2686,46 @@ async function createDispatch() {
     toast(`Dispatch created — ${cont}`, 'success');
   }
 
+  // The release order needs a real trip row in Supabase to attach to (the
+  // upload is keyed by trip_id with a foreign key), so flush this record
+  // immediately instead of waiting on the debounced autosave — same
+  // pattern the Inward guarantee-form upload uses.
+  if (releaseFile && newTripId) {
+    try {
+      await saveNowAwaited();
+      await window.bookingDocs.uploadTripDocument({ tripId: newTripId, docType: 'release_order', containerNo: cont, file: releaseFile, autoVerify: true });
+      toast('Release order uploaded', 'success');
+    } catch (e) {
+      toast(`Dispatch saved, but release order upload failed: ${e.message || e}`, 'warning');
+    }
+  }
+
   clearContainerImgs();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  clearDispatchReleaseFile();
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeResetSel = document.getElementById('d_outwardtype');
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
   toggleDispatchOutwardType();
   renderDispatch();
   refreshAwaitingDispatchUI();
+}
+
+let _dispatchReleaseFile = null;
+
+function previewDispatchReleaseFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  _dispatchReleaseFile = file;
+  const preview = document.getElementById('dispatchReleasePreview');
+  preview.style.display = 'block';
+  preview.innerHTML = `📄 ${esc(file.name)} <button class="pill" style="font-size:9px;margin-left:6px" onclick="clearDispatchReleaseFile()">✕ Remove</button>`;
+}
+
+function clearDispatchReleaseFile() {
+  _dispatchReleaseFile = null;
+  const fileInput = document.getElementById('d_release_file'); if (fileInput) fileInput.value = '';
+  const preview = document.getElementById('dispatchReleasePreview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
 }
 
 function switchDispatchTab(tab, btn) {
@@ -2782,21 +2845,37 @@ function processBulkDispatch() {
     if (driver && (driver.status !== 'available' || busyDrivers.has(driver.id))) { skipped.push(`${cont}: driver ${driver.name} unavailable or already used in this batch`); return; }
 
     seenInBatch.add(cont);
-    if (truck)  busyTrucks.add(truck.id);
-    if (driver) busyDrivers.add(driver.id);
+
+    // Historical migration rows: a size+type pair takes priority, then a
+    // raw ctype column, then the default. A dateOut on the row means this
+    // dispatch already happened — mark it completed straight away rather
+    // than leaving it sitting in the active queue.
+    const ctype = (r.size && r.type) ? composeCtype(r.size, r.type)
+      : (CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === String(r.ctype||'').toLowerCase()) || r.ctype || '20ft Dry');
+    let dateOutVal = null;
+    if (r.dateout || r.dateOut) { const dOut = new Date(r.dateout || r.dateOut); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
 
     const trip = {
       id: uid('TRIP'), container: cont,
       truckId: truck?.id||'', driverId: driver?.id||'',
-      ctype: r.ctype||'20ft Dry', workType: r.workType||'Port → Depot',
+      ctype, workType: r.workType||'Port → Depot',
       origin: r.origin||'', dest: r.dest||'', distance: parseInt(r.distance)||0,
       shippingLine:'', priority:'Normal', notes:'Bulk import',
       ref: `BULK-${Date.now()}-${created}`,
-      status:'active', startTime:new Date().toISOString(), eta:new Date(Date.now()+4*3600000).toISOString(),
+      status: dateOutVal ? 'completed' : 'active',
+      startTime:new Date().toISOString(), eta:new Date(Date.now()+4*3600000).toISOString(),
+      eirNumber: sanitize((r.eir||'').trim()), receivingParty: sanitize((r.receivingparty||r.receivingParty||'').trim()),
+      releaseOrderNo: sanitize((r.releaseorderno||r.releaseOrderNo||'').trim()), vessel: sanitize((r.vessel||'').trim()),
+      voyage: sanitize((r.voyage||'').trim()), dateOut: dateOutVal,
     };
     state.db.trips.push(trip);
-    if (truck)  truck.status  = 'on_trip';
-    if (driver) { driver.status='on_trip'; driver.load=cont; }
+    // Only tie up the truck/driver for dispatches that are still open —
+    // a historical row that already has a Date Out happened in the past
+    // and shouldn't block that truck/driver from today's assignments.
+    if (!dateOutVal) {
+      if (truck)  { truck.status  = 'on_trip'; busyTrucks.add(truck.id); }
+      if (driver) { driver.status='on_trip'; driver.load=cont; busyDrivers.add(driver.id); }
+    }
     created++;
   });
   scheduleSave(); buildBadges();
@@ -2813,7 +2892,7 @@ function processBulkDispatch() {
 }
 
 function downloadBulkTemplate() {
-  const csv = 'container,truck,driver,origin,destination,ctype,workType,distance\nMSCU1234566,KDA 001A,James Otieno,Kilindini Port,Shimanzi ICD,40ft Dry,Port → Depot,18';
+  const csv = 'container,size,type,eir,dateOut,receivingParty,releaseOrderNo,vessel,voyage,truck,driver,origin,destination,workType,distance\nMSCU1234566,40ft,Dry,EIR-00789,,,,,,KDA 001A,James Otieno,Kilindini Port,Shimanzi ICD,Port → Depot,18';
   const a   = document.createElement('a');
   a.href     = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   a.download = 'gargo_bulk_template.csv';
@@ -2835,6 +2914,7 @@ function renderInward() {
   populateInwardSelects();
   renderInwardRecent();
   renderInwardAwaitingSurvey();
+  renderInwardStillInStorage();
   clearInwardForm(true);
 }
 
@@ -2842,6 +2922,7 @@ function populateInwardSelects() {
   fillDatalist('iwTruckList',  state.db.trucks,  t=>t.reg);
   fillDatalist('iwDriverList', state.db.drivers, d=>d.name);
   fillSelect('iw_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
+  populateSizeTypeSelects('iw_size', 'iw_type');
 }
 
 function fillDatalist(id, arr, mapFn) {
@@ -2867,7 +2948,69 @@ function renderInwardRecent() {
       </div>
       ${sbadge(ic.status)}
       <div class="dqi-time">${timeAgo(ic.date)}</div>
+      ${!ic.dateOut ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
     </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
+}
+
+// Any Gate-In/Depot-In record with no recorded Date Out is presumed to
+// still be sitting in the depot — this is the surface for historical/bulk
+// migrated records especially, since a lot of them will have left the
+// depot long before this system existed but were never given a formal
+// dispatch trip. "Quick Dispatch" just records that it left, without
+// requiring a truck/driver/full dispatch order.
+function renderInwardStillInStorage() {
+  const wrap = document.getElementById('inwardStillInStorageList');
+  const meta = document.getElementById('inwardStillInStorageMeta');
+  if (!wrap) return;
+  const items = state.db.interchange
+    .filter(i => (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut)
+    .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
+
+  if (meta) meta.textContent = items.length ? `${items.length} without a recorded exit` : '';
+  if (!items.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Everything logged has a recorded exit</div></div>';
+    return;
+  }
+  wrap.innerHTML = items.map(ic => `<div class="dispatch-queue-item">
+      <div class="dqi-ref">${esc(ic.container)}</div>
+      <div class="dqi-route">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.ctype || '—')} · ${esc(lineName(ic.line))}</div>
+        <div style="font-size:10px;color:var(--text-3)">In since ${fmtDate(ic.date)}${ic.notes==='Bulk import' ? ' · migrated record' : ''}</div>
+      </div>
+      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
+    </div>`).join('');
+}
+
+function quickDispatchOut(id) {
+  const ic = state.db.interchange.find(i => i.id === id);
+  if (!ic) return;
+  openModal(`Quick Dispatch — ${sanitize(ic.container)}`, `
+    <div class="ops-notice" style="margin-bottom:12px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Use this to record that a container already left the depot without creating a full dispatch trip — for containers that left before this system was in use, or whose exit wasn't captured through Dispatch Console. It won't ask for a truck or driver.
+    </div>
+    <div class="fg"><label>Date Out <span class="label-optional">(optional, defaults to now)</span></label><input id="qd_dateout" type="datetime-local" /></div>
+    <div class="fg"><label>Receiving Party</label><input id="qd_receiving" placeholder="Consignee / receiving party" /></div>
+    <div class="fg"><label>Release Order No.</label><input id="qd_release_no" placeholder="CRO / release order no. (if any)" /></div>
+    <button class="submit-btn" onclick="confirmQuickDispatchOut('${id}')">Mark as Dispatched →</button>
+  `);
+}
+
+function confirmQuickDispatchOut(id) {
+  const ic = state.db.interchange.find(i => i.id === id);
+  if (!ic) { closeModal(); return; }
+  const dateInput = document.getElementById('qd_dateout').value;
+  ic.dateOut = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
+  ic.receivingParty = sanitize(document.getElementById('qd_receiving').value.trim());
+  ic.releaseOrderNo = sanitize(document.getElementById('qd_release_no').value.trim());
+  ic._dirty = true;
+  scheduleSave();
+  addAudit(state.profile.username, 'Quick Dispatch (No Trip)', `${ic.container} marked out — bypassed full dispatch process`);
+  toast(`${ic.container} marked as dispatched`, 'success');
+  closeModal();
+  renderInwardRecent();
+  renderInwardStillInStorage();
+  renderInterchange(_icFilter || 'all');
 }
 
 // Manually-recorded inward entries flagged with "needs_survey" on the form
@@ -2939,7 +3082,7 @@ async function createInwardEntry() {
   const contIssue = containerFormatIssue(cont);
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
 
-  const type = document.getElementById('iw_type').value;
+  const type = document.getElementById('iw_type_movement').value;
   const dateInput = document.getElementById('iw_date').value;
   const dateVal = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
 
@@ -2958,10 +3101,12 @@ async function createInwardEntry() {
   const needsSurvey = !!document.getElementById('iw_needs_survey').checked;
   const guaranteeFile = _inwardGuaranteeFile;
   const icId = uid('IC');
+  const ctype = composeCtype(document.getElementById('iw_size').value, document.getElementById('iw_type').value);
+  const cargoStatusEl = document.getElementById('iw_cargo_status');
 
   state.db.interchange.push({
     id: icId, container: cont, type,
-    ctype: document.getElementById('iw_ctype').value,
+    ctype,
     line: document.getElementById('iw_line').value,
     condition: document.getElementById('iw_cond').value,
     truck:  truck  ? truck.id  : '',
@@ -2972,9 +3117,13 @@ async function createInwardEntry() {
     blNumber: sanitize(document.getElementById('iw_bl').value.trim()),
     vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
     voyage: sanitize(document.getElementById('iw_voyage').value.trim()),
+    deliveringParty: sanitize(document.getElementById('iw_delivering').value.trim()),
+    guaranteeNo: sanitize(document.getElementById('iw_guarantee_no').value.trim()),
+    cargoStatus: cargoStatusEl ? cargoStatusEl.value : '',
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
     date: dateVal, status: 'pending', img: _inwardImg || '',
+    dateOut: null, receivingParty: '', releaseOrderNo: '',
     needsSurvey, surveyStatus: needsSurvey ? 'awaiting_survey' : null,
     surveyedAt: null, surveyedBy: null,
     _dirty: true,
@@ -2987,6 +3136,7 @@ async function createInwardEntry() {
   renderInterchange('all');
   renderInwardRecent();
   renderInwardAwaitingSurvey();
+  renderInwardStillInStorage();
 
   // The guarantee form needs a real row in Supabase to attach to (the
   // upload is keyed by interchange_id with a foreign key), so flush this
@@ -2994,7 +3144,7 @@ async function createInwardEntry() {
   if (guaranteeFile) {
     try {
       await saveNowAwaited();
-      await window.bookingDocs.uploadInterchangeDocument({ interchangeId: icId, docType: 'guarantee_form', containerNo: cont, file: guaranteeFile });
+      await window.bookingDocs.uploadInterchangeDocument({ interchangeId: icId, docType: 'guarantee_form', containerNo: cont, file: guaranteeFile, autoVerify: true });
       toast('Guarantee form uploaded', 'success');
       renderInwardAwaitingSurvey();
     } catch (e) {
@@ -3006,10 +3156,11 @@ async function createInwardEntry() {
 }
 
 function clearInwardForm(skipRepopulate) {
-  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
-  const typeEl = document.getElementById('iw_type'); if (typeEl) typeEl.value = 'Gate-In';
+  const typeEl = document.getElementById('iw_type_movement'); if (typeEl) typeEl.value = 'Gate-In';
   const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
+  const cargoStatusEl = document.getElementById('iw_cargo_status'); if (cargoStatusEl) cargoStatusEl.value = '';
   const surveyEl = document.getElementById('iw_needs_survey'); if (surveyEl) surveyEl.checked = false;
   _inwardImg = '';
   const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
@@ -3216,11 +3367,25 @@ function processBulkInward() {
       if (guessedId) line = state.db.shippingLines.find(l => l.id === guessedId);
     }
 
-    const ctypeRaw = pickField(r, ['ctype','containertype','size']);
-    const ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeRaw.toLowerCase()) || '20ft Dry';
+    const ctypeExplicit    = pickField(r, ['ctype']);
+    const sizeRaw          = pickField(r, ['size']);
+    const containerTypeRaw = pickField(r, ['containertype']);
+    let ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeExplicit.toLowerCase());
+    if (!ctype && sizeRaw && containerTypeRaw) ctype = composeCtype(sizeRaw, containerTypeRaw);
+    if (!ctype) ctype = CONTAINER_TYPE_OPTIONS[0];
 
     const condRaw = pickField(r, ['condition']);
     const condition = VALID_COND.find(c => c.toLowerCase() === condRaw.toLowerCase()) || 'Good';
+
+    // Historical/migrated rows can carry their own exit date — if one's
+    // present the container already left, so it won't show up as "still in
+    // storage" needing a quick-dispatch action.
+    let dateOutVal = null;
+    const dateOutRaw = pickField(r, ['dateout','exitdate','gateoutdate','dateexited']);
+    if (dateOutRaw) { const dOut = new Date(dateOutRaw); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
+
+    const cargoStatusRaw = pickField(r, ['cargostatus']);
+    const cargoStatus = CARGO_STATUS_OPTIONS.find(c => c.toLowerCase() === cargoStatusRaw.toLowerCase()) || sanitize(cargoStatusRaw);
 
     state.db.interchange.push({
       id: uid('IC'), container: cont, type, ctype,
@@ -3233,9 +3398,15 @@ function processBulkInward() {
       blNumber:  sanitize(pickField(r, ['bl','blnumber','blno'])),
       vessel:    sanitize(pickField(r, ['vessel'])),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),
+      deliveringParty: sanitize(pickField(r, ['deliveringparty','delivering','shipper'])),
+      guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber'])),
+      cargoStatus,
       repairs: [], repairTotal: 0,
       notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
       date: dateVal, status: 'pending', img: '',
+      dateOut: dateOutVal,
+      receivingParty: sanitize(pickField(r, ['receivingparty'])),
+      releaseOrderNo: sanitize(pickField(r, ['releaseorderno','releaseorder'])),
       _dirty: true,
     });
     created++;
@@ -3252,11 +3423,12 @@ function processBulkInward() {
   refreshContainerHistory();
   renderInterchange('all');
   renderInwardRecent();
+  renderInwardStillInStorage();
   document.getElementById('inwardBulkPreview').style.display = 'none';
 }
 
 function downloadInwardBulkTemplate() {
-  const csv = 'container,type,ctype,line,truck,driver,eir,bl,vessel,voyage,condition,date,notes\nMSCU1234566,Gate-In,40ft Dry,MSC,KDX 655V,James Otieno,EIR-00123,BL-4471,MSC VESSEL,VA-001,Good,,Delivered in good condition';
+  const csv = 'container,type,size,containerType,line,truck,driver,eir,bl,vessel,voyage,deliveringParty,guaranteeNo,cargoStatus,condition,date,dateOut,receivingParty,releaseOrderNo,notes\nMSCU1234566,Gate-In,40ft,Dry,MSC,KDX 655V,James Otieno,EIR-00123,BL-4471,MSC VESSEL,VA-001,ACME Traders,GTE-00981,Laden / Full,Good,,,,,Delivered in good condition';
   const a = document.createElement('a');
   a.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   a.download = 'gargo_inward_bulk_template.csv';
@@ -3421,9 +3593,10 @@ function renderInterchange(f){
   const el=document.getElementById('interchangeList');
   if(!el) return;
   el.innerHTML=items.map(ic=>{
-    const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null].filter(Boolean).join(' · ');
+    const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
-    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img)?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
+    const canQuickDispatch = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.dateOut;
+    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img)?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
@@ -3496,9 +3669,10 @@ function printInterchangeList() {
 function downloadInterchangeCSV() {
   const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to download yet', 'error'); return; }
-  const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Condition', 'Truck', 'Driver', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
+  const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Delivering Party', 'Guarantee No.', 'Cargo Status', 'Condition', 'Truck', 'Driver', 'Date Out', 'Receiving Party', 'Release Order No.', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
   const rows = items.map(ic => [
-    ic.date, ic.container, ic.eirNumber, ic.type, ic.ctype, lineName(ic.line), ic.vessel, ic.voyage, ic.condition, truckName(ic.truck), driverName(ic.driver),
+    ic.date, ic.container, ic.eirNumber, ic.type, ic.ctype, lineName(ic.line), ic.vessel, ic.voyage, ic.deliveringParty, ic.guaranteeNo, ic.cargoStatus, ic.condition, truckName(ic.truck), driverName(ic.driver),
+    ic.dateOut, ic.receivingParty, ic.releaseOrderNo,
     (ic.repairs || []).map(r => `${r.code} (${r.item})`).join('; '), ic.repairTotal || 0, ic.status, ic.notes,
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -6604,6 +6778,50 @@ function depOpsReadyCard(entry) {
 
 
 const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat', 'Heavy Duty', 'LCL', 'Platform'];
+const CARGO_STATUS_OPTIONS = ['Empty', 'Laden / Full', 'Part Load', 'Damaged Cargo'];
+
+// Size + Type are derived from CONTAINER_TYPE_OPTIONS rather than a separate
+// hardcoded list, so the Dispatch/Inward "Size" + "Type" selects can never
+// produce a combination that the rest of the app (reports, filters, bulk
+// import matching) doesn't already recognise as a valid container type.
+function ctypeSizeOptions() {
+  const sizes = [];
+  CONTAINER_TYPE_OPTIONS.forEach(o => { const m = o.match(/^(\d+ft)\s/); if (m && sizes.indexOf(m[1]) === -1) sizes.push(m[1]); });
+  return sizes; // e.g. ['20ft','40ft']
+}
+function ctypeTypeOptionsForSize(size) {
+  const sized   = CONTAINER_TYPE_OPTIONS.filter(o => o.indexOf(size + ' ') === 0).map(o => o.slice(size.length + 1));
+  const unsized = CONTAINER_TYPE_OPTIONS.filter(o => !/^\d+ft\s/.test(o));
+  return [...sized, ...unsized];
+}
+function composeCtype(size, type) {
+  if (!type) return CONTAINER_TYPE_OPTIONS[0];
+  const combo = `${size} ${type}`;
+  if (CONTAINER_TYPE_OPTIONS.indexOf(combo) !== -1) return combo;
+  if (CONTAINER_TYPE_OPTIONS.indexOf(type) !== -1) return type; // unsized type (Flat Rack, Tank, etc.)
+  return combo;
+}
+function decomposeCtype(ctype) {
+  const val = ctype || CONTAINER_TYPE_OPTIONS[0];
+  const m = val.match(/^(\d+ft)\s(.+)$/);
+  if (m) return { size: m[1], type: m[2] };
+  return { size: ctypeSizeOptions()[0], type: val };
+}
+function populateSizeTypeSelects(sizeId, typeId, currentCtype) {
+  const sizeEl = document.getElementById(sizeId);
+  const typeEl = document.getElementById(typeId);
+  if (!sizeEl || !typeEl) return;
+  const { size, type } = decomposeCtype(currentCtype);
+  sizeEl.innerHTML = ctypeSizeOptions().map(s => `<option${s===size?' selected':''}>${s}</option>`).join('');
+  typeEl.innerHTML = ctypeTypeOptionsForSize(sizeEl.value || size).map(t => `<option${t===type?' selected':''}>${t}</option>`).join('');
+}
+function refreshTypeSelectForSize(sizeId, typeId) {
+  const sizeEl = document.getElementById(sizeId);
+  const typeEl = document.getElementById(typeId);
+  if (!sizeEl || !typeEl) return;
+  const keepType = typeEl.value;
+  typeEl.innerHTML = ctypeTypeOptionsForSize(sizeEl.value).map(t => `<option${t===keepType?' selected':''}>${t}</option>`).join('');
+}
 
 
 const REPAIR_LABOUR_RATE_PER_HOUR = 300; // KSh/hr — matches the labour rate implied by the Hakika sample (750/2.5hrs, 450/1.5hrs)

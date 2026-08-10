@@ -506,18 +506,25 @@
                                             <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Truck</label><select id="d_truck"></select></div>
-                                            <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
+                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
+                                            <div class="fg"><label>Size</label><select id="d_size" onchange="refreshTypeSelectForSize('d_size','d_type')"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
-                                            <div class="fg"><label>Container Type</label>
-                                                <select id="d_ctype">
-                                                    <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
-                                                    <option>20ft Reefer</option><option>40ft Reefer</option>
-                                                    <option>Flat Rack</option><option>Open Top</option><option>Tank</option><option>Hazmat</option>
-                                                </select>
-                                            </div>
+                                            <div class="fg"><label>Type</label><select id="d_type"></select></div>
+                                            <div class="fg"><label>EIR No.</label><input id="d_eir" placeholder="Exit EIR / reference no." /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Date Out <span class="label-optional">(optional, defaults to now)</span></label><input id="d_dateout" type="datetime-local" /></div>
+                                            <div class="fg"><label>Receiving Party</label><input id="d_receiving" placeholder="Consignee / receiving party" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Release Order No.</label><input id="d_release_no" placeholder="CRO / release order no." /></div>
+                                            <div class="fg"><label>Vessel</label><input id="d_vessel" /></div>
+                                        </div>
+                                        <div class="fg"><label>Voyage</label><input id="d_voyage" /></div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Truck</label><select id="d_truck"></select></div>
+                                            <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Work Type</label>
@@ -564,6 +571,16 @@
                                             <div class="container-img-grid" id="containerImgGrid"></div>
                                             <button class="pill" style="margin-top:6px;font-size:10px" onclick="clearContainerImgs()">✕ Remove all</button>
                                         </div>
+                                        <!-- Release Order Upload -->
+                                        <div class="fg">
+                                            <label>Release Order <span class="label-optional">(optional, upload when available)</span></label>
+                                            <div class="file-upload-area" id="dispatchReleaseUpload" onclick="document.getElementById('d_release_file').click()">
+                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                                <span id="dispatchReleaseLabel">Upload release order</span>
+                                            </div>
+                                            <input type="file" id="d_release_file" accept="image/*,.pdf" style="display:none" onchange="previewDispatchReleaseFile(event)" />
+                                        </div>
+                                        <div id="dispatchReleasePreview" style="display:none;margin-bottom:10px;font-size:11.5px;color:var(--text-2)"></div>
                                         <button class="submit-btn" id="dispatchSubmitBtn" onclick="createDispatch()">Create Dispatch Order →</button>
                                     </div>
                                 </div>
@@ -577,7 +594,7 @@
                                 <div class="form-card-body">
                                     <div class="dispatch-bulk-info">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                        Upload a CSV or JSON file with container dispatch data. Each row should include: container, truck, driver, origin, destination, work type, and distance.
+                                        Upload a CSV or JSON file with container dispatch data — container, size, type, eir, dateOut, receivingParty, releaseOrderNo, vessel, voyage, truck, driver, origin, destination, work type, and distance. Only container is required; this is meant for migrating historical dispatch records too, so rows can be as complete or as sparse as the source data allows and won't be sent through any document verification step.
                                     </div>
                                     <div class="file-upload-area large" id="bulkDispatchDrop" onclick="document.getElementById('bulkDispatchFile').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleBulkDrop(event)">
                                         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -618,6 +635,10 @@
                                 <div class="panel-head"><span class="panel-title">Awaiting Survey</span><span class="panel-meta" id="inwardAwaitingSurveyMeta"></span></div>
                                 <div id="inwardAwaitingSurveyList"></div>
                             </div>
+                            <div class="panel" id="inwardStillInStoragePanel" style="margin-bottom:14px">
+                                <div class="panel-head"><span class="panel-title">Still In Storage (No Date Out)</span><span class="panel-meta" id="inwardStillInStorageMeta"></span></div>
+                                <div id="inwardStillInStorageList"></div>
+                            </div>
                             <div class="panel" id="inwardRecentPanel" style="margin-bottom:14px">
                                 <div class="panel-head"><span class="panel-title">Recent Inward Entries</span><span class="panel-meta" id="inwardRecentMeta"></span></div>
                                 <div id="inwardRecentList"></div>
@@ -630,35 +651,37 @@
                                     <div class="form-card-body">
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="iw_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
-                                            <div class="fg"><label>Movement</label>
-                                                <select id="iw_type"><option>Gate-In</option><option>Depot-In</option></select>
-                                            </div>
+                                            <div class="fg"><label>Size</label><select id="iw_size" onchange="refreshTypeSelectForSize('iw_size','iw_type')"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Container Type/Size</label>
-                                                <select id="iw_ctype">
-                                                    <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
-                                                    <option>20ft Reefer</option><option>40ft Reefer</option>
-                                                    <option>Flat Rack</option><option>Open Top</option><option>Tank</option><option>Hazmat</option>
-                                                </select>
+                                            <div class="fg"><label>Type</label><select id="iw_type"></select></div>
+                                            <div class="fg"><label>EIR No.</label><input id="iw_eir" placeholder="Transporter's own EIR no." /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Date IN <span class="label-optional">(optional, defaults to now)</span></label><input id="iw_date" type="datetime-local" /></div>
+                                            <div class="fg"><label>Delivering Party</label><input id="iw_delivering" placeholder="Shipper / delivering party" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Guarantee No.</label><input id="iw_guarantee_no" placeholder="Guarantee form no." /></div>
+                                            <div class="fg"><label>Ex Vessel</label><input id="iw_vessel" /></div>
+                                        </div>
+                                        <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Movement</label>
+                                                <select id="iw_type_movement"><option>Gate-In</option><option>Depot-In</option></select>
                                             </div>
                                             <div class="fg"><label>Shipping Line</label><select id="iw_line"></select></div>
                                         </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>EIR / Reference No.</label><input id="iw_eir" placeholder="Transporter's own EIR no." /></div>
-                                            <div class="fg"><label>B/L Number</label><input id="iw_bl" /></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Vessel</label><input id="iw_vessel" /></div>
-                                            <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
-                                        </div>
+                                        <div class="fg"><label>B/L Number</label><input id="iw_bl" /></div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Truck</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" /></div>
                                             <div class="fg"><label>Driver</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
-                                            <div class="fg"><label>Entry Date/Time <span class="label-optional">(optional, defaults to now)</span></label><input id="iw_date" type="datetime-local" /></div>
+                                            <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label>
+                                                <select id="iw_cargo_status"><option value="">—</option><option>Empty</option><option>Laden / Full</option><option>Part Load</option><option>Damaged Cargo</option></select>
+                                            </div>
                                         </div>
                                         <div class="fg"><label>Notes</label><textarea id="iw_notes" rows="2" placeholder="Remarks…"></textarea></div>
                                         <div class="fg">
@@ -697,7 +720,7 @@
                                 <div class="form-card-body">
                                     <div class="dispatch-bulk-info">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                        Upload a CSV, Excel (.xlsx/.xls) or JSON file of inward containers. Columns are matched by name, in any order — container, type, ctype, line, truck, driver, eir, bl, vessel, voyage, condition, date, notes. Truck/driver/shipping line are matched automatically against your fleet records.
+                                        Upload a CSV, Excel (.xlsx/.xls) or JSON file of inward containers. Columns are matched by name, in any order — container, type (movement), size, containerType, line, truck, driver, eir, bl, vessel, voyage, deliveringParty, guaranteeNo, cargoStatus, condition, date, dateOut, receivingParty, releaseOrderNo, notes. Truck/driver/shipping line are matched automatically against your fleet records. Rows don't go through document verification, and a row with no dateOut shows up under "Still In Storage" with a one-click Quick Dispatch action.
                                     </div>
                                     <div class="file-upload-area large" id="inwardBulkDrop" onclick="document.getElementById('inwardBulkFile').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleInwardBulkDrop(event)">
                                         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
