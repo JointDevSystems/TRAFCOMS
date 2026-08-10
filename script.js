@@ -2831,7 +2831,7 @@ function showBulkPreview(rows) {
 function processBulkDispatch() {
   const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
   let created = 0;
-  const skipped = [];
+  const flagged = []; // rows still created, but tagged for later cleanup
   const seenInBatch = new Set();
   const busyTrucks  = new Set(); 
   const busyDrivers = new Set();
@@ -2843,13 +2843,22 @@ function processBulkDispatch() {
     // once normalizeRowKeys() has lowercased/stripped them.
     const contRaw = pickField(r, ['container','containerno','containernumber','containernrno']);
     const rowLabel = contRaw ? contRaw : `row ${idx+1}`;
-    if (!contRaw) { skipped.push(`${rowLabel}: missing container number`); return; }
-    const cont = contRaw.trim().toUpperCase();
-    const contIssue = containerFormatIssue(cont);
-    if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
-    if (seenInBatch.has(cont)) { skipped.push(`${cont}: duplicate container within this file`); return; }
+    // A container number is the one thing we can't do without (the DB
+    // column is NOT NULL) — everything else is imported as-is and flagged
+    // for cleanup rather than dropped, same as the Inward bulk importer.
+    let cont = contRaw ? contRaw.trim().toUpperCase() : '';
+    const issueTags = [];
+    if (!cont) {
+      cont = `UNKNOWN-ROW${idx+1}-${Date.now().toString(36).toUpperCase()}`;
+      issueTags.push('missing container number — placeholder assigned');
+      flagged.push(`${rowLabel}: missing container number (placeholder ${cont})`);
+    } else {
+      const contIssue = containerFormatIssue(cont);
+      if (contIssue) { issueTags.push(contIssue); flagged.push(`${cont}: ${contIssue}`); }
+    }
+    if (seenInBatch.has(cont)) { issueTags.push('duplicate container within this file'); flagged.push(`${cont}: duplicate container within this file`); }
     const dupTrip = findLiveTripByContainer(cont);
-    if (dupTrip) { skipped.push(`${cont}: already on an active trip`); return; }
+    if (dupTrip) { issueTags.push('already on an active trip'); flagged.push(`${cont}: already on an active trip`); }
 
     // "Transporters" (haulage company, e.g. SIMBA TECH) is free text, not a
     // fleet reg — try matching it to a real truck first, otherwise it's
@@ -2859,8 +2868,13 @@ function processBulkDispatch() {
     const driverRaw = pickField(r, ['driver','drivername','driversname']);
     const truck  = state.db.trucks.find(t=>t.reg===truckRaw||t.id===truckRaw||t.reg===transporterRaw);
     const driver = state.db.drivers.find(d=>d.name===driverRaw||d.id===driverRaw);
-    if (truck && (truck.status !== 'available' || busyTrucks.has(truck.id))) { skipped.push(`${cont}: truck ${truck.reg} unavailable or already used in this batch`); return; }
-    if (driver && (driver.status !== 'available' || busyDrivers.has(driver.id))) { skipped.push(`${cont}: driver ${driver.name} unavailable or already used in this batch`); return; }
+    // Truck/driver conflicts no longer block the row from being created —
+    // but to avoid corrupting live fleet status, a conflicting truck/driver
+    // is left off this trip (rather than double-booked) and flagged instead.
+    const truckConflict  = truck  && (truck.status !== 'available' || busyTrucks.has(truck.id));
+    const driverConflict = driver && (driver.status !== 'available' || busyDrivers.has(driver.id));
+    if (truckConflict)  { issueTags.push(`truck ${truck.reg} unavailable or already used in this batch`); flagged.push(`${cont}: truck ${truck.reg} unavailable or already used in this batch — left unassigned`); }
+    if (driverConflict) { issueTags.push(`driver ${driver.name} unavailable or already used in this batch`); flagged.push(`${cont}: driver ${driver.name} unavailable or already used in this batch — left unassigned`); }
 
     seenInBatch.add(cont);
 
@@ -2886,10 +2900,13 @@ function processBulkDispatch() {
 
     const notesParts = ['Bulk import'];
     if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
+    notesParts.push(...issueTags.map(t=>`⚠ ${t}`));
 
+    const useTruck  = truck  && !truckConflict;
+    const useDriver = driver && !driverConflict;
     const trip = {
       id: uid('TRIP'), container: cont,
-      truckId: truck?.id||'', driverId: driver?.id||'',
+      truckId: useTruck?truck.id:'', driverId: useDriver?driver.id:'',
       ctype, workType: r.worktype||r.workType||'Port → Depot',
       origin: r.origin||'', dest: r.destination||r.dest||'', distance: parseInt(r.distance)||0,
       shippingLine: line?.id||'', priority:'Normal', notes: notesParts.join(' — '),
@@ -2908,16 +2925,16 @@ function processBulkDispatch() {
     // a historical row that already has a Date Out happened in the past
     // and shouldn't block that truck/driver from today's assignments.
     if (!dateOutVal) {
-      if (truck)  { truck.status  = 'on_trip'; busyTrucks.add(truck.id); }
-      if (driver) { driver.status='on_trip'; driver.load=cont; busyDrivers.add(driver.id); }
+      if (useTruck)  { truck.status  = 'on_trip'; busyTrucks.add(truck.id); }
+      if (useDriver) { driver.status='on_trip'; driver.load=cont; busyDrivers.add(driver.id); }
     }
     created++;
   });
   scheduleSave(); buildBadges();
-  addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported${skipped.length?`, ${skipped.length} skipped`:''}`);
-  if (skipped.length) {
-    toast(`${created} created, ${skipped.length} skipped — see details`, skipped.length && !created ? 'error' : 'warning', 6000);
-    openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Skipped Rows (${skipped.length})</div><div style="max-height:240px;overflow-y:auto">${skipped.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${s}</div>`).join('')}</div>`);
+  addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported${flagged.length?`, ${flagged.length} flagged for review`:''}`);
+  if (flagged.length) {
+    toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
+    openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flagged.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
   } else {
     toast(`${created} dispatches created`, 'success');
   }
@@ -2993,12 +3010,24 @@ function renderInwardRecent() {
 // depot long before this system existed but were never given a formal
 // dispatch trip. "Quick Dispatch" just records that it left, without
 // requiring a truck/driver/full dispatch order.
+//
+// Gate-In and Gate-Out are separate interchange records (e.g. one row from
+// Received.xlsx, a different row from DISPATCH.xlsx) — dateOut on the
+// Gate-In row itself is never populated by that kind of two-file import, so
+// relying on it alone would leave every historically-received container
+// stuck in this list even after its matching Gate-Out has been imported.
+// Instead, treat a container as no longer in storage if there's ANY
+// Gate-Out/Depot-Out record for it, regardless of which record's own
+// dateOut field is set.
 function renderInwardStillInStorage() {
   const wrap = document.getElementById('inwardStillInStorageList');
   const meta = document.getElementById('inwardStillInStorageMeta');
   if (!wrap) return;
+  const exitedContainers = new Set(
+    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
+  );
   const items = state.db.interchange
-    .filter(i => (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut)
+    .filter(i => (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut && !exitedContainers.has(i.container))
     .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
 
   if (meta) meta.textContent = items.length ? `${items.length} without a recorded exit` : '';
@@ -3354,16 +3383,25 @@ function processBulkInward() {
   const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair'];
 
   let created = 0;
-  const skipped = [];
+  const flagged = []; // rows still created, but tagged for later cleanup
   const seenInBatch = new Set();
 
   rows.forEach((r, idx) => {
     const contRaw = pickField(r, ['container','containerno','containernumber','containernrno']);
     const rowLabel = contRaw || `row ${idx+1}`;
-    if (!contRaw) { skipped.push(`${rowLabel}: missing container number`); return; }
-    const cont = contRaw.toUpperCase();
-    const contIssue = containerFormatIssue(cont);
-    if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
+    // A container number is the one thing we truly cannot do without (the
+    // DB column is NOT NULL) — everything else gets imported as-is and
+    // flagged for cleanup rather than dropped.
+    let cont = contRaw ? contRaw.toUpperCase() : '';
+    const issueTags = [];
+    if (!cont) {
+      cont = `UNKNOWN-ROW${idx+1}-${Date.now().toString(36).toUpperCase()}`;
+      issueTags.push('missing container number — placeholder assigned');
+      flagged.push(`${rowLabel}: missing container number (placeholder ${cont})`);
+    } else {
+      const contIssue = containerFormatIssue(cont);
+      if (contIssue) { issueTags.push(contIssue); flagged.push(`${cont}: ${contIssue}`); }
+    }
 
     const typeRaw = pickField(r, ['movement','type']).toLowerCase().replace(/[^a-z]/g,'');
     const type = VALID_TYPES[typeRaw] || defaultType;
@@ -3374,11 +3412,13 @@ function processBulkInward() {
 
     // Dedup key includes the row's own date — two different historical dates
     // for the same container+type are legitimate separate movements, not
-    // duplicates, so date has to be part of both the in-file and in-DB checks.
+    // duplicates. Duplicates are no longer skipped (historical bulk imports
+    // are imported as-is for later cleanup) but they are still flagged so
+    // they're easy to find and dedupe afterwards.
     const dupKey = `${cont}::${type}::${new Date(dateVal).toDateString()}`;
-    if (seenInBatch.has(dupKey)) { skipped.push(`${cont}: duplicate within this file (same container, type & date)`); return; }
+    if (seenInBatch.has(dupKey)) { issueTags.push('duplicate within this file (same container, type & date)'); flagged.push(`${cont}: duplicate within this file (same container, type & date)`); }
     const dupIc = findDuplicateInterchange(cont, type, dateVal);
-    if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); return; }
+    if (dupIc) { issueTags.push(`possible duplicate of an existing ${type} record on ${fmtDate(dateVal)}`); flagged.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); }
     seenInBatch.add(dupKey);
 
     // "Transporters" (DISPATCH.xlsx) is a haulage company name, not a specific
@@ -3445,7 +3485,7 @@ function processBulkInward() {
       driverNameText: driver ? '' : sanitize(driverVal),
       eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno','ineirno','outeirno','outeir','refinno','refoutno','inwardno'])),
       blNumber:  sanitize(pickField(r, ['bl','blnumber','blno'])),
-      vessel:    sanitize(pickField(r, ['vessel'])),
+      vessel:    sanitize(vesselVal),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),
       deliveringParty: sanitize(pickField(r, ['deliveringparty','delivering','shipper'])),
       // "Gurantee Form No." (Received.xlsx, misspelled in the source file
@@ -3454,8 +3494,13 @@ function processBulkInward() {
       guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber','guranteeformno','guaranteeformno'])),
       cargoStatus,
       repairs: [], repairTotal: 0,
-      notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
-      date: dateVal, status: 'pending', img: '',
+      notes: [sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import', ...issueTags.map(t=>`⚠ ${t}`)].filter(Boolean).join(' — '),
+      // Historical bulk imports are treated as already-verified facts, not
+      // items awaiting review — 'pending' would flood the approval queue
+      // and Interchange badge with thousands of records nobody is actually
+      // meant to individually approve, and would keep them out of reports
+      // that only count approved/reconciled data.
+      date: dateVal, status: 'approved', img: '',
       dateOut: dateOutVal,
       receivingParty: sanitize(pickField(r, ['receivingparty'])),
       releaseOrderNo: sanitize(pickField(r, ['releaseorderno','releaseorder'])),
@@ -3465,10 +3510,10 @@ function processBulkInward() {
   });
 
   scheduleSave(); buildBadges();
-  addAudit(state.profile.username, 'Bulk Inward Entry', `${created} entries imported${skipped.length?`, ${skipped.length} skipped`:''}`);
-  if (skipped.length) {
-    toast(`${created} created, ${skipped.length} skipped — see details`, skipped.length && !created ? 'error' : 'warning', 6000);
-    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Skipped Rows (${skipped.length})</div><div style="max-height:240px;overflow-y:auto">${skipped.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
+  addAudit(state.profile.username, 'Bulk Inward Entry', `${created} entries imported${flagged.length?`, ${flagged.length} flagged for review`:''}`);
+  if (flagged.length) {
+    toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
+    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flagged.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
   } else {
     toast(`${created} inward entries created`, 'success');
   }
@@ -3644,10 +3689,15 @@ function renderInterchange(f){
   let items=f==='all'?state.db.interchange:state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
+  // Same "already has a matching Gate-Out somewhere" logic as the Still In
+  // Storage panel — computed once per render, not per card.
+  const exitedContainers = new Set(
+    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
+  );
   el.innerHTML=items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
-    const canQuickDispatch = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.dateOut;
+    const canQuickDispatch = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.dateOut && !exitedContainers.has(ic.container);
     return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img)?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
