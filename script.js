@@ -3346,18 +3346,28 @@ function processBulkInward() {
     if (dupIc) { skipped.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); return; }
     seenInBatch.add(dupKey);
 
-    const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno']);
+    // "Transporters" (DISPATCH.xlsx) is a haulage company name, not a specific
+    // truck reg — it still belongs in the free-text truck field so it shows
+    // up as "who moved it" on the record, same as an unmatched truck reg does.
+    const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno','transporters','transporter']);
     const driverVal = pickField(r, ['driver','drivername','driversname']);
     const lineVal   = pickField(r, ['line','shippingline','linecode','shippinglines']);
-    const vesselVal = pickField(r, ['vessel']);
+    // "EX Vessel" (Received.xlsx) is the vessel column under a different header.
+    const vesselVal = pickField(r, ['vessel','exvessel']);
 
     const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
     const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase() || d.id===driverVal) : null;
+    // Some source registers use a plain-English abbreviation that doesn't
+    // match any shipping_lines.code exactly (e.g. "TERMCO" in the historical
+    // COSCO gate registers, whose actual code in this system is "TMT" /
+    // "TERMCO TANKS"). Add more aliases here as new mismatches turn up.
+    const LINE_TEXT_ALIASES = { 'TERMCO': 'TMT' };
+    const lineValResolved = LINE_TEXT_ALIASES[lineVal.toUpperCase()] || lineVal;
     // Normalize both sides (trim + collapse whitespace) so "PIL", " Pil ",
     // "PIL  " all still match the code — previously an exact toLowerCase()
     // compare meant any stray whitespace silently dropped the line to null.
-    let line = lineVal
-      ? state.db.shippingLines.find(l => normVessel(l.code).toLowerCase()===normVessel(lineVal).toLowerCase() || normVessel(l.name).toLowerCase()===normVessel(lineVal).toLowerCase() || l.id===lineVal)
+    let line = lineValResolved
+      ? state.db.shippingLines.find(l => normVessel(l.code).toLowerCase()===normVessel(lineValResolved).toLowerCase() || normVessel(l.name).toLowerCase()===normVessel(lineValResolved).toLowerCase() || l.id===lineValResolved)
       : null;
     // No usable "line" column value (missing, blank, or unrecognized code)?
     // Fall back to guessing from the vessel name — this is what was leaving
@@ -3369,9 +3379,13 @@ function processBulkInward() {
 
     const ctypeExplicit    = pickField(r, ['ctype']);
     const sizeRaw          = pickField(r, ['size']);
-    const containerTypeRaw = pickField(r, ['containertype']);
+    // "containertype" is the app's own bulk-template column name; real gate
+    // registers instead label this column plain "Type" (values like HC, HD,
+    // DV, TK, OT, FR, PL, LC) — check the template's column first so a
+    // filled-in template still wins, then fall back to "type".
+    const containerTypeRaw = pickField(r, ['containertype','type']);
     let ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeExplicit.toLowerCase());
-    if (!ctype && sizeRaw && containerTypeRaw) ctype = composeCtype(sizeRaw, containerTypeRaw);
+    if (!ctype && sizeRaw && containerTypeRaw) ctype = composeCtypeFromDepotCode(sizeRaw, containerTypeRaw);
     if (!ctype) ctype = CONTAINER_TYPE_OPTIONS[0];
 
     const condRaw = pickField(r, ['condition']);
@@ -3399,7 +3413,10 @@ function processBulkInward() {
       vessel:    sanitize(pickField(r, ['vessel'])),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),
       deliveringParty: sanitize(pickField(r, ['deliveringparty','delivering','shipper'])),
-      guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber'])),
+      // "Gurantee Form No." (Received.xlsx, misspelled in the source file
+      // itself) normalizes to "guranteeformno" — add both the correct and
+      // misspelled forms so either header variant is picked up.
+      guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber','guranteeformno','guaranteeformno'])),
       cargoStatus,
       repairs: [], repairTotal: 0,
       notes: sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import',
@@ -6777,7 +6794,36 @@ function depOpsReadyCard(entry) {
 
 
 
-const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat', 'Heavy Duty', 'LCL', 'Platform'];
+const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '20ft HC', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat', 'Heavy Duty', 'LCL', 'Platform', 'LC (Unspecified)'];
+
+// Maps the shorthand container-type codes used in the depot's own gate
+// registers (Received.xlsx / DISPATCH.xlsx "Type" column: DV, FL, FR, HC,
+// HD, LC, OT, PL, TK) onto the app's CONTAINER_TYPE_OPTIONS. HD and DV are
+// both treated as standard "Dry" containers — HD is by far the dominant
+// 20ft code in the historical data and DV ("Dry Van") is the rare
+// equivalent, so both collapse to Dry. TK/OT/FR/FL/PL are unsized
+// (composeCtype keeps them size-agnostic, matching how the rest of the app
+// already treats Tank/Open Top/Flat Rack/Platform). LC's real meaning
+// wasn't clear from the source data, so it's kept as its own literal
+// category rather than guessed — rename the option below if you know what
+// it should be.
+const DEPOT_TYPE_CODE_MAP = {
+  'DV': 'Dry', 'HD': 'Dry', 'HC': 'HC',
+  'FR': 'Flat Rack', 'FL': 'Flat Rack', 'OT': 'Open Top',
+  'PL': 'Platform', 'TK': 'Tank', 'LC': 'LC (Unspecified)',
+};
+// sizeRaw can be "20"/"40" (bare number, as in the historical registers) or
+// "20ft"/"40ft" (as used elsewhere in the app) — normalize either way.
+function composeCtypeFromDepotCode(sizeRaw, codeRaw) {
+  const sizeStr = String(sizeRaw || '').trim();
+  const sizeFt = sizeStr ? (/ft$/i.test(sizeStr) ? sizeStr : `${parseInt(sizeStr, 10)}ft`) : '';
+  const code = String(codeRaw || '').trim().toUpperCase();
+  const mapped = DEPOT_TYPE_CODE_MAP[code];
+  if (mapped) return composeCtype(sizeFt, mapped);
+  // Not a recognized depot code — fall back to the normal size+type compose
+  // (handles values that are already full CONTAINER_TYPE_OPTIONS labels).
+  return composeCtype(sizeFt || sizeStr, codeRaw);
+}
 const CARGO_STATUS_OPTIONS = ['Empty', 'Laden / Full', 'Part Load', 'Damaged Cargo'];
 
 // Size + Type are derived from CONTAINER_TYPE_OPTIONS rather than a separate
