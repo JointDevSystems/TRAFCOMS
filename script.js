@@ -2935,13 +2935,18 @@ function processBulkFile(file) {
         const headers = lines[0].split(',').map(h=>h.trim());
         rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
       }
-      // Same filename-sniffing heuristic as the Inward bulk importer — a
-      // file named like "outward.csv" / "dispatch_out.xlsx" defaults the
-      // Direction picker to Outward; anything else defaults to Outward too
-      // (this screen is "Bulk Container Dispatch", so outward is the more
-      // common case) unless the name clearly says "inward".
+      // Filename-sniffing heuristic — a file named like "outward.csv" /
+      // "dispatch_out.xlsx" defaults the Direction picker to Outward;
+      // anything else defaults to Outward too (this screen is "Bulk
+      // Container Dispatch", so outward is the more common case) unless the
+      // name clearly says "inward". This is only the fallback now — a real
+      // gate register's own column headers (Date Out/Receiving Party vs.
+      // Date In/Delivering Party) are a far more reliable signal than the
+      // filename and are checked first, below.
       const looksInward = /inward|inwrd|_in\b|-in\b/i.test(name) && !/outward/i.test(name);
-      showBulkPreview(normalizeRowKeys(rows), looksInward ? 'in' : 'out');
+      const normalizedRows = normalizeRowKeys(rows);
+      const sniffedDirection = sniffBulkDirectionFromRows(normalizedRows);
+      showBulkPreview(normalizedRows, sniffedDirection || (looksInward ? 'in' : 'out'));
     } catch(err) { toast('Could not parse file — check format', 'error'); }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
@@ -3126,7 +3131,7 @@ async function processBulkDispatch() {
     { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
 
     let dateVal = dateOutVal || new Date().toISOString();
-    const dateRaw = pickField(r, ['date','dispatchdate','startdate','starttime','datedispatched']);
+    const dateRaw = pickField(r, ['date','dispatchdate','startdate','starttime','datedispatched','datein','entrydate','dategatein']);
     { const d = parseFlexibleDate(dateRaw); if (d) dateVal = d.toISOString(); }
 
     const notesParts = ['Bulk import'];
@@ -3159,7 +3164,7 @@ async function processBulkDispatch() {
       status: 'completed',
       startTime: dateVal, eta: dateOutVal || new Date(new Date(dateVal).getTime()+4*3600000).toISOString(),
       eirNumber: sanitize(pickField(r, ['eir','eirno'])),
-      receivingParty: sanitize(pickField(r, ['receivingparty'])),
+      receivingParty: sanitize(pickField(r, ['receivingparty','deliveringparty'])),
       releaseOrderNo: sanitize(pickField(r, ['releaseorderno'])),
       vessel: sanitize(pickField(r, ['vessel','exvessel'])),
       voyage: sanitize(pickField(r, ['voyage'])),
@@ -3601,6 +3606,29 @@ function normalizeRowKeys(rows) {
   });
 }
 
+// Detects a bulk file's direction (Inward/Outward) from its own column
+// headers rather than its filename. Filenames are unreliable — a real
+// gate/depot register is typically named after the shipping line or date
+// range, not "inward"/"outward" ("DISPATCH.xlsx", "Recieved.xlsx" — the
+// latter doesn't contain "in" or "inward" anywhere, so the old
+// filename-only heuristic silently defaulted it to Outward). The columns
+// themselves are unambiguous: a Dispatch/gate-out register carries "Date
+// Out" + "Receiving Party" + "Release Order No.", a Received/gate-in
+// register carries "Date In" + "Delivering Party" — checked here against
+// the already-normalized (lowercased, punctuation-stripped) row keys.
+function sniffBulkDirectionFromRows(normalizedRows) {
+  if (!normalizedRows || !normalizedRows.length) return null;
+  const keys = new Set();
+  normalizedRows.slice(0, 10).forEach(r => Object.keys(r).forEach(k => keys.add(k)));
+  const outSignals = ['dateout', 'receivingparty', 'releaseorderno', 'transporters'];
+  const inSignals  = ['datein', 'deliveringparty', 'exvessel', 'guranteeformno', 'guaranteeformno'];
+  const outHits = outSignals.filter(k => keys.has(k)).length;
+  const inHits  = inSignals.filter(k => keys.has(k)).length;
+  if (outHits > inHits && outHits > 0) return 'out';
+  if (inHits > outHits && inHits > 0) return 'in';
+  return null; // ambiguous/generic template — let the filename heuristic decide
+}
+
 function processInwardBulkFile(file) {
   if (file.size > 5*1024*1024) { toast('File too large. Max 5MB.', 'error'); return; }
   const name = file.name.toLowerCase();
@@ -3622,7 +3650,8 @@ function processInwardBulkFile(file) {
       }
       rows = normalizeRowKeys(rows);
       const looksOutward = /outward|outwrd|_out\b|-out\b/i.test(name) && !/inward/i.test(name);
-      showInwardBulkPreview(rows, looksOutward ? 'out' : 'in');
+      const sniffedDirection = sniffBulkDirectionFromRows(rows);
+      showInwardBulkPreview(rows, sniffedDirection || (looksOutward ? 'out' : 'in'));
     } catch(err) { toast('Could not parse file — check format', 'error'); }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
@@ -4127,32 +4156,47 @@ function _depotReportLineMatch(rec) {
   return _depotReportLine === 'all' || (_depotReportLine === '__unmapped__' ? !rec.line : rec.line === _depotReportLine);
 }
 
-// Normalizes an outward trip (workType 'Depot → Port' — dispatches, i.e.
-// containers leaving the depot for the port) into the same shape as an
-// interchange record, so it can sit in the same Outward list/table/export
-// as Gate-Out/Depot-Out interchange entries. Outward dispatch data (manual
-// or bulk-imported) lives in trips, not interchange — previously the Depot
-// Report only ever looked at interchange, so none of it ever showed up here.
+// Normalizes a trip (either direction) into the same shape as an
+// interchange record, so it can sit in the same Inward/Outward list/table/
+// export as Gate-In/Gate-Out/Depot-In/Depot-Out interchange entries.
+// Dispatch data (manual or bulk-imported, either direction) lives in trips,
+// not interchange — previously the Depot Report only ever looked at
+// interchange, so none of it ever showed up here.
 function _tripToDepotReportRecord(t) {
+  const outward = isOutwardWorkType(t.workType);
   return {
-    id: t.id, container: t.container, type: t.outwardType || 'Dispatch (Depot → Port)',
+    id: t.id, container: t.container,
+    type: outward ? (t.outwardType || 'Dispatch (Depot → Port)') : 'Inward (Port → Depot)',
     line: t.shippingLine || '', condition: '',
     truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '',
     eirNumber: t.eirNumber || '', vessel: t.vessel || '', voyage: t.voyage || '',
-    // The actual outward gate movement date — falls back to when the trip
-    // was started if no explicit exit date was captured (same convention
-    // Gate-Out interchange records use).
-    date: t.dateOut || t.startTime, status: t.status, notes: t.notes || '',
+    // Outward: the actual outward gate movement date, falling back to
+    // startTime if no explicit exit date was captured. Inward: the trip's
+    // own start (arrival) date — same convention Gate-In interchange
+    // records use for their single `date` field.
+    date: outward ? (t.dateOut || t.startTime) : t.startTime,
+    status: t.status, notes: t.notes || '',
     flaggedForReview: !!t.flaggedForReview, flagReasons: t.flagReasons || [],
     importBatchId: t.importBatchId || null,
     _reportSource: 'trips',
   };
 }
 
+// Inward = Gate-In/Depot-In interchange records AND inward trips
+// (workType 'Port → Depot') merged into one list — mirrors
+// _depotReportOutwardEntries below. Without this half of the merge,
+// containers bulk-imported as inward trips (e.g. a Received-register file
+// uploaded through the Dispatch Console with Direction set to Inward)
+// never appeared under Inward Entries here, even though the symmetric
+// Outward case already merged trips in.
 function _depotReportInwardEntries() {
-  return state.db.interchange
+  const fromInterchange = state.db.interchange
     .filter(ic => INWARD_IC_TYPES.includes(ic.type))
-    .map(ic => ({ ...ic, _reportSource: 'interchange' }))
+    .map(ic => ({ ...ic, _reportSource: 'interchange' }));
+  const fromTrips = state.db.trips
+    .filter(t => !isOutwardWorkType(t.workType))
+    .map(_tripToDepotReportRecord);
+  return [...fromInterchange, ...fromTrips]
     .filter(_depotReportLineMatch)
     .filter(rec => _depotReportInRange(rec.date))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -4227,7 +4271,7 @@ function renderDepotReport() {
   const inward  = _depotReportInwardEntries();
   const outward = _depotReportOutwardEntries();
   const unmappedTotal = state.db.interchange.filter(ic => !ic.line).length
-    + state.db.trips.filter(t => isOutwardWorkType(t.workType) && !t.shippingLine).length;
+    + state.db.trips.filter(t => !t.shippingLine).length;
 
   const kpi = document.getElementById('depotReportKpis');
   if (kpi) {
@@ -8036,6 +8080,34 @@ function depOpsReportsReset() {
   renderDepOpsReports();
 }
 
+// Maps a trip (dispatch console record, manual or bulk-imported) onto the
+// same row shape DepOps → Reports renders for interchange records. The
+// Movement filter here only offers Gate-In/Gate-Out/Depot-In/Depot-Out —
+// there's no separate "outward type" concept in this screen — so a trip's
+// direction collapses onto the plain gate vocabulary: an outward trip
+// (workType 'Depot → Port', e.g. a bulk dispatch import) reads as a
+// Gate-Out movement, an inward trip (workType 'Port → Depot', e.g. a bulk
+// received-register import) reads as Gate-In.
+function _tripToInterchangeReportRow(t) {
+  const outward = isOutwardWorkType(t.workType);
+  return {
+    id: t.id, container: t.container, type: outward ? 'Gate-Out' : 'Gate-In',
+    ctype: t.ctype || '', line: t.shippingLine || '', condition: '',
+    truck: t.truckId || '', driver: t.driverId || '',
+    // Bulk-imported trips are always saved as 'completed' (historical fact,
+    // already verified) — treat that the same way bulk interchange imports
+    // are treated ('approved'), so the Status filter and Pending/Approved
+    // summary counts stay meaningful across both source tables. A trip
+    // that's still actively moving reads as 'pending' since it isn't a
+    // finalized gate record yet.
+    status: t.status === 'completed' ? 'approved' : 'pending',
+    repairTotal: 0,
+    date: outward ? (t.dateOut || t.startTime) : t.startTime,
+    notes: t.notes || '',
+    _reportSource: 'trips',
+  };
+}
+
 async function renderDepOpsReports() {
   depOpsReportsPopulateLines();
 
@@ -8045,7 +8117,18 @@ async function renderDepOpsReports() {
   const from = document.getElementById('depopsRptFrom')?.value || '';
   const to = document.getElementById('depopsRptTo')?.value || '';
 
-  let rows = (state.db.interchange || []).slice();
+  // Dispatch/inward movements recorded as trips (manual or bulk-imported,
+  // e.g. via the Dispatch Console's bulk upload) previously never showed up
+  // here at all — this screen only ever read state.db.interchange. That's
+  // why bulk-uploaded dispatch/received registers could be missing from
+  // DepOps → Reports, and why filtering "Gate-Out" never surfaced a bulk
+  // dispatch import. Fold trips in, mapped onto the same Gate-In/Gate-Out
+  // vocabulary the Movement filter uses, exactly like Depot Report already
+  // does for its own inward/outward lists.
+  let rows = [
+    ...(state.db.interchange || []).map(i => ({ ...i, _reportSource: 'interchange' })),
+    ...(state.db.trips || []).map(_tripToInterchangeReportRow),
+  ];
   if (lineId === '__unmapped__') rows = rows.filter(i => !i.line);
   else if (lineId) rows = rows.filter(i => i.line === lineId);
   if (type) rows = rows.filter(i => i.type === type);
@@ -8058,7 +8141,8 @@ async function renderDepOpsReports() {
   const body = document.getElementById('depopsRptBody');
   const meta = document.getElementById('depopsRptMeta');
   const exportBtn = document.getElementById('depopsRptExportBtn');
-  const unmappedCount = (state.db.interchange || []).filter(i => !i.line).length;
+  const unmappedCount = (state.db.interchange || []).filter(i => !i.line).length
+    + (state.db.trips || []).filter(t => !t.shippingLine).length;
   if (meta) meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'}` + (unmappedCount ? ` · ${unmappedCount} total with no shipping line — <a href="#" onclick="openUnmappedVesselsModal();return false" style="color:var(--gold)">resolve them →</a>` : '');
   if (exportBtn) exportBtn.disabled = !rows.length;
 
