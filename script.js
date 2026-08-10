@@ -2841,6 +2841,81 @@ function handleBulkFile(e) {
   if (file) processBulkFile(file);
 }
 
+// Reads EVERY sheet in an uploaded workbook and returns one combined array
+// of row objects — reading only wb.SheetNames[0] silently drops every row on
+// any sheet after the first (e.g. a second sheet of historical rows).
+//
+// A sheet is also allowed to have no header row of its own — common when a
+// second sheet is a plain continuation of the first, appended without
+// repeating the column titles. If a sheet's first row doesn't look like
+// column headers (checked against a list of words this app's known
+// templates use), the most recent real header row seen earlier in the same
+// workbook is reused positionally for that sheet instead of misreading its
+// first data row as a header.
+//
+// cellDates:true + raw:true (set by the caller's XLSX.read/sheet_to_json
+// options) means genuine Excel date cells arrive here as real JS Date
+// objects, not locale-formatted text — so there is no day/month ambiguity
+// to guess at for those cells, regardless of what date format was applied
+// to the column in Excel.
+const _EXCEL_HEADER_HINTS = ['container','size','type','eir','date','delivering','vessel','voyage','guarantee','gurantee','shipping','line','receiving','release','transporter','dispatch','driver','truck','reg','condition','notes','remarks','bl','cargo','work'];
+function readAllExcelSheetsAsRows(wb) {
+  let lastHeader = null;
+  const allRows = [];
+  wb.SheetNames.forEach(sn => {
+    const sheet = wb.Sheets[sn];
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+    if (!aoa.length) return;
+    const firstRow = aoa[0].map(c => String(c == null ? '' : c).trim());
+    const hintHits = firstRow.filter(c => _EXCEL_HEADER_HINTS.some(h => c.toLowerCase().replace(/[^a-z]/g,'').includes(h))).length;
+    let header, dataRows;
+    if (hintHits >= 2) {
+      header = firstRow;
+      dataRows = aoa.slice(1);
+      lastHeader = header;
+    } else if (lastHeader) {
+      header = lastHeader;
+      dataRows = aoa; // no header row on this sheet — every row here is data
+    } else {
+      header = firstRow.map((_, i) => `Column${i + 1}`);
+      dataRows = aoa;
+    }
+    dataRows.forEach(r => {
+      const obj = {};
+      header.forEach((h, i) => { if (h) obj[h] = r[i] != null ? r[i] : ''; });
+      allRows.push(obj);
+    });
+  });
+  return allRows;
+}
+
+// Parses a date the way Kenyan gate/depot registers actually write them —
+// DD/MM/YYYY (or DD/MM/YY) — instead of relying on JavaScript's native
+// Date parsing, which assumes the US MM/DD/YYYY convention for slash-
+// separated dates. Genuine Excel date cells (read with cellDates:true) are
+// returned as-is since they carry no ambiguity at all.
+function parseFlexibleDate(raw) {
+  if (raw == null || raw === '') return null;
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) {
+    let [, d, mo, y, h, mi, se] = m;
+    d = parseInt(d, 10); mo = parseInt(mo, 10); y = parseInt(y, 10);
+    if (y < 100) y += y < 70 ? 2000 : 1900;
+    // Unambiguous case: a "day" slot over 12 can only be the day, so the
+    // fields must actually be MM/DD — swap back. Otherwise (both <= 12,
+    // the normal ambiguous case) trust DD/MM, matching this data's convention.
+    if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const dt = new Date(y, mo - 1, d, parseInt(h || 0, 10), parseInt(mi || 0, 10), parseInt(se || 0, 10));
+      if (!isNaN(dt.getTime())) return dt;
+    }
+  }
+  const dt = new Date(s);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
 function processBulkFile(file) {
   if (file.size > 5*1024*1024) { toast('File too large. Max 5MB.', 'error'); return; }
   const name = file.name.toLowerCase();
@@ -2851,9 +2926,8 @@ function processBulkFile(file) {
       let rows = [];
       if (isExcel) {
         if (!window.XLSX) { toast('Spreadsheet reader still loading — try again in a moment', 'error'); return; }
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        rows = readAllExcelSheetsAsRows(wb);
       } else if (name.endsWith('.json')) {
         rows = JSON.parse(e.target.result);
       } else {
@@ -3043,13 +3117,17 @@ async function processBulkDispatch() {
     // and every bulk-imported trip was stamped with the *upload* time, which
     // put thousands of historical dispatches on "today" in every date-based
     // report. Falls back to now only when the file truly has no date.
-    let dateVal = new Date().toISOString();
-    const dateRaw = pickField(r, ['date','dispatchdate','startdate','starttime','datedispatched']);
-    if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
-
+    // Real dispatch/gate registers (e.g. DISPATCH.xlsx) often carry ONLY a
+    // "Date Out" column and no separate "Date"/"Dispatch Date" column —
+    // compute Date Out first and use it as the fallback for the row's own
+    // date, same convention used by the Inward importer below.
     const dateOutRaw = pickField(r, ['dateout','dateexited']);
     let dateOutVal = null;
-    if (dateOutRaw) { const dOut = new Date(dateOutRaw); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
+    { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
+
+    let dateVal = dateOutVal || new Date().toISOString();
+    const dateRaw = pickField(r, ['date','dispatchdate','startdate','starttime','datedispatched']);
+    { const d = parseFlexibleDate(dateRaw); if (d) dateVal = d.toISOString(); }
 
     const notesParts = ['Bulk import'];
     if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
@@ -3533,9 +3611,8 @@ function processInwardBulkFile(file) {
       let rows = [];
       if (isExcel) {
         if (!window.XLSX) { toast('Spreadsheet reader still loading — try again in a moment', 'error'); return; }
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        rows = readAllExcelSheetsAsRows(wb);
       } else if (name.endsWith('.json')) {
         rows = JSON.parse(e.target.result);
       } else {
@@ -3613,7 +3690,7 @@ function processBulkInward() {
 
     let dateVal = new Date().toISOString();
     const dateRaw = pickField(r, ['date','entrydate','datein','dateout','gateindate','gateoutdate','inwarddate','outwarddate','entrydatetime']);
-    if (dateRaw) { const d = new Date(dateRaw); if (!isNaN(d.getTime())) dateVal = d.toISOString(); }
+    { const d = parseFlexibleDate(dateRaw); if (d) dateVal = d.toISOString(); }
 
     // Dedup key includes the row's own date — two different historical dates
     // for the same container+type are legitimate separate movements, not
@@ -3676,7 +3753,7 @@ function processBulkInward() {
     // storage" needing a quick-dispatch action.
     let dateOutVal = null;
     const dateOutRaw = pickField(r, ['dateout','exitdate','gateoutdate','dateexited']);
-    if (dateOutRaw) { const dOut = new Date(dateOutRaw); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
+    { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
 
     const cargoStatusRaw = pickField(r, ['cargostatus']);
     const cargoStatus = CARGO_STATUS_OPTIONS.find(c => c.toLowerCase() === cargoStatusRaw.toLowerCase()) || sanitize(cargoStatusRaw);
