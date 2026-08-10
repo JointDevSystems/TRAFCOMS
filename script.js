@@ -2899,6 +2899,13 @@ async function processBulkDispatch() {
   // below guarantees the flag and button always come back to a normal state,
   // even if something throws partway through (a bad row, a network error, etc).
   _bulkWriteInProgress = true;
+
+  // Let the "Processing…" button state actually paint before the heavy work
+  // below starts. Without this yield, the button/toast DOM writes above sit
+  // queued behind the very next synchronous block and the tab can look
+  // completely frozen for the whole duration of the loop.
+  await new Promise(r => setTimeout(r, 0));
+
   try {
 
   let created = 0;
@@ -2909,7 +2916,33 @@ async function processBulkDispatch() {
   const newTrips = []; // collected for a direct, chunked save below
   const importBatchId = `DSP-${new Date().toISOString().slice(0,10)}-${Date.now().toString(36).toUpperCase()}`;
 
-  rows.forEach((r, idx)=>{
+  // Live-container lookup used to be a fresh state.db.trips.find() scan
+  // (findLiveTripByContainer) for every single row. That's an O(rows ×
+  // trips) linear scan — harmless when the trips table was small, but with
+  // tens of thousands of trips already on file it turned a several-thousand
+  // row historical import into tens/hundreds of millions of comparisons run
+  // synchronously on the main thread. That's what actually made the button
+  // "not complete": the tab froze mid-loop for so long it looked hung, which
+  // is also how it kept getting re-clicked before the guard above existed.
+  // Build the lookup ONCE (single O(trips) pass) instead.
+  const liveTripByContainer = new Map();
+  state.db.trips.forEach(t => {
+    if (isTripLive(t) && t.container) {
+      const key = t.container.toUpperCase();
+      if (!liveTripByContainer.has(key)) liveTripByContainer.set(key, t);
+    }
+  });
+
+  // Process in chunks with a yield in between so the browser can repaint the
+  // progress text and stays responsive for very large historical files,
+  // instead of blocking the main thread for the entire import in one go.
+  const CHUNK = 300;
+  for (let start = 0; start < rows.length; start += CHUNK) {
+    const chunkRows = rows.slice(start, start + CHUNK);
+    if (btn && rows.length > CHUNK) btn.textContent = `Processing ${Math.min(start + CHUNK, rows.length)}/${rows.length}…`;
+
+    chunkRows.forEach((r, chunkIdx) => {
+      const idx = start + chunkIdx;
     // Alias-tolerant field pickup: accepts both this screen's own template
     // headers (container, eir, receivingParty…) and real gate-register
     // headers like "Container No.", "EIR No.", "Shipping Line", "Transporters"
@@ -2930,7 +2963,7 @@ async function processBulkDispatch() {
       if (contIssue) { issueTags.push(contIssue); flagged.push(`${cont}: ${contIssue}`); }
     }
     if (seenInBatch.has(cont)) { issueTags.push('duplicate container within this file'); flagged.push(`${cont}: duplicate container within this file`); }
-    const dupTrip = findLiveTripByContainer(cont);
+    const dupTrip = liveTripByContainer.get(cont) || null;
     if (dupTrip) { issueTags.push('already on an active trip'); flagged.push(`${cont}: already on an active trip`); }
     seenInBatch.add(cont);
 
@@ -3018,7 +3051,12 @@ async function processBulkDispatch() {
     // missing Date Out on a historical row doesn't mean the trip is still
     // out, just that the source file didn't capture that column.)
     created++;
-  });
+    });
+
+    // Yield back to the browser between chunks so the progress text above
+    // actually repaints and the tab stays interactive during a large import.
+    await new Promise(r => setTimeout(r, 0));
+  }
 
   // Save this batch directly, in chunks, instead of relying on the debounced
   // full-table save — a large historical file (thousands of rows) sent as
