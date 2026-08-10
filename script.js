@@ -2793,21 +2793,28 @@ function handleBulkFile(e) {
 
 function processBulkFile(file) {
   if (file.size > 5*1024*1024) { toast('File too large. Max 5MB.', 'error'); return; }
+  const name = file.name.toLowerCase();
+  const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
   const reader = new FileReader();
   reader.onload = e => {
     try {
       let rows = [];
-      if (file.name.endsWith('.json')) {
+      if (isExcel) {
+        if (!window.XLSX) { toast('Spreadsheet reader still loading — try again in a moment', 'error'); return; }
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      } else if (name.endsWith('.json')) {
         rows = JSON.parse(e.target.result);
       } else {
         const lines = e.target.result.split('\n').filter(l=>l.trim());
         const headers = lines[0].split(',').map(h=>h.trim());
         rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
       }
-      showBulkPreview(rows);
+      showBulkPreview(normalizeRowKeys(rows));
     } catch(err) { toast('Could not parse file — check format', 'error'); }
   };
-  reader.readAsText(file);
+  if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
 }
 
 function showBulkPreview(rows) {
@@ -2830,43 +2837,71 @@ function processBulkDispatch() {
   const busyDrivers = new Set();
 
   rows.forEach((r, idx)=>{
-    const rowLabel = r.container ? r.container : `row ${idx+1}`;
-    if (!r.container) { skipped.push(`${rowLabel}: missing container number`); return; }
-    const cont = r.container.trim().toUpperCase();
+    // Alias-tolerant field pickup: accepts both this screen's own template
+    // headers (container, eir, receivingParty…) and real gate-register
+    // headers like "Container No.", "EIR No.", "Shipping Line", "Transporters"
+    // once normalizeRowKeys() has lowercased/stripped them.
+    const contRaw = pickField(r, ['container','containerno','containernumber','containernrno']);
+    const rowLabel = contRaw ? contRaw : `row ${idx+1}`;
+    if (!contRaw) { skipped.push(`${rowLabel}: missing container number`); return; }
+    const cont = contRaw.trim().toUpperCase();
     const contIssue = containerFormatIssue(cont);
     if (contIssue) { skipped.push(`${cont}: ${contIssue}`); return; }
     if (seenInBatch.has(cont)) { skipped.push(`${cont}: duplicate container within this file`); return; }
     const dupTrip = findLiveTripByContainer(cont);
     if (dupTrip) { skipped.push(`${cont}: already on an active trip`); return; }
 
-    const truck  = state.db.trucks.find(t=>t.reg===r.truck||t.id===r.truck);
-    const driver = state.db.drivers.find(d=>d.name===r.driver||d.id===r.driver);
+    // "Transporters" (haulage company, e.g. SIMBA TECH) is free text, not a
+    // fleet reg — try matching it to a real truck first, otherwise it's
+    // captured in the trip notes instead of silently discarded.
+    const truckRaw  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno']);
+    const transporterRaw = pickField(r, ['transporters','transporter']);
+    const driverRaw = pickField(r, ['driver','drivername','driversname']);
+    const truck  = state.db.trucks.find(t=>t.reg===truckRaw||t.id===truckRaw||t.reg===transporterRaw);
+    const driver = state.db.drivers.find(d=>d.name===driverRaw||d.id===driverRaw);
     if (truck && (truck.status !== 'available' || busyTrucks.has(truck.id))) { skipped.push(`${cont}: truck ${truck.reg} unavailable or already used in this batch`); return; }
     if (driver && (driver.status !== 'available' || busyDrivers.has(driver.id))) { skipped.push(`${cont}: driver ${driver.name} unavailable or already used in this batch`); return; }
 
     seenInBatch.add(cont);
 
-    // Historical migration rows: a size+type pair takes priority, then a
-    // raw ctype column, then the default. A dateOut on the row means this
-    // dispatch already happened — mark it completed straight away rather
-    // than leaving it sitting in the active queue.
-    const ctype = (r.size && r.type) ? composeCtype(r.size, r.type)
-      : (CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === String(r.ctype||'').toLowerCase()) || r.ctype || '20ft Dry');
+    const lineRaw = pickField(r, ['line','shippingline','linecode','shippinglines']);
+    const LINE_TEXT_ALIASES = { 'TERMCO': 'TMT' };
+    const lineResolved = lineRaw ? (LINE_TEXT_ALIASES[lineRaw.toUpperCase()] || lineRaw) : '';
+    const line = lineResolved
+      ? state.db.shippingLines.find(l => l.code.toLowerCase()===lineResolved.toLowerCase() || l.name.toLowerCase()===lineResolved.toLowerCase() || l.id===lineResolved)
+      : null;
+
+    const sizeRaw = pickField(r, ['size']);
+    const typeRaw = pickField(r, ['containertype','type']);
+    const ctypeExplicit = pickField(r, ['ctype']);
+    // Historical migration rows: a size+type pair takes priority (via the
+    // same depot-code mapping used for Inward, so "40"/"HC" → "40ft HC"),
+    // then a raw ctype column, then the default.
+    const ctype = (sizeRaw && typeRaw) ? composeCtypeFromDepotCode(sizeRaw, typeRaw)
+      : (CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeExplicit.toLowerCase()) || ctypeExplicit || '20ft Dry');
+
+    const dateOutRaw = pickField(r, ['dateout','dateexited']);
     let dateOutVal = null;
-    if (r.dateout || r.dateOut) { const dOut = new Date(r.dateout || r.dateOut); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
+    if (dateOutRaw) { const dOut = new Date(dateOutRaw); if (!isNaN(dOut.getTime())) dateOutVal = dOut.toISOString(); }
+
+    const notesParts = ['Bulk import'];
+    if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
 
     const trip = {
       id: uid('TRIP'), container: cont,
       truckId: truck?.id||'', driverId: driver?.id||'',
-      ctype, workType: r.workType||'Port → Depot',
-      origin: r.origin||'', dest: r.dest||'', distance: parseInt(r.distance)||0,
-      shippingLine:'', priority:'Normal', notes:'Bulk import',
+      ctype, workType: r.worktype||r.workType||'Port → Depot',
+      origin: r.origin||'', dest: r.destination||r.dest||'', distance: parseInt(r.distance)||0,
+      shippingLine: line?.id||'', priority:'Normal', notes: notesParts.join(' — '),
       ref: `BULK-${Date.now()}-${created}`,
       status: dateOutVal ? 'completed' : 'active',
       startTime:new Date().toISOString(), eta:new Date(Date.now()+4*3600000).toISOString(),
-      eirNumber: sanitize((r.eir||'').trim()), receivingParty: sanitize((r.receivingparty||r.receivingParty||'').trim()),
-      releaseOrderNo: sanitize((r.releaseorderno||r.releaseOrderNo||'').trim()), vessel: sanitize((r.vessel||'').trim()),
-      voyage: sanitize((r.voyage||'').trim()), dateOut: dateOutVal,
+      eirNumber: sanitize(pickField(r, ['eir','eirno'])),
+      receivingParty: sanitize(pickField(r, ['receivingparty'])),
+      releaseOrderNo: sanitize(pickField(r, ['releaseorderno'])),
+      vessel: sanitize(pickField(r, ['vessel','exvessel'])),
+      voyage: sanitize(pickField(r, ['voyage'])),
+      dateOut: dateOutVal,
     };
     state.db.trips.push(trip);
     // Only tie up the truck/driver for dispatches that are still open —
