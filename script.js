@@ -2879,7 +2879,28 @@ function showBulkPreview(rows) {
 }
 
 async function processBulkDispatch() {
+  // Guard against double-submission: this function awaits a chunked network
+  // write that can take a while for a large historical file, and previously
+  // gave zero visual feedback while it ran — which meant a slow upload
+  // looked "stuck" and got clicked again (and again), each click starting a
+  // fully separate import of the same rows. That's what produced the
+  // duplicate DSP-* batches sitting in the trips table right now.
+  if (_bulkWriteInProgress) { toast('A dispatch import is already in progress — please wait', 'warning'); return; }
   const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
+  if (!rows.length) { toast('No rows to process', 'error'); return; }
+
+  const btn = document.getElementById('bulkDispatchSubmitBtn');
+  const btnOriginalText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = `Processing ${rows.length} row(s)…`; }
+  toast(`Processing ${rows.length} dispatch(es) — this can take a moment for large files…`, 'info', 5000);
+
+  // Set for the whole function, not just the save — blocks a second click
+  // from starting a parallel import at any point. The outer try/catch/finally
+  // below guarantees the flag and button always come back to a normal state,
+  // even if something throws partway through (a bad row, a network error, etc).
+  _bulkWriteInProgress = true;
+  try {
+
   let created = 0;
   const flagged = []; // rows still created, but tagged for later cleanup
   const seenInBatch = new Set();
@@ -3003,19 +3024,19 @@ async function processBulkDispatch() {
   // full-table save — a large historical file (thousands of rows) sent as
   // one request can exceed Supabase's statement timeout and silently drop
   // the whole import.
-  _bulkWriteInProgress = true;
-  let saveResult;
+  let saveResult = null;
   try {
     saveResult = await upsertRowsChunked('trips', newTrips.map(tripToRow));
-  } finally {
-    _bulkWriteInProgress = false;
+  } catch (e) {
+    console.error('Bulk dispatch save failed:', e && e.message, e);
+    saveResult = { table: 'trips', error: e };
   }
   newTrips.forEach(t => { delete t._dirty; });
   buildBadges();
   addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported${flagged.length?`, ${flagged.length} flagged for review`:''} (batch ${importBatchId})`);
   scheduleSave(); // persists the audit log entry above
   if (saveResult) {
-    toast(`Import saved with errors — check console and retry if rows are missing`, 'error', 7000);
+    toast(`Import saved with errors — check console and retry if rows are missing (${(saveResult.error && saveResult.error.message) || 'see console'})`, 'error', 7000);
   } else if (flagged.length) {
     toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
     openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flagged.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
@@ -3025,6 +3046,18 @@ async function processBulkDispatch() {
   refreshAwaitingDispatchUI();
   document.getElementById('bulkDispatchPreview').style.display = 'none';
   renderDispatchQueue();
+
+  } catch (e) {
+    // Anything unexpected (bad row data, a thrown error before the save,
+    // etc.) lands here instead of leaving the button stuck on "Processing…"
+    // and _bulkWriteInProgress permanently true (which would then block
+    // every future import with "already in progress" forever).
+    console.error('Bulk dispatch failed:', e && e.message, e);
+    toast(`Bulk dispatch failed — ${(e && e.message) || 'unexpected error'}. Nothing further was imported.`, 'error', 7000);
+  } finally {
+    _bulkWriteInProgress = false;
+    if (btn) { btn.disabled = false; btn.textContent = btnOriginalText || 'Process All Dispatches →'; }
+  }
 }
 
 function downloadBulkTemplate() {
