@@ -604,6 +604,20 @@
                                     </div>
                                     <input type="file" id="bulkDispatchFile" accept=".csv,.json" style="display:none" onchange="handleBulkFile(event)" />
                                     <div id="bulkDispatchPreview" style="display:none">
+                                        <div class="form-row-2" style="margin-top:14px">
+                                            <div class="fg">
+                                                <label>Direction — how these rows should be recorded</label>
+                                                <select id="bd_bulk_direction" onchange="updateBulkDispatchDirectionUI()"><option value="out">Outward (Depot → Port)</option><option value="in">Inward (Port → Depot)</option></select>
+                                            </div>
+                                            <div class="fg" id="bd_bulk_outwardtype_row">
+                                                <label>Outward Type <span class="label-optional">(used when a row has none of its own)</span></label>
+                                                <select id="bd_bulk_outwardtype"><option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option></select>
+                                            </div>
+                                        </div>
+                                        <div class="ops-notice" style="margin-bottom:10px">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                            Rows with their own "worktype"/"direction"/"movement" column use that value; everything else falls back to the direction picked above. Outward rows are the ones that appear under Outward in the Depot Report.
+                                        </div>
                                         <div class="panel" style="margin-top:14px">
                                             <div class="panel-head"><span class="panel-title">Preview</span><span class="panel-meta" id="bulkRowCount"></span></div>
                                             <div class="table-wrap"><table class="data-table" id="bulkPreviewTable"><thead></thead><tbody></tbody></table></div>
@@ -730,6 +744,20 @@
                                     </div>
                                     <input type="file" id="inwardBulkFile" accept=".csv,.xlsx,.xls,.json" style="display:none" onchange="handleInwardBulkFile(event)" />
                                     <div id="inwardBulkPreview" style="display:none">
+                                        <div class="form-row-2" style="margin-top:14px">
+                                            <div class="fg">
+                                                <label>Direction — how these rows should be recorded</label>
+                                                <select id="iw_bulk_direction"><option value="in">Inward (Gate-In)</option><option value="out">Outward (Gate-Out)</option></select>
+                                            </div>
+                                            <div class="fg">
+                                                <label>Detected movement type</label>
+                                                <div id="iw_bulk_direction_label" style="font-size:12px;color:var(--gold);padding-top:8px">Gate-In</div>
+                                            </div>
+                                        </div>
+                                        <div class="ops-notice" style="margin-bottom:10px">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                            Rows with their own "movement"/"type" column (Gate-In, Gate-Out, Depot-In, Depot-Out) use that value; everything else falls back to the direction picked above. This also decides what shows up under Outward vs Inward in the Depot Report.
+                                        </div>
                                         <div class="panel" style="margin-top:14px">
                                             <div class="panel-head"><span class="panel-title">Preview</span><span class="panel-meta" id="inwardBulkRowCount"></span></div>
                                             <div class="table-wrap"><table class="data-table" id="inwardBulkPreviewTable"><thead></thead><tbody></tbody></table></div>

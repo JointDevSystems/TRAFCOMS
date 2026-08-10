@@ -2861,13 +2861,19 @@ function processBulkFile(file) {
         const headers = lines[0].split(',').map(h=>h.trim());
         rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
       }
-      showBulkPreview(normalizeRowKeys(rows));
+      // Same filename-sniffing heuristic as the Inward bulk importer — a
+      // file named like "outward.csv" / "dispatch_out.xlsx" defaults the
+      // Direction picker to Outward; anything else defaults to Outward too
+      // (this screen is "Bulk Container Dispatch", so outward is the more
+      // common case) unless the name clearly says "inward".
+      const looksInward = /inward|inwrd|_in\b|-in\b/i.test(name) && !/outward/i.test(name);
+      showBulkPreview(normalizeRowKeys(rows), looksInward ? 'in' : 'out');
     } catch(err) { toast('Could not parse file — check format', 'error'); }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
 }
 
-function showBulkPreview(rows) {
+function showBulkPreview(rows, direction) {
   if (!rows.length) return;
   const keys = Object.keys(rows[0]);
   const tbl  = document.getElementById('bulkPreviewTable');
@@ -2876,6 +2882,19 @@ function showBulkPreview(rows) {
   document.getElementById('bulkRowCount').textContent = `${rows.length} rows`;
   document.getElementById('bulkDispatchPreview').style.display = 'block';
   document.getElementById('bulkDispatchPreview').dataset.rows = JSON.stringify(rows);
+  const dirSel = document.getElementById('bd_bulk_direction');
+  if (dirSel) dirSel.value = direction === 'in' ? 'in' : 'out';
+  updateBulkDispatchDirectionUI();
+}
+
+// Toggles the "Outward Type" picker — only meaningful when the batch
+// direction is Outward — and keeps it in sync if the person flips the
+// Direction dropdown after the preview has already loaded.
+function updateBulkDispatchDirectionUI() {
+  const dirSel = document.getElementById('bd_bulk_direction');
+  const row = document.getElementById('bd_bulk_outwardtype_row');
+  if (!dirSel || !row) return;
+  row.style.display = dirSel.value === 'out' ? 'block' : 'none';
 }
 
 async function processBulkDispatch() {
@@ -2888,6 +2907,24 @@ async function processBulkDispatch() {
   if (_bulkWriteInProgress) { toast('A dispatch import is already in progress — please wait', 'warning'); return; }
   const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
   if (!rows.length) { toast('No rows to process', 'error'); return; }
+
+  // Batch-level direction (Outward/Inward) and, for Outward, the fallback
+  // Outward Type — used for any row that doesn't specify its own. Without
+  // this, every row silently defaulted to workType 'Port → Depot' (Inward)
+  // regardless of what the file actually contained, which is why bulk
+  // dispatch imports of outward/dispatch data never showed up as Outward
+  // anywhere (Depot Report, Outward badges, etc).
+  const batchDirection = document.getElementById('bd_bulk_direction')?.value === 'in' ? 'in' : 'out';
+  const batchOutwardType = document.getElementById('bd_bulk_outwardtype')?.value || OUTWARD_TYPES[0];
+  const WORKTYPE_ALIASES = {
+    'depotport':'Depot → Port', 'depottoport':'Depot → Port', 'outward':'Depot → Port', 'out':'Depot → Port', 'dispatch':'Depot → Port',
+    'portdepot':'Port → Depot', 'porttodepot':'Port → Depot', 'inward':'Port → Depot', 'in':'Port → Depot',
+  };
+  const OUTWARDTYPE_ALIASES = {
+    'repatriationtoport':'Repatriation to Port', 'repatriation':'Repatriation to Port',
+    'shippersexport':'Shippers/Export', 'export':'Shippers/Export', 'shippers':'Shippers/Export',
+    'saleunits':'Sale units', 'sale':'Sale units',
+  };
 
   const btn = document.getElementById('bulkDispatchSubmitBtn');
   const btnOriginalText = btn ? btn.textContent : '';
@@ -3018,10 +3055,22 @@ async function processBulkDispatch() {
     if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
     notesParts.push(...issueTags.map(t=>`⚠ ${t}`));
 
+    // Per-row worktype/direction/movement column wins if present and
+    // recognizable; otherwise fall back to the Direction picked for the
+    // whole batch (was previously a hardcoded 'Port → Depot' default,
+    // which mislabeled every outward/dispatch migration row as inward).
+    const worktypeRaw = pickField(r, ['worktype','workType','direction','movement']).toLowerCase().replace(/[^a-z]/g,'');
+    const workType = WORKTYPE_ALIASES[worktypeRaw] || (batchDirection === 'in' ? 'Port → Depot' : 'Depot → Port');
+    let outwardType = null;
+    if (isOutwardWorkType(workType)) {
+      const outwardTypeRaw = pickField(r, ['outwardtype','movementtype']).toLowerCase().replace(/[^a-z\/]/g,'');
+      outwardType = OUTWARDTYPE_ALIASES[outwardTypeRaw] || batchOutwardType;
+    }
+
     const trip = {
       id: uid('TRIP'), container: cont,
       truckId: truck?truck.id:'', driverId: driver?driver.id:'',
-      ctype, workType: r.worktype||r.workType||'Port → Depot',
+      ctype, workType, outwardType,
       origin: r.origin||'', dest: r.destination||r.dest||'', distance: parseInt(r.distance)||0,
       shippingLine: line?.id||'', priority:'Normal', notes: notesParts.join(' — '),
       ref: `BULK-${Date.now()}-${created}`,
@@ -3997,19 +4046,68 @@ function _depotReportInRange(dateStr) {
   return new Date(dateStr) >= cutoff;
 }
 
-function _depotReportEntries(types) {
+function _depotReportLineMatch(rec) {
+  return _depotReportLine === 'all' || (_depotReportLine === '__unmapped__' ? !rec.line : rec.line === _depotReportLine);
+}
+
+// Normalizes an outward trip (workType 'Depot → Port' — dispatches, i.e.
+// containers leaving the depot for the port) into the same shape as an
+// interchange record, so it can sit in the same Outward list/table/export
+// as Gate-Out/Depot-Out interchange entries. Outward dispatch data (manual
+// or bulk-imported) lives in trips, not interchange — previously the Depot
+// Report only ever looked at interchange, so none of it ever showed up here.
+function _tripToDepotReportRecord(t) {
+  return {
+    id: t.id, container: t.container, type: t.outwardType || 'Dispatch (Depot → Port)',
+    line: t.shippingLine || '', condition: '',
+    truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '',
+    eirNumber: t.eirNumber || '', vessel: t.vessel || '', voyage: t.voyage || '',
+    // The actual outward gate movement date — falls back to when the trip
+    // was started if no explicit exit date was captured (same convention
+    // Gate-Out interchange records use).
+    date: t.dateOut || t.startTime, status: t.status, notes: t.notes || '',
+    flaggedForReview: !!t.flaggedForReview, flagReasons: t.flagReasons || [],
+    importBatchId: t.importBatchId || null,
+    _reportSource: 'trips',
+  };
+}
+
+function _depotReportInwardEntries() {
   return state.db.interchange
-    .filter(ic => types.includes(ic.type))
-    .filter(ic => _depotReportLine === 'all' || (_depotReportLine === '__unmapped__' ? !ic.line : ic.line === _depotReportLine))
-    .filter(ic => _depotReportInRange(ic.date))
+    .filter(ic => INWARD_IC_TYPES.includes(ic.type))
+    .map(ic => ({ ...ic, _reportSource: 'interchange' }))
+    .filter(_depotReportLineMatch)
+    .filter(rec => _depotReportInRange(rec.date))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+// Outward = Gate-Out/Depot-Out interchange records AND outward trips
+// (workType 'Depot → Port') merged into one list — the two are different
+// storage tables for the same real-world event (a container leaving the
+// depot), and both need to show up here for reporting/analysis to be
+// complete, per the direction this screen is meant to cover.
+function _depotReportOutwardEntries() {
+  const fromInterchange = state.db.interchange
+    .filter(ic => OUTWARD_IC_TYPES.includes(ic.type))
+    .map(ic => ({ ...ic, _reportSource: 'interchange' }));
+  const fromTrips = state.db.trips
+    .filter(t => isOutwardWorkType(t.workType))
+    .map(_tripToDepotReportRecord);
+  return [...fromInterchange, ...fromTrips]
+    .filter(_depotReportLineMatch)
+    .filter(rec => _depotReportInRange(rec.date))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 // Tags a record as Bulk vs Manual purely for display — bulk imports (Inward
-// Bulk Entry, legacy CSV/staging migrations) tend to leave a "Bulk import"
-// note or free-text truck/driver fields when no matching fleet record existed.
-function _icSourceTag(ic) {
-  return /bulk import/i.test(ic.notes || '') || ic.truckRegText || ic.driverNameText ? 'Bulk' : 'Manual';
+// Bulk Entry, Bulk Dispatch, legacy CSV/staging migrations) tend to leave a
+// "Bulk import" note or free-text truck/driver fields when no matching
+// fleet record existed. Appends the storage table for outward records so
+// it's clear at a glance whether a row is an interchange gate record or a
+// trip/dispatch record.
+function _icSourceTag(rec) {
+  const base = /bulk import/i.test(rec.notes || '') || rec.truckRegText || rec.driverNameText ? 'Bulk' : 'Manual';
+  return rec._reportSource === 'trips' ? `${base} · Trips` : base;
 }
 
 function populateDepotReportLineFilter() {
@@ -4049,15 +4147,16 @@ function renderDepotReport() {
   populateDepotReportLineFilter();
   computeDepotReportDuplicates();
 
-  const inward  = _depotReportEntries(INWARD_IC_TYPES);
-  const outward = _depotReportEntries(OUTWARD_IC_TYPES);
-  const unmappedTotal = state.db.interchange.filter(ic => !ic.line).length;
+  const inward  = _depotReportInwardEntries();
+  const outward = _depotReportOutwardEntries();
+  const unmappedTotal = state.db.interchange.filter(ic => !ic.line).length
+    + state.db.trips.filter(t => isOutwardWorkType(t.workType) && !t.shippingLine).length;
 
   const kpi = document.getElementById('depotReportKpis');
   if (kpi) {
     kpi.innerHTML = [
       kpiCard('Inward Entries', inward.length, INWARD_IC_TYPES.join(' / '), 'kpi-green'),
-      kpiCard('Outward Entries', outward.length, OUTWARD_IC_TYPES.join(' / '), 'kpi-gold'),
+      kpiCard('Outward Entries', outward.length, [...OUTWARD_IC_TYPES, 'Dispatch trips'].join(' / '), 'kpi-gold'),
       kpiCard('Net Movement', inward.length - outward.length, 'Inward − outward, in range', 'kpi-blue'),
       kpiCard('Duplicates Flagged', _depotReportDupes.length, 'Across full register', _depotReportDupes.length ? 'kpi-red' : 'kpi-green'),
     ].join('');
@@ -4095,9 +4194,9 @@ function renderDepotReportTable(elId, items) {
   el.innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr>
       <th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>EIR No.</th><th>Vessel / Voyage</th>
       <th>Truck</th><th>Driver</th><th>Condition</th><th>Status</th><th>Source</th>
-    </tr></thead><tbody>${items.map(ic => `<tr${flaggedIds.has(ic.id) ? ' style="background:rgba(220,60,60,0.08)"' : ''}>
+    </tr></thead><tbody>${items.map(ic => `<tr${(flaggedIds.has(ic.id) || ic.flaggedForReview) ? ' style="background:rgba(220,60,60,0.08)"' : ''}>
       <td class="mono">${fmtDate(ic.date)}</td>
-      <td class="mono" style="color:var(--gold)">${esc(ic.container)}${flaggedIds.has(ic.id) ? ' ⚠' : ''}</td>
+      <td class="mono" style="color:var(--gold)">${esc(ic.container)}${(flaggedIds.has(ic.id) || ic.flaggedForReview) ? ' ⚠' : ''}</td>
       <td>${esc(ic.type)}</td>
       <td>${esc(lineName(ic.line))}</td>
       <td class="mono">${esc(ic.eirNumber || '—')}</td>
@@ -4133,7 +4232,7 @@ function renderDepotReportDupesList() {
 }
 
 function printDepotReport() {
-  const items = _depotReportTab === 'outward' ? _depotReportEntries(OUTWARD_IC_TYPES) : _depotReportEntries(INWARD_IC_TYPES);
+  const items = _depotReportTab === 'outward' ? _depotReportOutwardEntries() : _depotReportInwardEntries();
   if (!items.length) { toast('Nothing to print yet', 'error'); return; }
   const rows = items.map(ic => `<tr>
     <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.type || '—')}</td>
@@ -4159,7 +4258,7 @@ function printDepotReport() {
 }
 
 function downloadDepotReportCSV() {
-  const items = _depotReportTab === 'outward' ? _depotReportEntries(OUTWARD_IC_TYPES) : _depotReportEntries(INWARD_IC_TYPES);
+  const items = _depotReportTab === 'outward' ? _depotReportOutwardEntries() : _depotReportInwardEntries();
   if (!items.length) { toast('Nothing to download yet', 'error'); return; }
   const headers = ['Date', 'Container', 'Type', 'Shipping Line', 'EIR No.', 'Vessel', 'Voyage', 'Truck', 'Driver', 'Condition', 'Status', 'Source'];
   const rows = items.map(ic => [
