@@ -1094,6 +1094,7 @@ async function forceLogout(reason) {
 async function performLogout(auditDetail) {
   stopDriverTracking();
   stopWialonPolling();
+  stopAutoRefresh();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   await supabase.auth.signOut();
   state.currentUser = null;
@@ -1145,6 +1146,7 @@ function bootShell() {
   subscribeTrackingRealtime();
   subscribeLiveSync();
   startWialonPolling();
+  initAutoRefresh();
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
@@ -6040,6 +6042,80 @@ function subscribeLiveSync() {
   state._liveSyncChannel = channel.subscribe();
 }
 
+// ── Auto-refresh mode ──────────────────────────────────────────────────
+// A user-facing timer that re-fetches ALL app data on a fixed interval,
+// independent of the realtime live-sync above. Useful as a safety net on
+// unreliable connections, or on shared/kiosk screens where nobody is
+// actively interacting but the data should still stay current. Preference
+// is per-device (localStorage), not a shared system setting.
+const AUTO_REFRESH_STORAGE_KEY = 'gargo_auto_refresh';
+const AUTO_REFRESH_DEFAULT_SECS = 60;
+let _autoRefreshTimer = null;
+
+function autoRefreshConfig() {
+  try {
+    const raw = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
+    if (!raw) return { enabled: false, intervalSecs: AUTO_REFRESH_DEFAULT_SECS };
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: !!parsed.enabled,
+      intervalSecs: Number(parsed.intervalSecs) > 0 ? Number(parsed.intervalSecs) : AUTO_REFRESH_DEFAULT_SECS,
+    };
+  } catch { return { enabled: false, intervalSecs: AUTO_REFRESH_DEFAULT_SECS }; }
+}
+
+function saveAutoRefreshConfig(cfg) {
+  try { localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, JSON.stringify(cfg)); } catch {}
+}
+
+function startAutoRefresh(intervalSecs) {
+  stopAutoRefresh();
+  const secs = Number(intervalSecs) > 0 ? Number(intervalSecs) : AUTO_REFRESH_DEFAULT_SECS;
+  _autoRefreshTimer = setInterval(() => { refreshFromServer(); }, secs * 1000);
+}
+
+function stopAutoRefresh() {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
+}
+
+// Called once at boot to resume the user's saved preference.
+function initAutoRefresh() {
+  const cfg = autoRefreshConfig();
+  if (cfg.enabled) startAutoRefresh(cfg.intervalSecs);
+}
+
+// Wired to the Settings → Auto-Refresh Mode toggle.
+function saveAutoRefreshSettings() {
+  const enabled = !!document.getElementById('st_autoRefreshEnabled')?.checked;
+  const intervalSecs = Number(document.getElementById('st_autoRefreshInterval')?.value) || AUTO_REFRESH_DEFAULT_SECS;
+  const cfg = { enabled, intervalSecs };
+  saveAutoRefreshConfig(cfg);
+  if (enabled) { startAutoRefresh(intervalSecs); toast(`Auto-refresh enabled — refreshing every ${intervalSecs}s`, 'success', 2200); }
+  else { stopAutoRefresh(); toast('Auto-refresh disabled', 'info', 1800); }
+  renderAutoRefreshSettingsForm();
+}
+
+function renderAutoRefreshSettingsForm() {
+  const el = document.getElementById('autoRefreshConfigForm');
+  if (!el) return;
+  const cfg = autoRefreshConfig();
+  const options = [15, 30, 60, 120, 300].map(s =>
+    `<option value="${s}" ${cfg.intervalSecs === s ? 'selected' : ''}>${s < 60 ? s + 's' : (s / 60) + ' min'}</option>`
+  ).join('');
+  el.innerHTML = `
+    <label style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-2);cursor:pointer">
+      <input type="checkbox" id="st_autoRefreshEnabled" ${cfg.enabled ? 'checked' : ''} style="accent-color:var(--gold)"/> Enable auto-refresh mode
+    </label>
+    <div class="fg" style="margin:0"><label>Refresh Interval</label>
+      <select id="st_autoRefreshInterval">${options}</select>
+    </div>
+    <div style="font-size:9.5px;color:var(--text-3);line-height:1.5">
+      Re-fetches all app data from the server on this schedule, on top of the instant realtime sync — a safety net for unreliable connections or unattended screens. This device only.
+    </div>
+    <button class="submit-btn" style="margin-top:4px" onclick="saveAutoRefreshSettings()">Save →</button>
+  `;
+}
+
 let _refreshInFlight = false;
 let _refreshQueuedAgain = false;
 
@@ -6437,6 +6513,7 @@ function renderSettings() {
 
   renderInvoiceConfigForm();
   renderWialonSettingsForm();
+  renderAutoRefreshSettingsForm();
 }
 
 function renderWialonSettingsForm() {
