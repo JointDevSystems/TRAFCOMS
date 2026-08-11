@@ -296,6 +296,8 @@ async function loadDB() {
       role: p.role, active: p.active,
       created: p.created_at || p.created || new Date().toISOString(),
       lastLogin: p.last_login || null,
+      navSections: Array.isArray(p.nav_sections) ? p.nav_sections : null,
+      adminSections: Array.isArray(p.admin_sections) ? p.admin_sections : null,
     }));
 
     return {
@@ -764,8 +766,18 @@ const ROLE_ADMINRAIL = {
   ops:      ['workanalysis','reports'],
   viewer:   [],
 };
-function allowedSidebarSections() { return isAdmin() ? ROLE_SIDEBAR.admin : (ROLE_SIDEBAR[currentRole()] || []); }
-function allowedAdminRailSections() { return isAdmin() ? ROLE_ADMINRAIL.admin : (ROLE_ADMINRAIL[currentRole()] || []); }
+function allowedSidebarSections() {
+  if (isAdmin()) return ROLE_SIDEBAR.admin;
+  const custom = state.profile?.nav_sections;
+  if (Array.isArray(custom)) return custom; // per-user override set by an admin (may be [])
+  return ROLE_SIDEBAR[currentRole()] || [];
+}
+function allowedAdminRailSections() {
+  if (isAdmin()) return ROLE_ADMINRAIL.admin;
+  const custom = state.profile?.admin_sections;
+  if (Array.isArray(custom)) return custom; // per-user override set by an admin (may be [])
+  return ROLE_ADMINRAIL[currentRole()] || [];
+}
 function canSeeSection(sec) { return isAdmin() || allowedSidebarSections().includes(sec); }
 function canSeeAdminSection(sec) { return isAdmin() || allowedAdminRailSections().includes(sec); }
 
@@ -6182,7 +6194,11 @@ function renderUserMgmt() {
 function showUserDetail(id) {
   const u = state.db.profiles.find(u=>u.id===id);
   if (!u) return;
-  openModal(`User — ${u.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">${initials(u.name)}</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">${u.name}</div><div class="mono" style="font-size:9px;color:var(--text-3)">${u.id}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Username</label><div class="mono">${u.username}</div></div><div class="fg" style="margin:0"><label>Role</label><div>${roleLabel(u.role)}</div></div><div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">${u.email}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(u.active?'active':'off_duty')}</div></div><div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">${fmtDate(u.created)}</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">${timeAgo(u.lastLogin)}</div></div></div>${u.id!==state.profile?.id?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="modal-btn ${u.active?'danger':'success'}" onclick="toggleUserActive('${u.id}')">${u.active?'Deactivate':'Activate'} User</button></div>`:'<div style="font-size:11px;color:var(--text-3)">This is your account</div>'}`);
+  openModal(`User — ${u.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">${initials(u.name)}</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">${u.name}</div><div class="mono" style="font-size:9px;color:var(--text-3)">${u.id}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Username</label><div class="mono">${u.username}</div></div><div class="fg" style="margin:0"><label>Role</label><div>${roleLabel(u.role)}</div></div><div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">${u.email}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(u.active?'active':'off_duty')}</div></div><div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">${fmtDate(u.created)}</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">${timeAgo(u.lastLogin)}</div></div></div>${isAdmin() ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="modal-btn" onclick="showEditAccessModal('${u.id}')">Edit Access</button>
+      <button class="modal-btn" onclick="showSetPasswordModal('${u.id}')">Set New Password</button>
+      ${u.id!==state.profile?.id?`<button class="modal-btn ${u.active?'danger':'success'}" onclick="toggleUserActive('${u.id}')">${u.active?'Deactivate':'Activate'} User</button>`:''}
+    </div>` : (u.id===state.profile?.id ? '<div style="font-size:11px;color:var(--text-3)">This is your account</div>' : '')}`);
 }
 
 async function toggleUserActive(id) {
@@ -6196,30 +6212,198 @@ async function toggleUserActive(id) {
   toast(`${u.name} ${u.active?'activated':'deactivated'}`, 'success');
 }
 
+/* ── Section-access checkbox grid, shared by Create User + Edit Access ── */
+const ALL_SIDEBAR_SECTIONS = ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'];
+const ALL_ADMINRAIL_SECTIONS = ['invoicing','allocation','workanalysis','reports','tripreports','livetracking','usermgmt','settings'];
+
+function groupedSectionCheckboxes(idPrefix, sections, selected) {
+  const groups = {};
+  sections.forEach(sec => {
+    const [group, label] = SECTION_META[sec] || ['Other', sec];
+    (groups[group] = groups[group] || []).push([sec, label]);
+  });
+  return Object.entries(groups).map(([group, items]) => `
+    <div style="margin-bottom:8px">
+      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:5px">${group}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${items.map(([sec,label]) => `<label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text);background:var(--surface);border:1px solid var(--border);padding:5px 9px;border-radius:5px;cursor:pointer">
+          <input type="checkbox" id="${idPrefix}_${sec}" data-sec="${sec}" ${selected.includes(sec)?'checked':''}/> ${label}
+        </label>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function sectionAccessFieldsHTML(idPrefix, role) {
+  const nav = ROLE_SIDEBAR[role] || [];
+  const admin = ROLE_ADMINRAIL[role] || [];
+  return `
+    <div class="fg">
+      <label>Nav Bar Access — sections this user can see</label>
+      ${groupedSectionCheckboxes(idPrefix+'_nav', ALL_SIDEBAR_SECTIONS, nav)}
+    </div>
+    <div class="fg">
+      <label>Admin Rail Access — sections this user can see</label>
+      ${groupedSectionCheckboxes(idPrefix+'_admin', ALL_ADMINRAIL_SECTIONS, admin)}
+    </div>`;
+}
+
+function refreshAccessCheckboxesForRole(idPrefix, role) {
+  const nav = ROLE_SIDEBAR[role] || [];
+  const admin = ROLE_ADMINRAIL[role] || [];
+  ALL_SIDEBAR_SECTIONS.forEach(sec => {
+    const el = document.getElementById(`${idPrefix}_nav_${sec}`);
+    if (el) el.checked = nav.includes(sec);
+  });
+  ALL_ADMINRAIL_SECTIONS.forEach(sec => {
+    const el = document.getElementById(`${idPrefix}_admin_${sec}`);
+    if (el) el.checked = admin.includes(sec);
+  });
+}
+
+function readAccessCheckboxes(idPrefix) {
+  const navSections = ALL_SIDEBAR_SECTIONS.filter(sec => document.getElementById(`${idPrefix}_nav_${sec}`)?.checked);
+  const adminSections = ALL_ADMINRAIL_SECTIONS.filter(sec => document.getElementById(`${idPrefix}_admin_${sec}`)?.checked);
+  return { navSections, adminSections };
+}
+
+function genPassword() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+  let out = '';
+  const arr = new Uint32Array(12);
+  crypto.getRandomValues(arr);
+  arr.forEach(n => out += chars[n % chars.length]);
+  return out;
+}
+
+function fillGeneratedPassword(fieldId) {
+  const pw = genPassword();
+  const field = document.getElementById(fieldId);
+  if (field) { field.value = pw; field.type = 'text'; }
+}
+
 function showCreateUserModal() {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
-  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="clerk">Clerk</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
+  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role" onchange="refreshAccessCheckboxesForRole('cu', this.value)"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="clerk">Clerk</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div><div class="fg"><label>Password</label><div style="display:flex;gap:6px"><input id="cu_password" type="text" placeholder="Set a password" style="flex:1"/><button type="button" class="modal-btn" onclick="fillGeneratedPassword('cu_password')">Generate</button></div></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">This creates the login directly with the password above — no invitation email, the user can sign in immediately. Role sets the defaults below; untick/tick boxes to fine-tune exactly what this user can access.</div>${sectionAccessFieldsHTML('cu','ops')}<button class="submit-btn" onclick="saveUser()" style="margin-top:10px">Create User →</button>`);
 }
 
 async function saveUser() {
   const name=document.getElementById('cu_name').value.trim();
   const user=document.getElementById('cu_user').value.trim().toLowerCase();
   const email=document.getElementById('cu_email').value.trim();
-  if(!name||!user||!email) { toast('Name, username and email required','error'); return; }
+  const password=document.getElementById('cu_password').value;
+  const role=document.getElementById('cu_role').value;
+  if(!name||!user||!email||!password) { toast('Name, username, email and password required','error'); return; }
   if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
+  if(password.length < 8) { toast('Password must be at least 8 characters','error'); return; }
   if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
-  
 
-  state.db.profiles.push({
-    id:uid('USR'), name, username:user,
-    email: email,
-    role:  document.getElementById('cu_role').value,
-    active:true,
-    created: new Date().toISOString(), lastLogin: null,
-  });
-  addAudit(state.profile.username,'User Created', `${name} (${user})`);
-  closeModal(); renderUserMgmt();
-  toast(`${name} previewed. Send invitation email via Supabase Dashboard.`, 'success');
+  const { navSections, adminSections } = readAccessCheckboxes('cu');
+
+  const btn = document.querySelector('.submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ name, username: user, email, password, role, navSections, adminSections }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Could not create user', 'error'); return; }
+
+    const p = result.profile;
+    state.db.profiles.push({
+      id: p.id, name: p.name, username: p.username, email: p.email,
+      role: p.role, active: p.active,
+      created: p.created_at, lastLogin: null,
+      navSections: p.nav_sections || null, adminSections: p.admin_sections || null,
+    });
+    addAudit(state.profile.username,'User Created', `${name} (${user})`);
+    closeModal(); renderUserMgmt();
+    toast(`${name} created — they can sign in with the password you set.`, 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Network error creating user', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create User →'; }
+  }
+}
+
+function showEditAccessModal(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const u = state.db.profiles.find(u=>u.id===id);
+  if (!u) return;
+  const nav = Array.isArray(u.navSections) ? u.navSections : (ROLE_SIDEBAR[u.role] || []);
+  const admin = Array.isArray(u.adminSections) ? u.adminSections : (ROLE_ADMINRAIL[u.role] || []);
+  openModal(`Edit Access — ${u.name}`, `
+    <div class="fg"><label>Role</label><select id="ea_role" onchange="refreshAccessCheckboxesForRole('ea', this.value)">
+      ${['ops','dispatch','clerk','finance','viewer','driver','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}
+    </select></div>
+    <div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">Tick exactly which nav bar and admin sections ${u.name} can access. Changing role does not reset your ticks unless you use the checkboxes yourself.</div>
+    ${(function(){ // build with this user's actual current selection, not the plain role default
+        const navHtml = groupedSectionCheckboxes('ea_nav', ALL_SIDEBAR_SECTIONS, nav);
+        const adminHtml = groupedSectionCheckboxes('ea_admin', ALL_ADMINRAIL_SECTIONS, admin);
+        return `<div class="fg"><label>Nav Bar Access</label>${navHtml}</div><div class="fg"><label>Admin Rail Access</label>${adminHtml}</div>`;
+      })()}
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="submit-btn" onclick="saveUserAccess('${id}')">Save Access</button>
+      <button class="modal-btn" onclick="showSetPasswordModal('${id}')">Set New Password</button>
+    </div>`);
+}
+
+async function saveUserAccess(id) {
+  const role = document.getElementById('ea_role').value;
+  const { navSections, adminSections } = readAccessCheckboxes('ea');
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/update-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ userId: id, role, navSections, adminSections }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Could not update access', 'error'); return; }
+    const u = state.db.profiles.find(u=>u.id===id);
+    if (u) { u.role = result.profile.role; u.navSections = result.profile.nav_sections || null; u.adminSections = result.profile.admin_sections || null; }
+    addAudit(state.profile.username,'User Access Updated', `${u?.name || id}`);
+    closeModal(); renderUserMgmt();
+    toast('Access updated', 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Network error updating access', 'error');
+  }
+}
+
+function showSetPasswordModal(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const u = state.db.profiles.find(u=>u.id===id);
+  if (!u) return;
+  openModal(`Set New Password — ${u.name}`, `
+    <div class="fg"><label>New Password</label><div style="display:flex;gap:6px"><input id="sp_password" type="text" placeholder="New password" style="flex:1"/><button type="button" class="modal-btn" onclick="fillGeneratedPassword('sp_password')">Generate</button></div></div>
+    <div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">This immediately overwrites their password — share it with them directly.</div>
+    <button class="submit-btn" onclick="submitSetPassword('${id}')">Set Password →</button>`);
+}
+
+async function submitSetPassword(id) {
+  const password = document.getElementById('sp_password').value;
+  if (password.length < 8) { toast('Password must be at least 8 characters','error'); return; }
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/set-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ userId: id, password }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Could not set password', 'error'); return; }
+    addAudit(state.profile.username,'Password Reset', `${id}`);
+    closeModal();
+    toast('Password updated', 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Network error setting password', 'error');
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────
