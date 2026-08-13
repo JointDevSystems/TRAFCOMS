@@ -3403,10 +3403,40 @@ function inwardReportsReset() {
 // Instead, treat a container as no longer in storage if there's ANY
 // Gate-Out/Depot-Out record for it, regardless of which record's own
 // dateOut field is set.
+//
+// BUG FIX: an exit can also be recorded as an outward dispatch trip
+// (workType 'Depot → Port' in the Dispatch Console / bulk dispatch import)
+// instead of a Gate-Out/Depot-Out interchange row — the Depot Report screen
+// already merges both sources (see _depotReportOutwardEntries), but this
+// panel and the Quick-Dispatch eligibility check were only ever looking at
+// interchange, so any container whose exit lived in `trips` kept reading
+// "Still In Storage" forever, inflating that count. Use
+// exitedContainerSet() (which merges both sources) everywhere "has this
+// container left?" is asked, instead of re-deriving the interchange-only
+// Set inline in each place.
 function inwardEntryStatus(ic, exitedContainers) {
   if (ic.surveyStatus === 'awaiting_survey') return 'awaiting_survey';
   if (!ic.dateOut && !exitedContainers.has(ic.container)) return 'in_storage';
   return 'exited';
+}
+
+// Builds the set of containers that have left the depot at least once,
+// merging BOTH places an exit can be recorded:
+//   1. Gate-Out / Depot-Out interchange records
+//   2. Outward dispatch trips (workType 'Depot → Port') created from the
+//      Dispatch Console or a bulk dispatch import
+// Missing source #2 is what was inflating the "Still In Storage" count —
+// containers dispatched through the Dispatch Console (rather than logged
+// as a Gate-Out interchange row) never got marked as exited, so they kept
+// showing up as still sitting in the depot even though they'd left.
+function exitedContainerSet() {
+  const fromInterchange = state.db.interchange
+    .filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out')
+    .map(i => i.container);
+  const fromTrips = state.db.trips
+    .filter(t => isOutwardWorkType(t.workType))
+    .map(t => t.container);
+  return new Set([...fromInterchange, ...fromTrips].filter(Boolean));
 }
 
 const INWARD_STATUS_LABELS = { awaiting_survey: 'Awaiting Survey', in_storage: 'In Storage', exited: 'Exited' };
@@ -3425,9 +3455,7 @@ async function renderInwardReports() {
   const from   = document.getElementById('iwRptFrom')?.value   || '';
   const to     = document.getElementById('iwRptTo')?.value     || '';
 
-  const exitedContainers = new Set(
-    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
-  );
+  const exitedContainers = exitedContainerSet();
   const allInward = state.db.interchange
     .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
     .map(i => ({ ...i, _status: inwardEntryStatus(i, exitedContainers) }));
@@ -4108,11 +4136,12 @@ function renderInterchange(f){
     : state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  // Same "already has a matching Gate-Out somewhere" logic as the Still In
-  // Storage panel — computed once per render, not per card.
-  const exitedContainers = new Set(
-    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
-  );
+  // Same "already has a matching exit somewhere" logic as the Still In
+  // Storage panel — computed once per render, not per card. Uses
+  // exitedContainerSet() so a container dispatched via the Dispatch
+  // Console (an outward trip, not a Gate-Out interchange row) is also
+  // recognized as having left — see exitedContainerSet()'s docstring.
+  const exitedContainers = exitedContainerSet();
   el.innerHTML=items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
