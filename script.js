@@ -3279,17 +3279,17 @@ function downloadBulkTemplate() {
    § INWARD CONTAINER ENTRY
    A dedicated route for logging containers coming into the depot/yard
    (Gate-In / Depot-In), laid out the same way as the Dispatch Console —
-   a single-entry form plus a bulk-upload tab. Entries are written into
-   the same `interchange` table the Record Interchange modal and DepOps
-   already use, so they show up everywhere interchange records do.
+   the entry form is the primary item on load. The historical/queue views
+   (Awaiting Survey, Still In Storage, Recent Entries) live behind the
+   Reports tab and only render on request, filterable the same way
+   DepOps → Reports works. Entries are written into the same `interchange`
+   table the Record Interchange modal and DepOps already use, so they show
+   up everywhere interchange records do.
 ────────────────────────────────────────────────────────────────── */
 let _inwardImg = '';
 
 function renderInward() {
   populateInwardSelects();
-  renderInwardRecent();
-  renderInwardAwaitingSurvey();
-  renderInwardStillInStorage();
   clearInwardForm(true);
 }
 
@@ -3304,68 +3304,6 @@ function fillDatalist(id, arr, mapFn) {
   const el = document.getElementById(id);
   if (!el) return;
   el.innerHTML = arr.map(i => `<option value="${esc(mapFn(i))}"></option>`).join('');
-}
-
-function renderInwardRecent() {
-  const el   = document.getElementById('inwardRecentList');
-  const meta = document.getElementById('inwardRecentMeta');
-  if (!el) return;
-  const items = state.db.interchange
-    .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
-    .sort((a,b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 8);
-  if (meta) meta.textContent = `${items.length} shown`;
-  el.innerHTML = items.map(ic => `<div class="dispatch-queue-item" onclick="showSection('interchange', document.querySelector('[data-section=&quot;interchange&quot;]'))">
-      <div class="dqi-ref">${esc(ic.container)}</div>
-      <div class="dqi-route">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.type)} · ${esc(lineName(ic.line))}</div>
-        <div style="font-size:10px;color:var(--text-3)">${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')} · ${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</div>
-      </div>
-      ${sbadge(ic.status)}
-      <div class="dqi-time">${timeAgo(ic.date)}</div>
-      ${!ic.dateOut ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
-    </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
-}
-
-// Any Gate-In/Depot-In record with no recorded Date Out is presumed to
-// still be sitting in the depot — this is the surface for historical/bulk
-// migrated records especially, since a lot of them will have left the
-// depot long before this system existed but were never given a formal
-// dispatch trip. "Quick Dispatch" just records that it left, without
-// requiring a truck/driver/full dispatch order.
-//
-// Gate-In and Gate-Out are separate interchange records (e.g. one row from
-// Received.xlsx, a different row from DISPATCH.xlsx) — dateOut on the
-// Gate-In row itself is never populated by that kind of two-file import, so
-// relying on it alone would leave every historically-received container
-// stuck in this list even after its matching Gate-Out has been imported.
-// Instead, treat a container as no longer in storage if there's ANY
-// Gate-Out/Depot-Out record for it, regardless of which record's own
-// dateOut field is set.
-function renderInwardStillInStorage() {
-  const wrap = document.getElementById('inwardStillInStorageList');
-  const meta = document.getElementById('inwardStillInStorageMeta');
-  if (!wrap) return;
-  const exitedContainers = new Set(
-    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
-  );
-  const items = state.db.interchange
-    .filter(i => (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut && !exitedContainers.has(i.container))
-    .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
-
-  if (meta) meta.textContent = items.length ? `${items.length} without a recorded exit` : '';
-  if (!items.length) {
-    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Everything logged has a recorded exit</div></div>';
-    return;
-  }
-  wrap.innerHTML = items.map(ic => `<div class="dispatch-queue-item">
-      <div class="dqi-ref">${esc(ic.container)}</div>
-      <div class="dqi-route">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.ctype || '—')} · ${esc(lineName(ic.line))}</div>
-        <div style="font-size:10px;color:var(--text-3)">In since ${fmtDate(ic.date)}${ic.notes==='Bulk import' ? ' · migrated record' : ''}</div>
-      </div>
-      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
-    </div>`).join('');
 }
 
 function quickDispatchOut(id) {
@@ -3395,51 +3333,8 @@ function confirmQuickDispatchOut(id) {
   addAudit(state.profile.username, 'Quick Dispatch (No Trip)', `${ic.container} marked out — bypassed full dispatch process`);
   toast(`${ic.container} marked as dispatched`, 'success');
   closeModal();
-  renderInwardRecent();
-  renderInwardStillInStorage();
+  refreshInwardReportsIfOpen();
   renderInterchange(_icFilter || 'all');
-}
-
-// Manually-recorded inward entries flagged with "needs_survey" on the form
-// sit here — same idea as DepOps' Awaiting Survey list, but scoped to
-// interchange records instead of public_bookings, since a gate-recorded
-// container never has a booking behind it.
-async function renderInwardAwaitingSurvey() {
-  const wrap = document.getElementById('inwardAwaitingSurveyList');
-  const meta = document.getElementById('inwardAwaitingSurveyMeta');
-  if (!wrap) return;
-
-  const items = state.db.interchange
-    .filter(i => i.surveyStatus === 'awaiting_survey')
-    .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first — the ones waiting longest surface first
-
-  if (meta) meta.textContent = items.length ? `${items.length} waiting` : '';
-
-  if (!items.length) {
-    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Nothing awaiting survey</div></div>';
-    return;
-  }
-
-  let docsByIc = {};
-  try {
-    if (window.bookingDocs) docsByIc = await window.bookingDocs.documentsForInterchanges(items.map(i => i.id));
-  } catch (e) { /* guarantee-form status is best-effort — list still renders without it */ }
-
-  wrap.innerHTML = items.map(ic => {
-    const hasGuarantee = (docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form');
-    return `<div class="dispatch-queue-item">
-      <div class="dqi-ref">${esc(ic.container)}</div>
-      <div class="dqi-route">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.type)} · ${esc(lineName(ic.line))}</div>
-        <div style="font-size:10px;color:var(--text-3)">${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')} · ${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        ${hasGuarantee ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}
-        <div class="dqi-time" style="margin:0">${timeAgo(ic.date)}</div>
-      </div>
-      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')">Mark Surveyed →</button>
-    </div>`;
-  }).join('');
 }
 
 function markInwardSurveyed(id) {
@@ -3452,15 +3347,185 @@ function markInwardSurveyed(id) {
   scheduleSave();
   addAudit(state.profile.username, 'Inward Entry Surveyed', ic.container);
   toast(`${ic.container} marked surveyed`, 'success');
-  renderInwardAwaitingSurvey();
-  renderInwardRecent();
+  refreshInwardReportsIfOpen();
 }
 
 function switchInwardTab(tab, btn) {
-  document.getElementById('inwardTabSingle').style.display = tab==='single' ? 'block' : 'none';
-  document.getElementById('inwardTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
+  document.getElementById('inwardTabSingle').style.display  = tab==='single'  ? 'block' : 'none';
+  document.getElementById('inwardTabBulk').style.display    = tab==='bulk'    ? 'block' : 'none';
+  document.getElementById('inwardTabReports').style.display = tab==='reports' ? 'block' : 'none';
   document.querySelectorAll('#sec-inward .filter-row .filter-btn').forEach(b=>b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  if (tab === 'reports') renderInwardReports();
+}
+
+function refreshInwardReportsIfOpen() {
+  const panel = document.getElementById('inwardTabReports');
+  if (panel && panel.style.display !== 'none') renderInwardReports();
+}
+
+// ---------- Inward Reports (Awaiting Survey / Still In Storage / Recent
+// Entries, folded into one filterable, on-request report — same pattern as
+// DepOps → Reports) ----------
+
+let _inwardRptRows = [];
+
+function inwardReportsPopulateLines() {
+  const sel = document.getElementById('iwRptLine');
+  if (!sel || sel.dataset.populated) return;
+  state.db.shippingLines.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = `${l.code} — ${l.name}`;
+    sel.appendChild(opt);
+  });
+  sel.dataset.populated = '1';
+}
+
+function inwardReportsReset() {
+  ['iwRptLine', 'iwRptType', 'iwRptStatus', 'iwRptFrom', 'iwRptTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  renderInwardReports();
+}
+
+// Any Gate-In/Depot-In record with no recorded Date Out is presumed to
+// still be sitting in the depot — this matters most for historical/bulk
+// migrated records, since a lot of them will have left the depot long
+// before this system existed but were never given a formal dispatch trip.
+//
+// Gate-In and Gate-Out are separate interchange records (e.g. one row from
+// Received.xlsx, a different row from DISPATCH.xlsx) — dateOut on the
+// Gate-In row itself is never populated by that kind of two-file import, so
+// relying on it alone would leave every historically-received container
+// reading "in storage" even after its matching Gate-Out has been imported.
+// Instead, treat a container as no longer in storage if there's ANY
+// Gate-Out/Depot-Out record for it, regardless of which record's own
+// dateOut field is set.
+function inwardEntryStatus(ic, exitedContainers) {
+  if (ic.surveyStatus === 'awaiting_survey') return 'awaiting_survey';
+  if (!ic.dateOut && !exitedContainers.has(ic.container)) return 'in_storage';
+  return 'exited';
+}
+
+const INWARD_STATUS_LABELS = { awaiting_survey: 'Awaiting Survey', in_storage: 'In Storage', exited: 'Exited' };
+const INWARD_STATUS_BADGE_CLASS = { awaiting_survey: 's-pending', in_storage: 's-active', exited: 's-completed' };
+
+function inwardStatusBadge(status) {
+  return `<span class="sbadge ${INWARD_STATUS_BADGE_CLASS[status] || ''}">${INWARD_STATUS_LABELS[status] || status}</span>`;
+}
+
+async function renderInwardReports() {
+  inwardReportsPopulateLines();
+
+  const lineId = document.getElementById('iwRptLine')?.value   || '';
+  const type   = document.getElementById('iwRptType')?.value   || '';
+  const status = document.getElementById('iwRptStatus')?.value || '';
+  const from   = document.getElementById('iwRptFrom')?.value   || '';
+  const to     = document.getElementById('iwRptTo')?.value     || '';
+
+  const exitedContainers = new Set(
+    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
+  );
+  const allInward = state.db.interchange
+    .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
+    .map(i => ({ ...i, _status: inwardEntryStatus(i, exitedContainers) }));
+
+  let rows = allInward;
+  if (lineId) rows = rows.filter(i => i.line === lineId);
+  if (type) rows = rows.filter(i => i.type === type);
+  if (status) rows = rows.filter(i => i._status === status);
+  if (from) rows = rows.filter(i => new Date(i.date) >= new Date(from));
+  if (to) rows = rows.filter(i => new Date(i.date) <= new Date(to + 'T23:59:59'));
+
+  // Awaiting Survey / Still In Storage read best oldest-first (the ones
+  // waiting longest surface first, same as the old dedicated panels did);
+  // everything else — including "All Statuses" — reads best newest-first.
+  rows = rows.sort((a, b) => (status === 'awaiting_survey' || status === 'in_storage')
+    ? new Date(a.date) - new Date(b.date)
+    : new Date(b.date) - new Date(a.date));
+
+  _inwardRptRows = rows;
+
+  let docsByIc = {};
+  const awaitingIds = rows.filter(i => i._status === 'awaiting_survey').map(i => i.id);
+  if (awaitingIds.length) {
+    try {
+      if (window.bookingDocs) docsByIc = await window.bookingDocs.documentsForInterchanges(awaitingIds);
+    } catch (e) { /* guarantee-form status is best-effort — table still renders without it */ }
+  }
+
+  const body = document.getElementById('iwRptBody');
+  const meta = document.getElementById('iwRptMeta');
+  const exportBtn = document.getElementById('iwRptExportBtn');
+  if (meta) meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'}`;
+  if (exportBtn) exportBtn.disabled = !rows.length;
+
+  if (body) {
+    body.innerHTML = rows.length ? rows.map(ic => {
+      let action = '—';
+      if (ic._status === 'awaiting_survey') {
+        action = `<button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')">Mark Surveyed →</button>`;
+      } else if (ic._status === 'in_storage') {
+        action = `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`;
+      }
+      const guaranteeNote = ic._status === 'awaiting_survey'
+        ? ((docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form')
+            ? '<div style="font-size:9.5px;color:var(--text-3);margin-top:3px">Guarantee form ✓</div>'
+            : '<div style="font-size:9.5px;color:var(--text-3);margin-top:3px">No guarantee form</div>')
+        : '';
+      return `<tr>
+        <td class="mono">${fmtDate(ic.date)}</td>
+        <td class="mono" style="color:var(--gold)">${sanitize(ic.container || '—')}</td>
+        <td>${sanitize(ic.type || '—')}</td>
+        <td>${sanitize(ic.ctype || '—')}</td>
+        <td>${ic.line ? sanitize(lineName(ic.line)) : '<span style="color:var(--danger,#c0392b)">⚠ No Line</span>'}</td>
+        <td>${ic.truck ? sanitize(truckName(ic.truck)) : sanitize(ic.truckRegText || '—')}</td>
+        <td>${ic.driver ? sanitize(driverName(ic.driver)) : sanitize(ic.driverNameText || '—')}</td>
+        <td>${inwardStatusBadge(ic._status)}${guaranteeNote}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="9" class="empty-td">No inward entries match these filters</td></tr>`;
+  }
+
+  const summary = document.getElementById('iwRptSummary');
+  if (summary) {
+    summary.innerHTML = `<div class="two-col-grid">
+      <div class="report-block">
+        <h3>Inward Pipeline (All Time)</h3>
+        ${reportRow('Awaiting Survey', allInward.filter(i => i._status === 'awaiting_survey').length)}
+        ${reportRow('Still In Storage', allInward.filter(i => i._status === 'in_storage').length)}
+        ${reportRow('Exited', allInward.filter(i => i._status === 'exited').length)}
+        ${reportRow('Total Inward Entries', allInward.length)}
+      </div>
+      <div class="report-block">
+        <h3>Matching These Filters</h3>
+        ${reportRow('Records', rows.length)}
+        ${reportRow('Awaiting Survey', rows.filter(i => i._status === 'awaiting_survey').length)}
+        ${reportRow('Still In Storage', rows.filter(i => i._status === 'in_storage').length)}
+        ${reportRow('Exited', rows.filter(i => i._status === 'exited').length)}
+      </div>
+    </div>`;
+  }
+}
+
+function downloadInwardReportCSV() {
+  if (!_inwardRptRows.length) { toast('Nothing to download yet', 'error'); return; }
+  const headers = ['Date', 'Container', 'Movement', 'Type', 'Shipping Line', 'Truck', 'Driver', 'Status'];
+  const rows = _inwardRptRows.map(ic => [
+    ic.date, ic.container, ic.type, ic.ctype, lineName(ic.line),
+    ic.truck ? truckName(ic.truck) : (ic.truckRegText || ''),
+    ic.driver ? driverName(ic.driver) : (ic.driverNameText || ''),
+    INWARD_STATUS_LABELS[ic._status] || ic._status,
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `inward-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 async function createInwardEntry() {
@@ -3521,9 +3586,7 @@ async function createInwardEntry() {
   toast(`Inward entry recorded — ${cont}`, 'success');
   clearInwardForm();
   renderInterchange('all');
-  renderInwardRecent();
-  renderInwardAwaitingSurvey();
-  renderInwardStillInStorage();
+  refreshInwardReportsIfOpen();
 
   // The guarantee form needs a real row in Supabase to attach to (the
   // upload is keyed by interchange_id with a foreign key), so flush this
@@ -3533,7 +3596,7 @@ async function createInwardEntry() {
       await saveNowAwaited();
       await window.bookingDocs.uploadInterchangeDocument({ interchangeId: icId, docType: 'guarantee_form', containerNo: cont, file: guaranteeFile, autoVerify: true });
       toast('Guarantee form uploaded', 'success');
-      renderInwardAwaitingSurvey();
+      refreshInwardReportsIfOpen();
     } catch (e) {
       toast(`Entry saved, but guarantee form upload failed: ${e.message || e}`, 'warning');
     }
@@ -3874,8 +3937,7 @@ function processBulkInward() {
   }
   refreshContainerHistory();
   renderInterchange('all');
-  renderInwardRecent();
-  renderInwardStillInStorage();
+  refreshInwardReportsIfOpen();
   document.getElementById('inwardBulkPreview').style.display = 'none';
 }
 

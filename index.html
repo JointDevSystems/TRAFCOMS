@@ -638,6 +638,7 @@
                             <div class="filter-row">
                                 <button class="filter-btn active" onclick="switchInwardTab('single',this)">Single Entry</button>
                                 <button class="filter-btn" onclick="switchInwardTab('bulk',this)">Bulk Upload</button>
+                                <button class="filter-btn" onclick="switchInwardTab('reports',this)">📊 Reports</button>
                             </div>
                         </div>
                         <div class="ops-notice" style="margin-bottom:14px">
@@ -646,18 +647,6 @@
                         </div>
 
                         <div id="inwardTabSingle">
-                            <div class="panel" id="inwardAwaitingSurveyPanel" style="margin-bottom:14px">
-                                <div class="panel-head"><span class="panel-title">Awaiting Survey</span><span class="panel-meta" id="inwardAwaitingSurveyMeta"></span></div>
-                                <div id="inwardAwaitingSurveyList"></div>
-                            </div>
-                            <div class="panel" id="inwardStillInStoragePanel" style="margin-bottom:14px">
-                                <div class="panel-head"><span class="panel-title">Still In Storage (No Date Out)</span><span class="panel-meta" id="inwardStillInStorageMeta"></span></div>
-                                <div id="inwardStillInStorageList"></div>
-                            </div>
-                            <div class="panel" id="inwardRecentPanel" style="margin-bottom:14px">
-                                <div class="panel-head"><span class="panel-title">Recent Inward Entries</span><span class="panel-meta" id="inwardRecentMeta"></span></div>
-                                <div id="inwardRecentList"></div>
-                            </div>
                             <div class="dispatch-layout">
                                 <div class="form-card">
                                     <div class="form-card-head" style="display:flex;justify-content:space-between;align-items:center">
@@ -767,6 +756,42 @@
                                     <div class="bulk-template-row">
                                         <button class="action-btn ghost" onclick="downloadInwardBulkTemplate()">⬇ Download CSV Template</button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="inwardTabReports" style="display:none">
+                            <div class="ops-notice" style="margin-bottom:14px">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                Pulled live from the Interchange register. Filter by shipping line, movement, status or date to see inward gate/depot activity — including containers awaiting survey and still in storage.
+                            </div>
+
+                            <div class="panel" style="padding:16px;margin-bottom:14px">
+                                <div class="trc-filter-grid">
+                                    <div class="fg" style="margin:0"><label>Shipping Line</label><select id="iwRptLine"><option value="">All Lines</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Movement</label><select id="iwRptType"><option value="">All Movements</option><option>Gate-In</option><option>Depot-In</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Status</label><select id="iwRptStatus"><option value="">All Statuses</option><option value="awaiting_survey">Awaiting Survey</option><option value="in_storage">Still In Storage</option><option value="exited">Exited</option></select></div>
+                                    <div class="fg" style="margin:0"><label>From</label><input type="date" id="iwRptFrom" /></div>
+                                    <div class="fg" style="margin:0"><label>To</label><input type="date" id="iwRptTo" /></div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                                    <button class="action-btn" onclick="renderInwardReports()">▶ Run Report</button>
+                                    <button class="action-btn ghost" onclick="inwardReportsReset()">↻ Reset Filters</button>
+                                    <button class="action-btn ghost" id="iwRptExportBtn" onclick="downloadInwardReportCSV()" disabled>⬇ Export CSV</button>
+                                </div>
+                            </div>
+
+                            <div id="iwRptSummary"></div>
+
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Inward Entries</span><span class="panel-meta" id="iwRptMeta">0 records</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr>
+                                            <th>Date</th><th>Container</th><th>Movement</th><th>Type</th><th>Shipping Line</th><th>Truck</th><th>Driver</th><th>Status</th><th>Action</th>
+                                        </tr></thead>
+                                        <tbody id="iwRptBody"><tr><td colspan="9" class="empty-td">Run a report to populate</td></tr></tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
