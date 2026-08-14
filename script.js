@@ -134,9 +134,7 @@ function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence
 function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null }; }
 function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null }; }
 
-// The three allowed outward_type values, matching the trips_outward_type_check
-// constraint in the DB exactly. Only meaningful when work_type is the
-// outward direction ('Depot → Port'); NULL for everything else.
+
 const OUTWARD_TYPES = ['Repatriation to Port', 'Shippers/Export', 'Sale units'];
 function isOutwardWorkType(workType) { return workType === 'Depot → Port'; }
 
@@ -148,9 +146,7 @@ function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver
 
 function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, active:l.active }; }
 function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, active:r.active }; }
-// vessel_line_map: pattern -> shipping line, used to auto-resolve a shipping
-// line from a vessel name when a record (bulk import or manual entry) didn't
-// carry an explicit, matchable "line" value. See resolveLineIdFromVessel().
+
 function vlmFromRow(r){ return { id:r.id, pattern:r.pattern, matchType:r.match_type, lineId:r.line_id, priority:r.priority, source:r.source }; }
 
 function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.vessel, voyage:s.voyage, line_id:s.line||null, date:s.date, status:s.status, reason:s.reason, truck_id:s.truckId||null, driver_id:s.driverId||null, notes:s.notes }; }
@@ -183,12 +179,7 @@ async function upsertRows(table, rows, opts) {
   return null;
 }
 
-// Same as upsertRows but sends the rows in fixed-size batches. A single bulk
-// import (Inward or Dispatch) of several thousand historical rows can still
-// exceed Supabase's statement_timeout in one shot even after switching to
-// dirty-row-only saves — chunking keeps each request small regardless of how
-// large the source file was, so a big historical import can't silently fail
-// as a whole because of one oversized request.
+
 async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
   if (!rows || !rows.length) return null;
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -322,30 +313,12 @@ async function saveDB() {
     failures.push(await upsertRows('shipping_lines', db.shippingLines.map(lineToRow)));
     failures.push(await upsertRows('trucks',         db.trucks.map(truckToRow)));
     failures.push(await upsertRows('drivers',        db.drivers.map(driverToRow)));
-    // trips has the identical unbounded-growth risk as interchange below (bulk
-    // dispatch imports can add thousands of historical rows). Re-upserting the
-    // ENTIRE array, UNCHUNKED, in one request on every debounced save —
-    // including saves triggered by completely unrelated edits elsewhere in
-    // the app — blows Supabase's statement_timeout once the table is large,
-    // and then keeps failing on every subsequent save from then on.
-    // NOTE: unlike interchange below, this is NOT filtered to dirty-only rows.
-    // Trips are created/edited from ~10 different call sites across the app
-    // and only the bulk importer currently tags `_dirty` — switching to a
-    // dirty-only filter here would silently stop persisting trips from every
-    // other call site until each one is audited and updated to set `_dirty`
-    // too. Chunking alone (splitting the same full payload into safely-sized
-    // batches) fixes the timeout without requiring that wider change; do the
-    // dirty-only optimization as a deliberate follow-up once every trip
-    // mutation site is confirmed to set `_dirty`.
+
     failures.push(await upsertRowsChunked('trips', db.trips.map(tripToRow)));
     failures.push(await upsertRows('maintenance',    db.maintenance.map(maintToRow)));
     failures.push(await upsertRows('fuel_logs',      db.fuel.map(fuelToRow)));
     failures.push(await upsertRows('shutouts',       db.shutouts.map(shutoutToRow)));
-    // interchange can grow into the tens of thousands of rows (bulk CSV imports of
-    // gate movements). Re-upserting the ENTIRE array on every save reliably blew past
-    // Supabase's 8s statement_timeout for the `authenticated` role once the table passed
-    // ~10k rows, so the whole upsert was aborted and nothing in the batch — including
-    // newly-added records — actually persisted. Only send rows that are new or changed.
+
     const dirtyInterchange = (db.interchange || []).filter(i => i._dirty);
     if (dirtyInterchange.length) {
       const icFailure = await upsertRowsChunked('interchange', dirtyInterchange.map(icToRow));
@@ -389,8 +362,7 @@ async function saveDB() {
       };
       let { error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' });
       if (error && /invoice_config/i.test(error.message || '')) {
-        // invoice_config column not migrated yet on this Supabase project — retry without it
-        // so the rest of settings still save. Run the migration in the docs to persist invoicing config.
+
         delete settingsRow.invoice_config;
         ({ error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' }));
       }
@@ -426,8 +398,7 @@ function saveNowAwaited() {
   return saveDB();
 }
 
-/* Finance/Settings PIN vault removed — access to Settings, Admin, Finance
-   and Invoicing sections is now gated purely by admin role (see isAdmin()). */
+
 
 
 function remapSeedIds(db) {
@@ -484,7 +455,7 @@ async function clearAllTables() {
     const { error } = await supabase.from(table).delete().not(col, 'is', null);
     if (error) console.error(`${table} clear failed:`, error.message);
   };
-  // Children before parents.
+
   await del('booking_documents', 'id');
   await del('depot_surveys', 'id');
 
@@ -606,17 +577,10 @@ function truckName(id) { if(!id)return '—'; const t=state.db.trucks.find(t=>t.
 function driverName(id) { if(!id)return '—'; const d=state.db.drivers.find(d=>d.id===id); return d?d.name:id; }
 function lineName(id) { if(!id)return '—'; const l=state.db.shippingLines.find(l=>l.id===id); return l? `${l.code} — ${l.name}` :id; }
 
-// Normalizes free-typed vessel text the same way on every path (import,
-// manual entry, the unmapped-vessel report) so "KOTA SEMPENA", "kota  sempena"
-// and " Kota Sempena " all group and match identically.
+
 function normVessel(v) { return (v || '').trim().toUpperCase().replace(/\s+/g, ' '); }
 
-// Guesses a shipping_line id from a vessel name using vessel_line_map
-// (seeded with brand-name patterns like "KOTA*" → PIL, "*MSC*" → MSC, plus
-// any lines resolved manually via the Unmapped Vessels tool). Returns null
-// when nothing matches — callers should leave the line unset rather than
-// force a guess, since a wrong shipping line on a record misattributes
-// billing/repairs.
+
 function resolveLineIdFromVessel(vesselText) {
   const v = normVessel(vesselText);
   if (!v) return null;
@@ -639,10 +603,7 @@ function isDispatch() { return state.profile?.role === 'dispatch'; }
 function currentRole() { return state.profile?.role || 'viewer'; }
 
 
-// Marks a flagged bulk-import record as reviewed. Only clears the flag —
-// it never changes the underlying data, so whatever a clerk fixed (or
-// decided to leave as-is) stays exactly as they left it; this just takes
-// the record out of the "Flagged for Review" queue.
+
 function clearReviewFlag(kind, id) {
   const arr = kind === 'trips' ? state.db.trips : state.db.interchange;
   const rec = arr.find(x => x.id === id);
@@ -701,13 +662,7 @@ function isValidContainerFormat(cont) {
   return containerFormatIssue(cont) === null;
 }
 
-// Single source of truth for "is this container movement already logged?" —
-// same container + same movement type + same calendar day. Every entry path
-// (manual, inward, bulk import) must call this with the actual date the
-// record is being logged for, not "today" — a previous version of this check
-// always compared against today's date even when bulk-importing historical
-// rows, which meant it silently let through duplicates on any date other
-// than today. excludeId lets an edit-in-place skip matching itself.
+
 function findDuplicateInterchange(container, type, dateVal, excludeId) {
   const cont = (container || '').trim().toUpperCase();
   if (!cont || !type) return null;
@@ -2057,8 +2012,7 @@ async function wialonFetchAllUnits() {
   }
 }
 
-// One polling cycle — fetch every unit, match against trucks.wialon_unit_id,
-// and upsert into tracking_positions the same way a driver-phone ping does.
+
 async function pollWialonPositions() {
   const cfg = wialonConfig();
   if (!cfg.enabled || !cfg.token) return;
@@ -2117,9 +2071,7 @@ function stopWialonPolling() {
   _wialonSid = null;
 }
 
-// "Save & Test" button in Settings — logs in with whatever is currently
-// typed in the form (without needing to save first) so admins get instant
-// feedback on a bad token/host before it's persisted.
+
 async function testWialonConnection() {
   const hostEl  = document.getElementById('st_wialonHost');
   const tokenEl = document.getElementById('st_wialonToken');
@@ -2634,11 +2586,7 @@ async function createDispatch() {
   const dist   = parseInt(document.getElementById('d_distance').value)||0;
   const editingId = _dispatchEditingTripId;
 
-  // Container No. is the only field that's still mandatory — everything
-  // else (truck, driver, origin, destination, EIR, vessel/voyage, receiving
-  // party, release order no.) can be filled in later or left blank; trips
-  // without a truck/driver simply surface in "Awaiting Dispatch" until
-  // they're matched up.
+
   if (!cont) {
     toast('Container number is required', 'error');
     return;
@@ -2692,11 +2640,6 @@ async function createDispatch() {
     const t = state.db.trips.find(tr=>tr.id===editingId);
     if (!t) { toast('That trip no longer exists — it may have been removed.', 'error'); cancelDispatchEdit(); return; }
 
-    // Depot -> Port containers can't be dispatched without a verified
-    // release order on file for this trip — enforced here so it can't be
-    // bypassed by completing dispatch straight from the Dispatch Console.
-    // Attaching the release order right here in this submission counts too,
-    // since it gets auto-verified below (staff has the physical copy).
     if (workType === 'Depot → Port' && !releaseFile) {
       try {
         const docs = await window.bookingDocs.documentsForTrip(t.id);
@@ -2750,10 +2693,7 @@ async function createDispatch() {
     toast(`Dispatch created — ${cont}`, 'success');
   }
 
-  // The release order needs a real trip row in Supabase to attach to (the
-  // upload is keyed by trip_id with a foreign key), so flush this record
-  // immediately instead of waiting on the debounced autosave — same
-  // pattern the Inward guarantee-form upload uses.
+
   if (releaseFile && newTripId) {
     try {
       await saveNowAwaited();
@@ -2855,23 +2795,7 @@ function handleBulkFile(e) {
   if (file) processBulkFile(file);
 }
 
-// Reads EVERY sheet in an uploaded workbook and returns one combined array
-// of row objects — reading only wb.SheetNames[0] silently drops every row on
-// any sheet after the first (e.g. a second sheet of historical rows).
-//
-// A sheet is also allowed to have no header row of its own — common when a
-// second sheet is a plain continuation of the first, appended without
-// repeating the column titles. If a sheet's first row doesn't look like
-// column headers (checked against a list of words this app's known
-// templates use), the most recent real header row seen earlier in the same
-// workbook is reused positionally for that sheet instead of misreading its
-// first data row as a header.
-//
-// cellDates:true + raw:true (set by the caller's XLSX.read/sheet_to_json
-// options) means genuine Excel date cells arrive here as real JS Date
-// objects, not locale-formatted text — so there is no day/month ambiguity
-// to guess at for those cells, regardless of what date format was applied
-// to the column in Excel.
+
 const _EXCEL_HEADER_HINTS = ['container','size','type','eir','date','delivering','vessel','voyage','guarantee','gurantee','shipping','line','receiving','release','transporter','dispatch','driver','truck','reg','condition','notes','remarks','bl','cargo','work'];
 function readAllExcelSheetsAsRows(wb) {
   let lastHeader = null;
@@ -2903,13 +2827,7 @@ function readAllExcelSheetsAsRows(wb) {
   return allRows;
 }
 
-// Sanity-checks a parsed bulk-import date and pushes a review flag if it
-// looks like a data-entry error rather than a real date — e.g. a mistyped
-// year (2027/2028/2030 instead of 2026) or an implausibly old record. This
-// does NOT block the import or alter the date — legitimate far-future
-// dispatch bookings do exist in these registers — it only surfaces the row
-// under Flagged for a human to glance at, which is the check that was
-// missing and let bad years land silently in the DB before.
+
 function flagIfImplausibleDate(dt, issueTags, flagged, label) {
   if (!dt) return;
   const now = new Date();
@@ -2925,11 +2843,7 @@ function flagIfImplausibleDate(dt, issueTags, flagged, label) {
   }
 }
 
-// Parses a date the way Kenyan gate/depot registers actually write them —
-// DD/MM/YYYY (or DD/MM/YY) — instead of relying on JavaScript's native
-// Date parsing, which assumes the US MM/DD/YYYY convention for slash-
-// separated dates. Genuine Excel date cells (read with cellDates:true) are
-// returned as-is since they carry no ambiguity at all.
+
 function parseFlexibleDate(raw) {
   if (raw == null || raw === '') return null;
   if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
@@ -2939,9 +2853,7 @@ function parseFlexibleDate(raw) {
     let [, d, mo, y, h, mi, se] = m;
     d = parseInt(d, 10); mo = parseInt(mo, 10); y = parseInt(y, 10);
     if (y < 100) y += y < 70 ? 2000 : 1900;
-    // Unambiguous case: a "day" slot over 12 can only be the day, so the
-    // fields must actually be MM/DD — swap back. Otherwise (both <= 12,
-    // the normal ambiguous case) trust DD/MM, matching this data's convention.
+
     if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const dt = new Date(y, mo - 1, d, parseInt(h || 0, 10), parseInt(mi || 0, 10), parseInt(se || 0, 10));
@@ -2971,14 +2883,7 @@ function processBulkFile(file) {
         const headers = lines[0].split(',').map(h=>h.trim());
         rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
       }
-      // Filename-sniffing heuristic — a file named like "outward.csv" /
-      // "dispatch_out.xlsx" defaults the Direction picker to Outward;
-      // anything else defaults to Outward too (this screen is "Bulk
-      // Container Dispatch", so outward is the more common case) unless the
-      // name clearly says "inward". This is only the fallback now — a real
-      // gate register's own column headers (Date Out/Receiving Party vs.
-      // Date In/Delivering Party) are a far more reliable signal than the
-      // filename and are checked first, below.
+
       const looksInward = /inward|inwrd|_in\b|-in\b/i.test(name) && !/outward/i.test(name);
       const normalizedRows = normalizeRowKeys(rows);
       const sniffedDirection = sniffBulkDirectionFromRows(normalizedRows);
@@ -3002,9 +2907,7 @@ function showBulkPreview(rows, direction) {
   updateBulkDispatchDirectionUI();
 }
 
-// Toggles the "Outward Type" picker — only meaningful when the batch
-// direction is Outward — and keeps it in sync if the person flips the
-// Direction dropdown after the preview has already loaded.
+
 function updateBulkDispatchDirectionUI() {
   const dirSel = document.getElementById('bd_bulk_direction');
   const row = document.getElementById('bd_bulk_outwardtype_row');
@@ -3013,22 +2916,12 @@ function updateBulkDispatchDirectionUI() {
 }
 
 async function processBulkDispatch() {
-  // Guard against double-submission: this function awaits a chunked network
-  // write that can take a while for a large historical file, and previously
-  // gave zero visual feedback while it ran — which meant a slow upload
-  // looked "stuck" and got clicked again (and again), each click starting a
-  // fully separate import of the same rows. That's what produced the
-  // duplicate DSP-* batches sitting in the trips table right now.
+
   if (_bulkWriteInProgress) { toast('A dispatch import is already in progress — please wait', 'warning'); return; }
   const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
   if (!rows.length) { toast('No rows to process', 'error'); return; }
 
-  // Batch-level direction (Outward/Inward) and, for Outward, the fallback
-  // Outward Type — used for any row that doesn't specify its own. Without
-  // this, every row silently defaulted to workType 'Port → Depot' (Inward)
-  // regardless of what the file actually contained, which is why bulk
-  // dispatch imports of outward/dispatch data never showed up as Outward
-  // anywhere (Depot Report, Outward badges, etc).
+
   const batchDirection = document.getElementById('bd_bulk_direction')?.value === 'in' ? 'in' : 'out';
   const batchOutwardType = document.getElementById('bd_bulk_outwardtype')?.value || OUTWARD_TYPES[0];
   const WORKTYPE_ALIASES = {
@@ -3046,16 +2939,10 @@ async function processBulkDispatch() {
   if (btn) { btn.disabled = true; btn.textContent = `Processing ${rows.length} row(s)…`; }
   toast(`Processing ${rows.length} dispatch(es) — this can take a moment for large files…`, 'info', 5000);
 
-  // Set for the whole function, not just the save — blocks a second click
-  // from starting a parallel import at any point. The outer try/catch/finally
-  // below guarantees the flag and button always come back to a normal state,
-  // even if something throws partway through (a bad row, a network error, etc).
+
   _bulkWriteInProgress = true;
 
-  // Let the "Processing…" button state actually paint before the heavy work
-  // below starts. Without this yield, the button/toast DOM writes above sit
-  // queued behind the very next synchronous block and the tab can look
-  // completely frozen for the whole duration of the loop.
+
   await new Promise(r => setTimeout(r, 0));
 
   try {
@@ -3068,15 +2955,7 @@ async function processBulkDispatch() {
   const newTrips = []; // collected for a direct, chunked save below
   const importBatchId = `DSP-${new Date().toISOString().slice(0,10)}-${Date.now().toString(36).toUpperCase()}`;
 
-  // Live-container lookup used to be a fresh state.db.trips.find() scan
-  // (findLiveTripByContainer) for every single row. That's an O(rows ×
-  // trips) linear scan — harmless when the trips table was small, but with
-  // tens of thousands of trips already on file it turned a several-thousand
-  // row historical import into tens/hundreds of millions of comparisons run
-  // synchronously on the main thread. That's what actually made the button
-  // "not complete": the tab froze mid-loop for so long it looked hung, which
-  // is also how it kept getting re-clicked before the guard above existed.
-  // Build the lookup ONCE (single O(trips) pass) instead.
+
   const liveTripByContainer = new Map();
   state.db.trips.forEach(t => {
     if (isTripLive(t) && t.container) {
@@ -3085,9 +2964,7 @@ async function processBulkDispatch() {
     }
   });
 
-  // Process in chunks with a yield in between so the browser can repaint the
-  // progress text and stays responsive for very large historical files,
-  // instead of blocking the main thread for the entire import in one go.
+
   const CHUNK = 300;
   for (let start = 0; start < rows.length; start += CHUNK) {
     const chunkRows = rows.slice(start, start + CHUNK);
@@ -3095,15 +2972,10 @@ async function processBulkDispatch() {
 
     chunkRows.forEach((r, chunkIdx) => {
       const idx = start + chunkIdx;
-    // Alias-tolerant field pickup: accepts both this screen's own template
-    // headers (container, eir, receivingParty…) and real gate-register
-    // headers like "Container No.", "EIR No.", "Shipping Line", "Transporters"
-    // once normalizeRowKeys() has lowercased/stripped them.
+
     const contRaw = pickField(r, ['container','containerno','containernumber','containernrno']);
     const rowLabel = contRaw ? contRaw : `row ${idx+1}`;
-    // A container number is the one thing we can't do without (the DB
-    // column is NOT NULL) — everything else is imported as-is and flagged
-    // for cleanup rather than dropped, same as the Inward bulk importer.
+
     let cont = contRaw ? contRaw.trim().toUpperCase() : '';
     const issueTags = [];
     if (!cont) {
@@ -3119,18 +2991,13 @@ async function processBulkDispatch() {
     if (dupTrip) { issueTags.push('already on an active trip'); flagged.push(`${cont}: already on an active trip`); }
     seenInBatch.add(cont);
 
-    // "Transporters" (haulage company, e.g. SIMBA TECH) is free text, not a
-    // fleet reg — try matching it to a real truck first, otherwise it's
-    // captured in the trip notes instead of silently discarded.
+
     const truckRaw  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno']);
     const transporterRaw = pickField(r, ['transporters','transporter']);
     const driverRaw = pickField(r, ['driver','drivername','driversname']);
     const truck  = state.db.trucks.find(t=>t.reg===truckRaw||t.id===truckRaw||t.reg===transporterRaw);
     const driver = state.db.drivers.find(d=>d.name===driverRaw||d.id===driverRaw);
-    // Historical bulk rows are completed movements, not live bookings — the
-    // truck/driver's *current* fleet status is irrelevant to a trip that
-    // already happened, so the only real conflict worth flagging is the same
-    // truck/driver appearing twice within this one file (data-entry issue).
+
     const truckConflict  = truck  && usedTrucksInBatch.has(truck.id);
     const driverConflict = driver && usedDriversInBatch.has(driver.id);
     if (truckConflict)  { issueTags.push(`truck ${truck.reg} used more than once in this batch`); flagged.push(`${cont}: truck ${truck.reg} used more than once in this batch`); }
@@ -3148,20 +3015,12 @@ async function processBulkDispatch() {
     const sizeRaw = pickField(r, ['size']);
     const typeRaw = pickField(r, ['containertype','type']);
     const ctypeExplicit = pickField(r, ['ctype']);
-    // Historical migration rows: a size+type pair takes priority (via the
-    // same depot-code mapping used for Inward, so "40"/"HC" → "40ft HC"),
-    // then a raw ctype column, then the default.
+
+
     const ctype = (sizeRaw && typeRaw) ? composeCtypeFromDepotCode(sizeRaw, typeRaw)
       : (CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeExplicit.toLowerCase()) || ctypeExplicit || '20ft Dry');
 
-    // The row's own historical date — previously this was silently ignored
-    // and every bulk-imported trip was stamped with the *upload* time, which
-    // put thousands of historical dispatches on "today" in every date-based
-    // report. Falls back to now only when the file truly has no date.
-    // Real dispatch/gate registers (e.g. DISPATCH.xlsx) often carry ONLY a
-    // "Date Out" column and no separate "Date"/"Dispatch Date" column —
-    // compute Date Out first and use it as the fallback for the row's own
-    // date, same convention used by the Inward importer below.
+
     const dateOutRaw = pickField(r, ['dateout','dateexited']);
     let dateOutVal = null;
     { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
@@ -3174,10 +3033,7 @@ async function processBulkDispatch() {
     if (transporterRaw && !truck) notesParts.push(`Transporter: ${transporterRaw}`);
     notesParts.push(...issueTags.map(t=>`⚠ ${t}`));
 
-    // Per-row worktype/direction/movement column wins if present and
-    // recognizable; otherwise fall back to the Direction picked for the
-    // whole batch (was previously a hardcoded 'Port → Depot' default,
-    // which mislabeled every outward/dispatch migration row as inward).
+
     const worktypeRaw = pickField(r, ['worktype','workType','direction','movement']).toLowerCase().replace(/[^a-z]/g,'');
     const workType = WORKTYPE_ALIASES[worktypeRaw] || (batchDirection === 'in' ? 'Port → Depot' : 'Depot → Port');
     let outwardType = null;
@@ -3193,10 +3049,7 @@ async function processBulkDispatch() {
       origin: r.origin||'', dest: r.destination||r.dest||'', distance: parseInt(r.distance)||0,
       shippingLine: line?.id||'', priority:'Normal', notes: notesParts.join(' — '),
       ref: `BULK-${Date.now()}-${created}`,
-      // Bulk-imported rows are historical fact by definition — they always
-      // complete the full lifecycle immediately rather than sitting as an
-      // open "active" trip that never gets closed out and never shows up
-      // under Completed in reports.
+
       status: 'completed',
       startTime: dateVal, eta: dateOutVal || new Date(new Date(dateVal).getTime()+4*3600000).toISOString(),
       eirNumber: sanitize(pickField(r, ['eir','eirno'])),
@@ -3213,23 +3066,15 @@ async function processBulkDispatch() {
     };
     state.db.trips.push(trip);
     newTrips.push(trip);
-    // Historical dispatches never lock up a truck/driver's live status —
-    // that status reflects today's fleet, not a movement that already
-    // happened. (Unlike the old behaviour, this is unconditional now: a
-    // missing Date Out on a historical row doesn't mean the trip is still
-    // out, just that the source file didn't capture that column.)
+
     created++;
     });
 
-    // Yield back to the browser between chunks so the progress text above
-    // actually repaints and the tab stays interactive during a large import.
+
     await new Promise(r => setTimeout(r, 0));
   }
 
-  // Save this batch directly, in chunks, instead of relying on the debounced
-  // full-table save — a large historical file (thousands of rows) sent as
-  // one request can exceed Supabase's statement timeout and silently drop
-  // the whole import.
+
   let saveResult = null;
   try {
     saveResult = await upsertRowsChunked('trips', newTrips.map(tripToRow));
@@ -3254,10 +3099,7 @@ async function processBulkDispatch() {
   renderDispatchQueue();
 
   } catch (e) {
-    // Anything unexpected (bad row data, a thrown error before the save,
-    // etc.) lands here instead of leaving the button stuck on "Processing…"
-    // and _bulkWriteInProgress permanently true (which would then block
-    // every future import with "already in progress" forever).
+ 
     console.error('Bulk dispatch failed:', e && e.message, e);
     toast(`Bulk dispatch failed — ${(e && e.message) || 'unexpected error'}. Nothing further was imported.`, 'error', 7000);
   } finally {
@@ -3275,17 +3117,7 @@ function downloadBulkTemplate() {
 }
 
 
-/* ──────────────────────────────────────────────────────────────────
-   § INWARD CONTAINER ENTRY
-   A dedicated route for logging containers coming into the depot/yard
-   (Gate-In / Depot-In), laid out the same way as the Dispatch Console —
-   the entry form is the primary item on load. The historical/queue views
-   (Awaiting Survey, Still In Storage, Recent Entries) live behind the
-   Reports tab and only render on request, filterable the same way
-   DepOps → Reports works. Entries are written into the same `interchange`
-   table the Record Interchange modal and DepOps already use, so they show
-   up everywhere interchange records do.
-────────────────────────────────────────────────────────────────── */
+
 let _inwardImg = '';
 
 function renderInward() {
@@ -3364,9 +3196,7 @@ function refreshInwardReportsIfOpen() {
   if (panel && panel.style.display !== 'none') renderInwardReports();
 }
 
-// ---------- Inward Reports (Awaiting Survey / Still In Storage / Recent
-// Entries, folded into one filterable, on-request report — same pattern as
-// DepOps → Reports) ----------
+
 
 let _inwardRptRows = [];
 
@@ -3390,45 +3220,13 @@ function inwardReportsReset() {
   renderInwardReports();
 }
 
-// Any Gate-In/Depot-In record with no recorded Date Out is presumed to
-// still be sitting in the depot — this matters most for historical/bulk
-// migrated records, since a lot of them will have left the depot long
-// before this system existed but were never given a formal dispatch trip.
-//
-// Gate-In and Gate-Out are separate interchange records (e.g. one row from
-// Received.xlsx, a different row from DISPATCH.xlsx) — dateOut on the
-// Gate-In row itself is never populated by that kind of two-file import, so
-// relying on it alone would leave every historically-received container
-// reading "in storage" even after its matching Gate-Out has been imported.
-// Instead, treat a container as no longer in storage if there's ANY
-// Gate-Out/Depot-Out record for it, regardless of which record's own
-// dateOut field is set.
-//
-// BUG FIX: an exit can also be recorded as an outward dispatch trip
-// (workType 'Depot → Port' in the Dispatch Console / bulk dispatch import)
-// instead of a Gate-Out/Depot-Out interchange row — the Depot Report screen
-// already merges both sources (see _depotReportOutwardEntries), but this
-// panel and the Quick-Dispatch eligibility check were only ever looking at
-// interchange, so any container whose exit lived in `trips` kept reading
-// "Still In Storage" forever, inflating that count. Use
-// exitedContainerSet() (which merges both sources) everywhere "has this
-// container left?" is asked, instead of re-deriving the interchange-only
-// Set inline in each place.
 function inwardEntryStatus(ic, exitedContainers) {
   if (ic.surveyStatus === 'awaiting_survey') return 'awaiting_survey';
   if (!ic.dateOut && !exitedContainers.has(ic.container)) return 'in_storage';
   return 'exited';
 }
 
-// Builds the set of containers that have left the depot at least once,
-// merging BOTH places an exit can be recorded:
-//   1. Gate-Out / Depot-Out interchange records
-//   2. Outward dispatch trips (workType 'Depot → Port') created from the
-//      Dispatch Console or a bulk dispatch import
-// Missing source #2 is what was inflating the "Still In Storage" count —
-// containers dispatched through the Dispatch Console (rather than logged
-// as a Gate-Out interchange row) never got marked as exited, so they kept
-// showing up as still sitting in the depot even though they'd left.
+
 function exitedContainerSet() {
   const fromInterchange = state.db.interchange
     .filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out')
@@ -3467,9 +3265,6 @@ async function renderInwardReports() {
   if (from) rows = rows.filter(i => new Date(i.date) >= new Date(from));
   if (to) rows = rows.filter(i => new Date(i.date) <= new Date(to + 'T23:59:59'));
 
-  // Awaiting Survey / Still In Storage read best oldest-first (the ones
-  // waiting longest surface first, same as the old dedicated panels did);
-  // everything else — including "All Statuses" — reads best newest-first.
   rows = rows.sort((a, b) => (status === 'awaiting_survey' || status === 'in_storage')
     ? new Date(a.date) - new Date(b.date)
     : new Date(b.date) - new Date(a.date));
@@ -3569,10 +3364,7 @@ async function createInwardEntry() {
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
   if (dupIc) { toast(`${cont} already has a ${type} record logged on ${fmtDate(dateVal)}`, 'warning'); return; }
 
-  // Truck/driver are free-text fields now (no dropdown) — match them
-  // against existing fleet records when possible so history, filters and
-  // reports still resolve to the linked truck/driver; otherwise fall back
-  // to storing the typed text, same as the bulk-upload path does.
+
   const truckVal  = document.getElementById('iw_truck').value.trim();
   const driverVal = document.getElementById('iw_driver').value.trim();
   const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase())   : null;
@@ -3616,9 +3408,7 @@ async function createInwardEntry() {
   renderInterchange('all');
   refreshInwardReportsIfOpen();
 
-  // The guarantee form needs a real row in Supabase to attach to (the
-  // upload is keyed by interchange_id with a foreign key), so flush this
-  // record immediately instead of waiting on the debounced autosave.
+
   if (guaranteeFile) {
     try {
       await saveNowAwaited();
@@ -3706,7 +3496,7 @@ function clearInwardGuaranteeFile() {
   renderInwardGuaranteePreview();
 }
 
-/* ── Bulk upload: CSV, JSON, and XLSX/XLS (via SheetJS) ── */
+
 function handleInwardBulkDrop(e) {
   e.preventDefault();
   document.getElementById('inwardBulkDrop').classList.remove('drag-over');
@@ -3719,9 +3509,7 @@ function handleInwardBulkFile(e) {
   if (file) processInwardBulkFile(file);
 }
 
-// Normalizes any header spelling ("Container No.", "B/L Number", "Shipping Line")
-// down to a plain lowercase key (containerno, blnumber, shippingline) so the
-// matcher below doesn't care how the source file's columns were labelled.
+
 function normalizeRowKeys(rows) {
   return rows.map(r => {
     const norm = {};
@@ -3733,16 +3521,7 @@ function normalizeRowKeys(rows) {
   });
 }
 
-// Detects a bulk file's direction (Inward/Outward) from its own column
-// headers rather than its filename. Filenames are unreliable — a real
-// gate/depot register is typically named after the shipping line or date
-// range, not "inward"/"outward" ("DISPATCH.xlsx", "Recieved.xlsx" — the
-// latter doesn't contain "in" or "inward" anywhere, so the old
-// filename-only heuristic silently defaulted it to Outward). The columns
-// themselves are unambiguous: a Dispatch/gate-out register carries "Date
-// Out" + "Receiving Party" + "Release Order No.", a Received/gate-in
-// register carries "Date In" + "Delivering Party" — checked here against
-// the already-normalized (lowercased, punctuation-stripped) row keys.
+
 function sniffBulkDirectionFromRows(normalizedRows) {
   if (!normalizedRows || !normalizedRows.length) return null;
   const keys = new Set();
@@ -3848,43 +3627,30 @@ function processBulkInward() {
     const dateRaw = pickField(r, ['date','entrydate','datein','dateout','gateindate','gateoutdate','inwarddate','outwarddate','entrydatetime']);
     { const d = parseFlexibleDate(dateRaw); if (d) { dateVal = d.toISOString(); flagIfImplausibleDate(d, issueTags, flagged, rowLabel); } }
 
-    // Dedup key includes the row's own date — two different historical dates
-    // for the same container+type are legitimate separate movements, not
-    // duplicates. Duplicates are no longer skipped (historical bulk imports
-    // are imported as-is for later cleanup) but they are still flagged so
-    // they're easy to find and dedupe afterwards.
+
     const dupKey = `${cont}::${type}::${new Date(dateVal).toDateString()}`;
     if (seenInBatch.has(dupKey)) { issueTags.push('duplicate within this file (same container, type & date)'); flagged.push(`${cont}: duplicate within this file (same container, type & date)`); }
     const dupIc = findDuplicateInterchange(cont, type, dateVal);
     if (dupIc) { issueTags.push(`possible duplicate of an existing ${type} record on ${fmtDate(dateVal)}`); flagged.push(`${cont}: already has a ${type} record logged on ${fmtDate(dateVal)}`); }
     seenInBatch.add(dupKey);
 
-    // "Transporters" (DISPATCH.xlsx) is a haulage company name, not a specific
-    // truck reg — it still belongs in the free-text truck field so it shows
-    // up as "who moved it" on the record, same as an unmatched truck reg does.
+
     const truckVal  = pickField(r, ['truck','truckreg','vehicle','reg','truckno','lorryno','transporters','transporter']);
     const driverVal = pickField(r, ['driver','drivername','driversname']);
     const lineVal   = pickField(r, ['line','shippingline','linecode','shippinglines']);
-    // "EX Vessel" (Received.xlsx) is the vessel column under a different header.
+  
     const vesselVal = pickField(r, ['vessel','exvessel']);
 
     const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
     const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase() || d.id===driverVal) : null;
-    // Some source registers use a plain-English abbreviation that doesn't
-    // match any shipping_lines.code exactly (e.g. "TERMCO" in the historical
-    // COSCO gate registers, whose actual code in this system is "TMT" /
-    // "TERMCO TANKS"). Add more aliases here as new mismatches turn up.
+
     const LINE_TEXT_ALIASES = { 'TERMCO': 'TMT' };
     const lineValResolved = LINE_TEXT_ALIASES[lineVal.toUpperCase()] || lineVal;
-    // Normalize both sides (trim + collapse whitespace) so "PIL", " Pil ",
-    // "PIL  " all still match the code — previously an exact toLowerCase()
-    // compare meant any stray whitespace silently dropped the line to null.
+
     let line = lineValResolved
       ? state.db.shippingLines.find(l => normVessel(l.code).toLowerCase()===normVessel(lineValResolved).toLowerCase() || normVessel(l.name).toLowerCase()===normVessel(lineValResolved).toLowerCase() || l.id===lineValResolved)
       : null;
-    // No usable "line" column value (missing, blank, or unrecognized code)?
-    // Fall back to guessing from the vessel name — this is what was leaving
-    // thousands of PIL/MSC/etc. records with no shipping line at all.
+
     if (!line && vesselVal) {
       const guessedId = resolveLineIdFromVessel(vesselVal);
       if (guessedId) line = state.db.shippingLines.find(l => l.id === guessedId);
@@ -3892,10 +3658,7 @@ function processBulkInward() {
 
     const ctypeExplicit    = pickField(r, ['ctype']);
     const sizeRaw          = pickField(r, ['size']);
-    // "containertype" is the app's own bulk-template column name; real gate
-    // registers instead label this column plain "Type" (values like HC, HD,
-    // DV, TK, OT, FR, PL, LC) — check the template's column first so a
-    // filled-in template still wins, then fall back to "type".
+
     const containerTypeRaw = pickField(r, ['containertype','type']);
     let ctype = CONTAINER_TYPE_OPTIONS.find(c => c.toLowerCase() === ctypeExplicit.toLowerCase());
     if (!ctype && sizeRaw && containerTypeRaw) ctype = composeCtypeFromDepotCode(sizeRaw, containerTypeRaw);
@@ -3904,9 +3667,7 @@ function processBulkInward() {
     const condRaw = pickField(r, ['condition']);
     const condition = VALID_COND.find(c => c.toLowerCase() === condRaw.toLowerCase()) || 'Good';
 
-    // Historical/migrated rows can carry their own exit date — if one's
-    // present the container already left, so it won't show up as "still in
-    // storage" needing a quick-dispatch action.
+
     let dateOutVal = null;
     const dateOutRaw = pickField(r, ['dateout','exitdate','gateoutdate','dateexited']);
     { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
@@ -3926,26 +3687,17 @@ function processBulkInward() {
       vessel:    sanitize(vesselVal),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),
       deliveringParty: sanitize(pickField(r, ['deliveringparty','delivering','shipper'])),
-      // "Gurantee Form No." (Received.xlsx, misspelled in the source file
-      // itself) normalizes to "guranteeformno" — add both the correct and
-      // misspelled forms so either header variant is picked up.
+     
       guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber','guranteeformno','guaranteeformno'])),
       cargoStatus,
       repairs: [], repairTotal: 0,
       notes: [sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import', ...issueTags.map(t=>`⚠ ${t}`)].filter(Boolean).join(' — '),
-      // Historical bulk imports are treated as already-verified facts, not
-      // items awaiting review — 'pending' would flood the approval queue
-      // and Interchange badge with thousands of records nobody is actually
-      // meant to individually approve, and would keep them out of reports
-      // that only count approved/reconciled data.
+     
       date: dateVal, status: 'approved', img: '',
       dateOut: dateOutVal,
       receivingParty: sanitize(pickField(r, ['receivingparty'])),
       releaseOrderNo: sanitize(pickField(r, ['releaseorderno','releaseorder'])),
-      // Structured review tracking — the same signals still show in `notes`
-      // for a human reading the record, but these fields make the flagged
-      // batch queryable (Interchange → Flagged tab) instead of only
-      // discoverable by reading free text.
+
       flaggedForReview: issueTags.length > 0,
       flagReasons: issueTags.slice(),
       duplicateOfId: dupIc ? dupIc.id : null,
@@ -4136,11 +3888,7 @@ function renderInterchange(f){
     : state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  // Same "already has a matching exit somewhere" logic as the Still In
-  // Storage panel — computed once per render, not per card. Uses
-  // exitedContainerSet() so a container dispatched via the Dispatch
-  // Console (an outward trip, not a Gate-Out interchange row) is also
-  // recognized as having left — see exitedContainerSet()'s docstring.
+
   const exitedContainers = exitedContainerSet();
   el.innerHTML=items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
@@ -4234,16 +3982,8 @@ function downloadInterchangeCSV() {
   URL.revokeObjectURL(a.href);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 17b  DEPOT REPORT — inward/outward register + duplicate validation
-   Reads the same `interchange[]` array that the Inward Console, the
-   Record Interchange modal, DepOps, and bulk/CSV imports all write
-   into — so manual entries, inward bulk uploads, and anything else
-   land here automatically with nothing extra to "link". This screen
-   is a consolidated register (inward vs outward) over that single
-   source of truth, plus a standing duplicate audit across the whole
-   table (not just same-day, like the entry-time check does).
-────────────────────────────────────────────────────────────────── */
+
+
 const INWARD_IC_TYPES  = ['Gate-In', 'Depot-In'];
 const OUTWARD_IC_TYPES = ['Gate-Out', 'Depot-Out'];
 
@@ -4283,12 +4023,7 @@ function _depotReportLineMatch(rec) {
   return _depotReportLine === 'all' || (_depotReportLine === '__unmapped__' ? !rec.line : rec.line === _depotReportLine);
 }
 
-// Normalizes a trip (either direction) into the same shape as an
-// interchange record, so it can sit in the same Inward/Outward list/table/
-// export as Gate-In/Gate-Out/Depot-In/Depot-Out interchange entries.
-// Dispatch data (manual or bulk-imported, either direction) lives in trips,
-// not interchange — previously the Depot Report only ever looked at
-// interchange, so none of it ever showed up here.
+
 function _tripToDepotReportRecord(t) {
   const outward = isOutwardWorkType(t.workType);
   return {
@@ -4297,10 +4032,7 @@ function _tripToDepotReportRecord(t) {
     line: t.shippingLine || '', condition: '',
     truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '',
     eirNumber: t.eirNumber || '', vessel: t.vessel || '', voyage: t.voyage || '',
-    // Outward: the actual outward gate movement date, falling back to
-    // startTime if no explicit exit date was captured. Inward: the trip's
-    // own start (arrival) date — same convention Gate-In interchange
-    // records use for their single `date` field.
+
     date: outward ? (t.dateOut || t.startTime) : t.startTime,
     status: t.status, notes: t.notes || '',
     flaggedForReview: !!t.flaggedForReview, flagReasons: t.flagReasons || [],
@@ -4309,13 +4041,7 @@ function _tripToDepotReportRecord(t) {
   };
 }
 
-// Inward = Gate-In/Depot-In interchange records AND inward trips
-// (workType 'Port → Depot') merged into one list — mirrors
-// _depotReportOutwardEntries below. Without this half of the merge,
-// containers bulk-imported as inward trips (e.g. a Received-register file
-// uploaded through the Dispatch Console with Direction set to Inward)
-// never appeared under Inward Entries here, even though the symmetric
-// Outward case already merged trips in.
+
 function _depotReportInwardEntries() {
   const fromInterchange = state.db.interchange
     .filter(ic => INWARD_IC_TYPES.includes(ic.type))
@@ -4329,11 +4055,7 @@ function _depotReportInwardEntries() {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
-// Outward = Gate-Out/Depot-Out interchange records AND outward trips
-// (workType 'Depot → Port') merged into one list — the two are different
-// storage tables for the same real-world event (a container leaving the
-// depot), and both need to show up here for reporting/analysis to be
-// complete, per the direction this screen is meant to cover.
+
 function _depotReportOutwardEntries() {
   const fromInterchange = state.db.interchange
     .filter(ic => OUTWARD_IC_TYPES.includes(ic.type))
@@ -4347,12 +4069,7 @@ function _depotReportOutwardEntries() {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
-// Tags a record as Bulk vs Manual purely for display — bulk imports (Inward
-// Bulk Entry, Bulk Dispatch, legacy CSV/staging migrations) tend to leave a
-// "Bulk import" note or free-text truck/driver fields when no matching
-// fleet record existed. Appends the storage table for outward records so
-// it's clear at a glance whether a row is an interchange gate record or a
-// trip/dispatch record.
+
 function _icSourceTag(rec) {
   const base = /bulk import/i.test(rec.notes || '') || rec.truckRegText || rec.driverNameText ? 'Bulk' : 'Manual';
   return rec._reportSource === 'trips' ? `${base} · Trips` : base;
@@ -4367,14 +4084,7 @@ function populateDepotReportLineFilter() {
   sel.dataset.populated = '1';
 }
 
-// Flags the exact same container logged with the exact same movement type
-// on the exact same calendar day — usually a double entry (manual
-// re-submit, or a bulk file re-uploaded).
-//
-// NOTE: reused EIR/reference numbers are intentionally NOT flagged here.
-// Shipping-line source files (e.g. bulk COSCO dispatch/received imports)
-// legitimately reuse EIR/reference numbers across entries — that's expected
-// for this data and isn't an error, so it's excluded from the anomaly report.
+
 function computeDepotReportDuplicates() {
   const all = state.db.interchange;
 
@@ -5047,17 +4757,7 @@ function saveShippingLine() {
   toast(`${code} added`, 'success');
 }
 
-/* ── Resolve Unmapped Vessels ──────────────────────────────────────────
-   Interchange records land with no shipping line whenever a bulk import
-   didn't carry a recognizable "line" value and the vessel name isn't one
-   of the auto-mapped brand patterns (see resolveLineIdFromVessel). This
-   screen groups those leftover records by vessel so an ops person who
-   actually knows the vessel schedule can assign the correct line in bulk
-   — and teaches vessel_line_map so it's remembered for next time. */
 
-// Placeholder vessel values that carry no real information — no vessel
-// name means there's nothing to match on, so these aren't listed as
-// actionable groups (they'd need a source-record fix, not a mapping fix).
 const UNRESOLVABLE_VESSEL_VALUES = new Set(['', 'N/A', 'NA', 'N.A', 'N./A', 'N\\A', 'TBA', 'T.B.A', 'TO BE ADVISED', 'NOT CAPTURED', 'DUMMY', 'EMPTY DUMMY', 'EMPTY DUMMY VESSEL', 'N']);
 
 function _unmappedVesselGroups() {
@@ -5119,23 +4819,21 @@ async function assignVesselToLine(idx) {
   if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
 
   try {
-    // Update the live records directly — these are historical rows already
-    // saved to Supabase, not part of the in-memory "dirty" batch, so this
-    // writes straight to the DB rather than waiting on scheduleSave().
+  
     const { error } = await supabase.from('interchange')
       .update({ line_id: lineId })
       .is('line_id', null)
       .in('id', group.ids);
     if (error) throw error;
 
-    // Teach the mapping so future imports/entries with this exact vessel
-    // name resolve automatically without needing this screen again.
+
+
     const { data: inserted, error: mapErr } = await supabase.from('vessel_line_map')
       .insert({ pattern: group.vessel, match_type: 'exact', line_id: lineId, priority: 100, source: 'manual', created_by: state.profile?.username || null })
       .select('*').single();
     if (!mapErr && inserted) state.db.vesselLineMap.push(vlmFromRow(inserted));
 
-    // Reflect it locally without a full reload.
+
     const idSet = new Set(group.ids);
     state.db.interchange.forEach(ic => { if (idSet.has(ic.id)) ic.line = lineId; });
 
@@ -5668,11 +5366,8 @@ function trcInit() {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   trcPopulateFilterOptions();
   if (!document.getElementById('trcFrom').value) {
-    // Was 'hourly' — but bulk-imported historical dispatches carry their own
-    // real (often old) start_time, not the upload time. Defaulting to a
-    // 1-hour window meant Reports looked completely empty right after every
-    // bulk import, even though the trips were saved correctly. 'all' shows
-    // everything on first load; the period buttons still let you narrow it.
+    /
+
     trcSetPeriod('all', document.querySelector('#trcTab-trips .trc-period-row .filter-btn'));
   }
   if (!document.getElementById('trcAuditFrom').value) {
@@ -5962,9 +5657,7 @@ function renderTracking() {
 
   const vehicles = document.getElementById('trackingVehicles');
   if (vehicles) {
-    // Show every truck that should be on the road, not just the ones that
-    // happen to have a fresh GPS ping — a truck with no signal is exactly
-    // the thing dispatch needs to notice, not something to hide.
+
     vehicles.innerHTML = activeTrucks.map(t=>{
       const p = pos[t.id];
       const dr = state.db.drivers.find(d=>d.truckId===t.id);
@@ -6005,9 +5698,7 @@ function renderTracking() {
   }
 }
 
-// Lightweight, status-derived stand-in for real geofence entry/exit
-// detection — no zone/radius math yet, just turns trip status into a
-// plausible gate-style feed so dispatch has something actionable to click.
+
 function geofenceEvents() {
   const events = [];
   (state.db.trips||[]).forEach(t => {
@@ -6037,10 +5728,7 @@ function renderGeofenceEventDetail(e) {
   </div>`;
 }
 
-// Free, no-API-key street-level imagery via Google's public embed — same
-// approach as Jastar. If Google hasn't photographed the exact spot (common
-// at depots/private yards), the iframe just stays blank and the "Open in
-// Google Maps" link still lets dispatch check the surrounding area.
+
 function showStreetView(lat, lng, label) {
   const embedUrl = `https://www.google.com/maps?layer=c&cbll=${lat},${lng}&output=svembed`;
   const openUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
@@ -6101,11 +5789,7 @@ function subscribeTrackingRealtime() {
 
 
 let _liveSyncDebounce = null;
-// Set true for the duration of any bulk import (see processBulkDispatch /
-// processBulkInward). While true, realtime-triggered refreshes are skipped
-// entirely — a bulk write can fire hundreds of postgres_changes events, and
-// there's nothing useful to refresh mid-import anyway since the importer
-// updates the UI itself once it's done.
+
 let _bulkWriteInProgress = false;
 
 function subscribeLiveSync() {
@@ -6133,12 +5817,7 @@ function subscribeLiveSync() {
   state._liveSyncChannel = channel.subscribe();
 }
 
-// ── Auto-refresh mode ──────────────────────────────────────────────────
-// A user-facing timer that re-fetches ALL app data on a fixed interval,
-// independent of the realtime live-sync above. Useful as a safety net on
-// unreliable connections, or on shared/kiosk screens where nobody is
-// actively interacting but the data should still stay current. Preference
-// is per-device (localStorage), not a shared system setting.
+
 const AUTO_REFRESH_STORAGE_KEY = 'gargo_auto_refresh';
 const AUTO_REFRESH_DEFAULT_SECS = 60;
 let _autoRefreshTimer = null;
@@ -6169,13 +5848,13 @@ function stopAutoRefresh() {
   if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
 }
 
-// Called once at boot to resume the user's saved preference.
+
 function initAutoRefresh() {
   const cfg = autoRefreshConfig();
   if (cfg.enabled) startAutoRefresh(cfg.intervalSecs);
 }
 
-// Wired to the Settings → Auto-Refresh Mode toggle.
+
 function saveAutoRefreshSettings() {
   const enabled = !!document.getElementById('st_autoRefreshEnabled')?.checked;
   const intervalSecs = Number(document.getElementById('st_autoRefreshInterval')?.value) || AUTO_REFRESH_DEFAULT_SECS;
@@ -6215,14 +5894,7 @@ async function refreshFromServer() {
   const modalOpen = document.getElementById('modalOverlay')?.classList.contains('active');
   if (modalOpen) { _liveSyncDebounce = setTimeout(refreshFromServer, 1500); return; }
 
-  // A burst of realtime events (e.g. a bulk import writing hundreds of rows)
-  // can re-trigger this faster than one loadDB() round-trip completes. Without
-  // this guard, overlapping loadDB() calls stack up — each firing ~19 parallel
-  // full-table queries — and exhaust Supabase's connection pool, which then
-  // makes *every* query on *every* table start timing out, including the
-  // write that triggered this refresh in the first place. Coalesce instead:
-  // if a refresh is already running, just remember to run one more after it
-  // finishes, rather than starting a second one now.
+
   if (_refreshInFlight) { _refreshQueuedAgain = true; return; }
   _refreshInFlight = true;
 
@@ -7680,40 +7352,25 @@ function depOpsReadyCard(entry) {
 
 const CONTAINER_TYPE_OPTIONS = ['20ft Dry', '40ft Dry', '20ft HC', '40ft HC', '20ft Reefer', '40ft Reefer', 'Flat Rack', 'Open Top', 'Tank', 'Hazmat', 'Heavy Duty', 'LCL', 'Platform', 'LC (Unspecified)'];
 
-// Maps the shorthand container-type codes used in the depot's own gate
-// registers (Received.xlsx / DISPATCH.xlsx "Type" column: DV, FL, FR, HC,
-// HD, LC, OT, PL, TK) onto the app's CONTAINER_TYPE_OPTIONS. HD and DV are
-// both treated as standard "Dry" containers — HD is by far the dominant
-// 20ft code in the historical data and DV ("Dry Van") is the rare
-// equivalent, so both collapse to Dry. TK/OT/FR/FL/PL are unsized
-// (composeCtype keeps them size-agnostic, matching how the rest of the app
-// already treats Tank/Open Top/Flat Rack/Platform). LC's real meaning
-// wasn't clear from the source data, so it's kept as its own literal
-// category rather than guessed — rename the option below if you know what
-// it should be.
+
 const DEPOT_TYPE_CODE_MAP = {
   'DV': 'Dry', 'HD': 'Dry', 'HC': 'HC',
   'FR': 'Flat Rack', 'FL': 'Flat Rack', 'OT': 'Open Top',
   'PL': 'Platform', 'TK': 'Tank', 'LC': 'LC (Unspecified)',
 };
-// sizeRaw can be "20"/"40" (bare number, as in the historical registers) or
-// "20ft"/"40ft" (as used elsewhere in the app) — normalize either way.
+
 function composeCtypeFromDepotCode(sizeRaw, codeRaw) {
   const sizeStr = String(sizeRaw || '').trim();
   const sizeFt = sizeStr ? (/ft$/i.test(sizeStr) ? sizeStr : `${parseInt(sizeStr, 10)}ft`) : '';
   const code = String(codeRaw || '').trim().toUpperCase();
   const mapped = DEPOT_TYPE_CODE_MAP[code];
   if (mapped) return composeCtype(sizeFt, mapped);
-  // Not a recognized depot code — fall back to the normal size+type compose
-  // (handles values that are already full CONTAINER_TYPE_OPTIONS labels).
+
   return composeCtype(sizeFt || sizeStr, codeRaw);
 }
 const CARGO_STATUS_OPTIONS = ['Empty', 'Laden / Full', 'Part Load', 'Damaged Cargo'];
 
-// Size + Type are derived from CONTAINER_TYPE_OPTIONS rather than a separate
-// hardcoded list, so the Dispatch/Inward "Size" + "Type" selects can never
-// produce a combination that the rest of the app (reports, filters, bulk
-// import matching) doesn't already recognise as a valid container type.
+
 function ctypeSizeOptions() {
   const sizes = [];
   CONTAINER_TYPE_OPTIONS.forEach(o => { const m = o.match(/^(\d+ft)\s/); if (m && sizes.indexOf(m[1]) === -1) sizes.push(m[1]); });
@@ -8454,26 +8111,14 @@ function depOpsReportsReset() {
   renderDepOpsReports();
 }
 
-// Maps a trip (dispatch console record, manual or bulk-imported) onto the
-// same row shape DepOps → Reports renders for interchange records. The
-// Movement filter here only offers Gate-In/Gate-Out/Depot-In/Depot-Out —
-// there's no separate "outward type" concept in this screen — so a trip's
-// direction collapses onto the plain gate vocabulary: an outward trip
-// (workType 'Depot → Port', e.g. a bulk dispatch import) reads as a
-// Gate-Out movement, an inward trip (workType 'Port → Depot', e.g. a bulk
-// received-register import) reads as Gate-In.
+
 function _tripToInterchangeReportRow(t) {
   const outward = isOutwardWorkType(t.workType);
   return {
     id: t.id, container: t.container, type: outward ? 'Gate-Out' : 'Gate-In',
     ctype: t.ctype || '', line: t.shippingLine || '', condition: '',
     truck: t.truckId || '', driver: t.driverId || '',
-    // Bulk-imported trips are always saved as 'completed' (historical fact,
-    // already verified) — treat that the same way bulk interchange imports
-    // are treated ('approved'), so the Status filter and Pending/Approved
-    // summary counts stay meaningful across both source tables. A trip
-    // that's still actively moving reads as 'pending' since it isn't a
-    // finalized gate record yet.
+
     status: t.status === 'completed' ? 'approved' : 'pending',
     repairTotal: 0,
     date: outward ? (t.dateOut || t.startTime) : t.startTime,
@@ -8491,14 +8136,7 @@ async function renderDepOpsReports() {
   const from = document.getElementById('depopsRptFrom')?.value || '';
   const to = document.getElementById('depopsRptTo')?.value || '';
 
-  // Dispatch/inward movements recorded as trips (manual or bulk-imported,
-  // e.g. via the Dispatch Console's bulk upload) previously never showed up
-  // here at all — this screen only ever read state.db.interchange. That's
-  // why bulk-uploaded dispatch/received registers could be missing from
-  // DepOps → Reports, and why filtering "Gate-Out" never surfaced a bulk
-  // dispatch import. Fold trips in, mapped onto the same Gate-In/Gate-Out
-  // vocabulary the Movement filter uses, exactly like Depot Report already
-  // does for its own inward/outward lists.
+
   let rows = [
     ...(state.db.interchange || []).map(i => ({ ...i, _reportSource: 'interchange' })),
     ...(state.db.trips || []).map(_tripToInterchangeReportRow),
