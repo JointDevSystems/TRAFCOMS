@@ -1,2 +1,97 @@
-const CACHE_VERSION="gargo-shell-v29",STATIC_FILES=["./icons/icon-192.png","./icons/icon-512.png"],SHELL_FILES=["./","./index.html","./styles.css","./script.js","./ghd-tariff-schedule.js","./booking-documents.js","./manifest.json"],ALL_FILES=[...SHELL_FILES,...STATIC_FILES];self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE_VERSION).then(e=>e.addAll(ALL_FILES))),self.skipWaiting()}),self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(e=>Promise.all(e.filter(e=>e!==CACHE_VERSION).map(e=>caches.delete(e)))).then(()=>self.clients.claim()).then(()=>self.clients.matchAll({type:"window"}).then(e=>{e.forEach(e=>e.postMessage({type:"SW_UPDATED",version:CACHE_VERSION}))})))}),self.addEventListener("fetch",e=>{const t=e.request,n=new URL(t.url);if("GET"!==t.method||n.origin!==self.location.origin)return;SHELL_FILES.some(e=>n.pathname.endsWith(e.replace("./","/"))||"./"===e&&"/"===n.pathname)?e.respondWith(fetch(t).then(e=>{if(e&&e.ok){const n=e.clone();caches.open(CACHE_VERSION).then(e=>e.put(t,n))}return e}).catch(()=>caches.match(t))):e.respondWith(caches.match(t).then(e=>{const n=fetch(t).then(e=>{if(e&&e.ok){const n=e.clone();caches.open(CACHE_VERSION).then(e=>e.put(t,n))}return e}).catch(()=>e);return e||n}))});
-//# sourceMappingURL=sw.js.map
+const CACHE_VERSION = 'gargo-shell-v1.1';
+
+const STATIC_FILES = [
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+];
+
+const SHELL_FILES = [
+  './',
+  './index.html',
+  './styles.css',
+  './js/core-state.js',
+  './js/core-db.js',
+  './js/client-auth.js',
+  './js/trucks-drivers.js',
+  './js/dispatch-trips.js',
+  './js/depot-ops.js',
+  './js/interchange-shutouts.js',
+  './js/maintenance-fuel-workshop.js',
+  './js/invoicing.js',
+  './js/allocation.js',
+  './js/tracking.js',
+  './js/reports-audit.js',
+  './js/admin-ui-shell.js',
+  './js/bootstrap.js',
+  './ghd-tariff-schedule.js',
+  './booking-documents.js',
+  './manifest.json',
+];
+
+const ALL_FILES = [...SHELL_FILES, ...STATIC_FILES];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_VERSION).then((cache) => cache.addAll(ALL_FILES))
+  );
+
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
+      .then(() => {
+        return self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION }));
+        });
+      })
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+
+  if (req.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
+
+  const isShellFile = SHELL_FILES.some((f) => url.pathname.endsWith(f.replace('./', '/')) || (f === './' && url.pathname === '/'));
+
+  if (isShellFile) {
+   
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+ 
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      const network = fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => cached);
+      return cached || network;
+    })
+  );
+});
