@@ -37,7 +37,7 @@ function showTruckDetail(id) {
   if (!t) return;
   const trips = state.db.trips.filter(tr=>tr.truckId===id).slice(-5);
   const maint = state.db.maintenance.filter(m=>m.truckId===id);
-  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Wialon GPS Unit</div><div style="font-size:9.5px;color:var(--text-3);margin-bottom:8px;line-height:1.5">If this truck has a dedicated Wialon AVL tracker fitted, enter its Wialon unit ID (from core/search_items) to source its live position from Wialon instead of the driver's phone.</div><div style="display:flex;gap:6px"><input id="tw_wialonId" value="${esc(t.wialonUnitId||'')}" placeholder="Wialon unit ID" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:11.5px"/><button class="tbl-btn" onclick="saveTruckWialonId('${id}')">Save</button></div></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
+  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn" onclick="showEditTruckModal('${id}')">✏️ Edit Truck Details</button><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Wialon GPS Unit</div><div style="font-size:9.5px;color:var(--text-3);margin-bottom:8px;line-height:1.5">If this truck has a dedicated Wialon AVL tracker fitted, enter its Wialon unit ID (from core/search_items) to source its live position from Wialon instead of the driver's phone.</div><div style="display:flex;gap:6px"><input id="tw_wialonId" value="${esc(t.wialonUnitId||'')}" placeholder="Wialon unit ID" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:11.5px"/><button class="tbl-btn" onclick="saveTruckWialonId('${id}')">Save</button></div></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
 }
 
 function quickSetTruckStatus(id, status) {
@@ -87,6 +87,49 @@ function saveTruck() {
   if (t.wialonUnitId && state.db.settings?.wialonEnabled) startWialonPolling();
 }
 
+function showEditTruckModal(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const t = state.db.trucks.find(t=>t.id===id);
+  if (!t) return;
+  const typeOptions = ['Prime Mover','Flatbed','Tipper','Tanker','Lowbed'];
+  openModal(`Edit Truck — ${t.reg}`, `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="et_reg" value="${esc(t.reg)}" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="et_make" value="${esc(t.make)}" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="et_type">${typeOptions.map(o=>`<option ${t.type===o?'selected':''}>${o}</option>`).join('')}</select></div><div class="fg"><label>Year</label><input id="et_year" type="number" value="${t.year||''}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="et_colour" value="${esc(t.colour||'')}"/></div><div class="fg"><label>Fuel Level %</label><input id="et_fuel" type="number" min="0" max="100" value="${t.fuelPct||0}"/></div></div><div class="form-row-2"><div class="fg"><label>Odometer (km)</label><input id="et_odo" type="number" value="${t.mileage||0}"/></div><div class="fg"><label>Licence Plate</label><input id="et_plate" value="${esc(t.licencePlate||'')}"/></div></div><div class="fg"><label>VIN / Chassis No. <span class="label-optional">(optional)</span></label><input id="et_vin" value="${esc(t.vin||'')}"/></div><div class="form-row-2"><div class="fg"><label>Last Service</label><input id="et_lastsvc" type="date" value="${t.lastService?String(t.lastService).slice(0,10):''}"/></div><div class="fg"><label>Next Service Due</label><input id="et_nextsvc" type="date" value="${t.nextService?String(t.nextService).slice(0,10):''}"/></div></div><div class="fg"><label>Notes</label><textarea id="et_notes" rows="2">${esc(t.notes||'')}</textarea></div><button class="submit-btn" onclick="saveTruckEdit('${id}')">Save Changes →</button>`);
+}
+
+function saveTruckEdit(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const t = state.db.trucks.find(t=>t.id===id);
+  if (!t) return;
+  const reg  = document.getElementById('et_reg').value.trim().toUpperCase();
+  const make = document.getElementById('et_make').value.trim();
+  if (!reg || !make) { toast('Registration and make are required', 'error'); return; }
+  if (!/^[A-Z0-9\s]{3,10}$/.test(reg)) { toast('Invalid registration format. Use letters and numbers only.', 'error'); return; }
+  const dup = findTruckByReg(reg, id);
+  if (dup) { toast(`${reg} is already registered to another truck`, 'error'); return; }
+
+  const oldReg = t.reg;
+  t.reg     = reg;
+  t.make    = make;
+  t.type    = document.getElementById('et_type').value;
+  t.year    = parseInt(document.getElementById('et_year').value)||t.year;
+  t.colour  = document.getElementById('et_colour').value.trim()||t.colour;
+  t.fuelPct = Math.min(100, Math.max(0, parseInt(document.getElementById('et_fuel').value)||0));
+  t.mileage = Math.max(0, parseInt(document.getElementById('et_odo').value)||0);
+  t.licencePlate = document.getElementById('et_plate').value.trim()||reg;
+  t.vin     = document.getElementById('et_vin').value.trim();
+  const lastSvc = document.getElementById('et_lastsvc').value;
+  const nextSvc = document.getElementById('et_nextsvc').value;
+  if (lastSvc) t.lastService = new Date(lastSvc).toISOString();
+  if (nextSvc) t.nextService = new Date(nextSvc).toISOString();
+  t.notes = sanitize(document.getElementById('et_notes').value.trim());
+
+  scheduleSave();
+  addAudit(state.profile.username, 'Truck Edited', `${oldReg}${oldReg!==reg?` → ${reg}`:''} — details updated`);
+  buildBadges();
+  closeModal();
+  renderTrucks(_truckFilter);
+  toast(`${reg} updated`, 'success');
+}
+
 let _driverFilter='all';
 
 function filterDrivers(f,btn){ _driverFilter=f; document.querySelectorAll('#sec-drivers .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderDrivers(f); }
@@ -103,7 +146,7 @@ function showDriverDetail(id) {
   if (!d) return;
   const licDays = Math.round((new Date(d.licenceExp)-Date.now())/86400000);
   const licWarn = licDays < 90;
-  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">Linked Login (Driver Portal Access)</label><select onchange="linkDriverProfile('${id}', this.value)" style="width:100%;margin-top:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"><option value="">— Not linked —</option>${state.db.profiles.filter(p=>p.role==='driver').map(p=>`<option value="${p.id}" ${d.profileId===p.id?'selected':''}>${p.name} (${p.username})</option>`).join('')}</select></div>${adminDeleteBtn('drivers', id)}</div>`:''}`);
+  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn" onclick="showEditDriverModal('${id}')">✏️ Edit Driver Details</button></div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">Linked Login (Driver Portal Access)</label><select onchange="linkDriverProfile('${id}', this.value)" style="width:100%;margin-top:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"><option value="">— Not linked —</option>${state.db.profiles.filter(p=>p.role==='driver').map(p=>`<option value="${p.id}" ${d.profileId===p.id?'selected':''}>${p.name} (${p.username})</option>`).join('')}</select></div>${adminDeleteBtn('drivers', id)}</div>`:''}`);
 }
 
 function quickSetDriverStatus(id, status) {
@@ -162,6 +205,54 @@ function saveDriver() {
   closeModal();
   renderDrivers('all');
   toast(`${name} added`, 'success');
+}
+
+function showEditDriverModal(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const d = state.db.drivers.find(d=>d.id===id);
+  if (!d) return;
+  openModal(`Edit Driver — ${d.name}`, `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="ed_name" value="${esc(d.name)}"/></div><div class="fg"><label>Phone</label><input id="ed_phone" value="${esc(d.phone||'')}"/></div></div><div class="form-row-2"><div class="fg"><label>Licence No.</label><input id="ed_lic" value="${esc(d.licence||'')}"/></div><div class="fg"><label>Licence Expiry</label><input id="ed_licexp" type="date" value="${d.licenceExp?String(d.licenceExp).slice(0,10):''}"/></div></div><div class="form-row-2"><div class="fg"><label>ID Number</label><input id="ed_idno" value="${esc(d.idNo||'')}"/></div><div class="fg"><label>Rating</label><input id="ed_rating" type="number" min="0" max="5" step="0.1" value="${d.rating||0}"/></div></div><div class="form-row-2"><div class="fg"><label>Assigned Truck</label><select id="ed_truck"><option value="">— Unassigned —</option>${state.db.trucks.map(t=>`<option value="${t.id}" ${d.truckId===t.id?'selected':''}>${t.reg} — ${t.make}</option>`).join('')}</select></div><div class="fg"><label>Location</label><input id="ed_location" value="${esc(d.location||'')}"/></div></div><div class="fg"><label>Current Load <span class="label-optional">(optional)</span></label><input id="ed_load" value="${esc(d.load||'')}" placeholder="e.g. container no. — leave blank if none"/></div><button class="submit-btn" onclick="saveDriverEdit('${id}')">Save Changes →</button>`);
+}
+
+function saveDriverEdit(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const d = state.db.drivers.find(d=>d.id===id);
+  if (!d) return;
+  const name  = document.getElementById('ed_name').value.trim();
+  const phone = document.getElementById('ed_phone').value.trim();
+  const lic   = document.getElementById('ed_lic').value.trim().toUpperCase();
+  if (!name) { toast('Full name is required', 'error'); return; }
+  if (!validatePhone(phone)) { toast('Invalid phone number format', 'error'); return; }
+  if (!lic) { toast('Licence number is required', 'error'); return; }
+  const dupPhone = findDriverByPhone(phone, id);
+  if (dupPhone) { toast(`A driver with phone ${phone} already exists (${dupPhone.name})`, 'error'); return; }
+  const dupLic = state.db.drivers.find(dr=>dr.id!==id && (dr.licence||'').toUpperCase()===lic);
+  if (dupLic) { toast(`Licence ${lic} is already registered to ${dupLic.name}`, 'error'); return; }
+
+  const oldName = d.name;
+  d.name   = name;
+  d.phone  = phone;
+  d.licence = lic;
+  const licExp = document.getElementById('ed_licexp').value;
+  if (licExp) d.licenceExp = new Date(licExp).toISOString();
+  d.idNo    = document.getElementById('ed_idno').value.trim();
+  d.rating  = Math.min(5, Math.max(0, parseFloat(document.getElementById('ed_rating').value)||0));
+  d.location = document.getElementById('ed_location').value.trim()||d.location;
+  d.load    = document.getElementById('ed_load').value.trim()||null;
+
+  const newTruckId = document.getElementById('ed_truck').value || null;
+  if (newTruckId !== (d.truckId||null)) {
+    if (d.truckId) { const oldT = state.db.trucks.find(t=>t.id===d.truckId); if (oldT && oldT.driver===d.id) oldT.driver=null; }
+    if (newTruckId) { pairDriverTruck(newTruckId, d.id); }
+    else { d.truckId = null; }
+  }
+
+  scheduleSave();
+  addAudit(state.profile.username, 'Driver Edited', `${oldName}${oldName!==name?` → ${name}`:''} — details updated`);
+  closeModal();
+  renderDrivers(_driverFilter);
+  renderTrucks(_truckFilter);
+  toast(`${name} updated`, 'success');
 }
 
 const DRIVER_TRIP_STEPS = ['loaded','on_trip','offloaded','breakdown','completed'];
