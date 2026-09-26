@@ -263,7 +263,170 @@ function markInvoiceSent(id) {
   toast(`${inv.ref} marked as sent`, 'success');
 }
 
-function downloadInvoicePDF(id) { toast('PDF export — integrate with jsPDF for production', 'info'); }
+async function downloadInvoicePDF(id) {
+  const inv = state.db.invoices.find(i=>i.id===id);
+  if (!inv) { toast('Invoice not found', 'error'); return; }
+  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
+
+  await ensureTripsLoaded(inv.trips);
+  const trips = state.db.trips.filter(t=>inv.trips.includes(t.id));
+  const ic  = invoiceConfig();
+  const ccy = inv.currency || 'USD';
+  const vatRatePct = ic.vatRate;
+  const hasLineItems = Array.isArray(inv.lineItems) && inv.lineItems.length > 0;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const GOLD = [201, 162, 39];
+  const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
+  const money = (n) => `${ccy} ${Number(n||0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  function fieldBox(x, y, w, h, label, value) {
+    doc.setDrawColor(150); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+    doc.text(String(label).toUpperCase(), x + 2, y + 4.5);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(20);
+    const val = doc.splitTextToSize(String(value || '—'), w - 4);
+    doc.text(val.slice(0, h > 16 ? 4 : 2), x + 2, y + (h > 10 ? 10 : 9));
+  }
+  function sectionLabel(text, y) {
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GOLD);
+    doc.text(text.toUpperCase(), MARGIN, y);
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.line(MARGIN, y + 1.5, RIGHT, y + 1.5);
+    doc.setTextColor(20);
+  }
+
+  // ---- header --------------------------------------------------------
+  doc.setDrawColor(...GOLD); doc.setLineWidth(0.5); doc.roundedRect(MARGIN, 10, 14, 14, 2, 2);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(11); doc.setTextColor(...GOLD);
+  doc.text('GH', MARGIN + 7, 19, { align: 'center' });
+
+  doc.setFont(undefined, 'bold'); doc.setFontSize(15); doc.setTextColor(20);
+  doc.text(ic.companyName.toUpperCase(), MARGIN + 18, 16);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+  doc.text(ic.companyLocation, MARGIN + 18, 21.5);
+  doc.text(ic.poBox, MARGIN + 18, 26);
+
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(20);
+  doc.text('INVOICE', RIGHT, 16, { align: 'right' });
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+  doc.text((inv.status || '').toUpperCase(), RIGHT, 21.5, { align: 'right' });
+  doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(MARGIN, 30, RIGHT, 30);
+
+  // ---- meta row: Cust VAT Reg / Company VAT Reg / Inv Date / Invoice No. ----
+  let y = 34;
+  const metaW = CONTENT_W / 4;
+  fieldBox(MARGIN, y, metaW - 2, 12, 'Cust VAT Reg', inv.custVatReg || '—');
+  fieldBox(MARGIN + metaW, y, metaW - 2, 12, 'Company VAT Reg', ic.companyVatReg);
+  fieldBox(MARGIN + metaW*2, y, metaW - 2, 12, 'Inv. Date', fmtDate(inv.date));
+  fieldBox(MARGIN + metaW*3, y, metaW - 2, 12, 'Invoice No.', inv.ref);
+  y += 16;
+
+  // ---- Invoice To / Terms & Due Date ----------------------------------
+  const boxH = 24;
+  doc.setDrawColor(150); doc.setLineWidth(0.25); doc.rect(MARGIN, y, 112, boxH);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+  doc.text('INVOICE TO', MARGIN + 2, y + 4.5);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(20);
+  doc.text(inv.client, MARGIN + 2, y + 9.5);
+  if (inv.clientAddress) {
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(90);
+    doc.text(doc.splitTextToSize(inv.clientAddress, 108).slice(0, 4), MARGIN + 2, y + 14);
+  }
+  fieldBox(MARGIN + 114, y, 32, boxH/2 - 1, 'Terms', inv.terms || 'Due on receipt');
+  fieldBox(MARGIN + 114, y + boxH/2 + 1, 32, boxH/2 - 1, 'Due Date', fmtDate(inv.due));
+  fieldBox(MARGIN + 148, y, CONTENT_W - 148, boxH, 'Trips', String(inv.trips?.length || 0));
+  y += boxH + 6;
+
+  // ---- line items table ------------------------------------------------
+  sectionLabel('Items', y); y += 5;
+  const cols = [
+    { key: 'desc', label: 'Description', x: MARGIN, w: 70 },
+    { key: 'cont', label: 'Container', x: MARGIN + 70, w: 30 },
+    { key: 'unit', label: 'Qty / Unit', x: MARGIN + 100, w: 32 },
+    { key: 'amt',  label: 'Amount', x: MARGIN + 132, w: 25 },
+    { key: 'vat',  label: 'VAT', x: MARGIN + 157, w: 25 },
+  ];
+  doc.setDrawColor(150); doc.setLineWidth(0.25); doc.setFillColor(235, 235, 235);
+  doc.rect(MARGIN, y, CONTENT_W, 7, 'FD');
+  cols.forEach(c => doc.rect(c.x, y, c.w, 7));
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
+  cols.forEach(c => doc.text(c.label, c.x + 1.5, y + 4.7));
+  y += 7;
+
+  const rows = hasLineItems
+    ? inv.lineItems.map(l => ({
+        desc: l.label, cont: l.container || '—',
+        unit: `${l.unit||''}${l.qty>1?` × ${l.qty}`:''}`,
+        amt: l.amount != null ? l.amount : l.amountKsh,
+      }))
+    : (trips.length ? trips.map(t => ({ desc: `Haulage — ${t.ctype}`, cont: t.container, unit: t.workType, amt: inv.subtotal/Math.max(trips.length,1) }))
+                    : [{ desc: 'General haulage services', cont: '—', unit: '', amt: inv.subtotal }]);
+
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+  rows.forEach(r => {
+    const lines = doc.splitTextToSize(r.desc || '—', cols[0].w - 3);
+    const rowH = Math.max(7, lines.length * 3.6 + 3);
+    if (y + rowH > 275) { doc.addPage(); y = 20; }
+    cols.forEach(c => doc.rect(c.x, y, c.w, rowH));
+    doc.text(lines, cols[0].x + 1.5, y + 4.6);
+    doc.text(String(r.cont), cols[1].x + 1.5, y + 4.6);
+    doc.text(String(r.unit || '—'), cols[2].x + 1.5, y + 4.6);
+    doc.text(money(r.amt), cols[3].x + cols[3].w - 1.5, y + 4.6, { align: 'right' });
+    const lineVat = vatRatePct ? money(r.amt * vatRatePct / 100) : 'Exempt';
+    doc.text(lineVat, cols[4].x + cols[4].w - 1.5, y + 4.6, { align: 'right' });
+    y += rowH;
+  });
+  y += 6;
+
+  if (y > 230) { doc.addPage(); y = 20; }
+
+  // ---- payable-to / totals ----------------------------------------------
+  sectionLabel('Payment', y); y += 5;
+  const payW = 96, totW = CONTENT_W - payW - 6;
+  const payH = 34;
+  fieldBox(MARGIN, y, payW, payH, `Invoice Payable To`, '');
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(20);
+  doc.text(ic.companyName, MARGIN + 2, y + 12);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(90);
+  const bankLines = [
+    `Bank: ${ic.bankName}`, `Account Number: ${ic.bankAccount || '—'}`,
+    `Currency: ${ccy}`, `Branch: ${ic.branchName || '—'}`, `Swift Code: ${ic.bankSwift}`,
+  ];
+  doc.text(bankLines, MARGIN + 2, y + 17);
+
+  const totX = MARGIN + payW + 6;
+  doc.setDrawColor(150); doc.rect(totX, y, totW, payH);
+  const totRows = [
+    ['Subtotal', money(inv.subtotal)],
+    [`VAT ${vatRatePct}%`, money(inv.vat)],
+    ['Total', money(inv.total)],
+    ['Payments/Credits', money(inv.paid)],
+    ['Balance Due', money(inv.total - inv.paid)],
+  ];
+  let ty = y + 6;
+  totRows.forEach(([label, val], i) => {
+    const isLast = i === totRows.length - 1;
+    doc.setFont(undefined, isLast ? 'bold' : 'normal'); doc.setFontSize(isLast ? 9 : 8);
+    doc.setTextColor(isLast ? 20 : 80);
+    doc.text(label, totX + 3, ty);
+    doc.text(val, totX + totW - 3, ty, { align: 'right' });
+    ty += (payH - 6) / totRows.length;
+  });
+  y += payH + 8;
+
+  if (inv.notes) {
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.setFont(undefined, 'italic'); doc.setFontSize(8); doc.setTextColor(120);
+    doc.text(doc.splitTextToSize(inv.notes, CONTENT_W), MARGIN, y);
+  }
+
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(160);
+  doc.text('This is a computer-generated invoice.', MARGIN, 289);
+
+  doc.save(`${inv.ref}.pdf`);
+  addAudit(state.profile.username, 'Invoice PDF Downloaded', inv.ref);
+}
 
 let _ciLastLineItems = [];
 
