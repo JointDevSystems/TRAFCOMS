@@ -78,6 +78,14 @@ async function saveDirty(table, rows, toRowFn) {
     console.warn('invoices.line_items column not found — saving without it. Run: alter table invoices add column if not exists line_items jsonb default \'[]\'::jsonb;');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.line_items; return row; }));
   }
+  // Shutouts gained an img column (photo upload) — if the Supabase table
+  // hasn't been migrated yet, drop the field and retry once rather than
+  // losing the whole shutout save (the photo itself just won't persist
+  // until the column is added).
+  if (failure && table === 'shutouts' && /\bimg\b/i.test(failure.error?.message || '')) {
+    console.warn('shutouts.img column not found — saving without it. Run: alter table shutouts add column if not exists img text default \'\';');
+    failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.img; return row; }));
+  }
   if (failure) return failure;
   dirty.forEach(r => { delete r._dirty; });
   return null;
