@@ -147,6 +147,31 @@ async function main() {
   }
   console.log(`interchange: ${icCount} migrated`);
 
+  // ── 9b. vessel_prestaging (references trips, shipping_lines, trucks, drivers) ──
+  let pstgCount = 0;
+  for (const p of db.vesselPrestaging || []) {
+    const { error } = await supabase.from('vessel_prestaging').insert({
+      trip_id: idMap.trips.get(p.tripId) || null,
+      container: p.container, ctype: p.ctype || null,
+      line_id: idMap.shippingLines.get(p.line) || null,
+      driver_id: idMap.drivers.get(p.driverId) || null,
+      truck_id: idMap.trucks.get(p.truckId) || null,
+      vessel: p.vessel || null, voyage: p.voyage || null,
+      consignee: p.consignee || null, planned_date: p.plannedDate || null,
+      shift: p.shift || null, origin: p.origin || null,
+      destination: p.destination || null, notes: p.notes || null,
+      status: p.status, created_by: p.createdBy || null,
+      created_at: p.createdAt, resolved_at: p.resolvedAt || null,
+      // shutout_id intentionally left null: the shutouts loop above doesn't
+      // capture new IDs, so there's no fresh ID to link here. If you need
+      // this link preserved, add .select('id').single() to the shutouts
+      // insert and map old shutout id -> new id like invoices does.
+    });
+    if (error) { console.error('vessel_prestaging failed:', p.id, error.message); continue; }
+    pstgCount++;
+  }
+  console.log(`vessel_prestaging: ${pstgCount} migrated`);
+
   // ── 10. requisitions (no FKs — requester is stored as free text) ──
   let reqCount = 0;
   for (const r of db.requisitions || []) {

@@ -179,9 +179,7 @@ function showAddPrestageModal() {
   `);
 }
 
-// When a container is picked, quietly prefill (never overwrite) the
-// shipping line and origin from what's already known about its trip —
-// the clerk can still change either before saving.
+
 function onPrestageTripChange() {
   const tripEl = document.getElementById('ps_trip');
   const trip = tripEl && state.db.trips.find(t => t.id === tripEl.value);
