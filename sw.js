@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v2.3';
+const CACHE_VERSION = 'gargo-shell-v2.4';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
@@ -16,6 +16,7 @@ const SHELL_FILES = [
   './js/dispatch-trips.js',
   './js/depot-ops.js',
   './js/interchange-shutouts.js',
+  './js/vessel-prestaging.js',
   './js/maintenance-fuel-workshop.js',
   './js/invoicing.js',
   './js/allocation.js',

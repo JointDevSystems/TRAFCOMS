@@ -2,10 +2,10 @@
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'],
-  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','depotreport'],
-  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','depotreport','fuel'],
-  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaging','depotreport','shippinglines','requisitions','workshop'],
+  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaging','depotreport'],
+  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaging','depotreport','fuel'],
+  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaging','depotreport','shippinglines','requisitions','workshop'],
   finance:  ['trips','shippinglines'],
   viewer:   ['trucks','drivers','trips'],
 };
@@ -22,6 +22,7 @@ function buildBadges() {
   set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
   set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
+  set('badge-prestaging',   (db.vesselPrestaging||[]).filter(p=>p.status==='staged').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
   set('badge-depotreport',  computeDepotReportDuplicates().length);
@@ -77,6 +78,7 @@ const SECTION_META = {
   depops: ['Operations', 'DepOps'],
   maintenance:['Operations','Maintenance Log'], fuel:['Operations','Fuel Log'],
   shutout:['Container Ops','Shutout'], interchange:['Container Ops','Interchange'],
+  prestaging:['Container Ops','Vessel Prestaging'],
   depotreport:['Container Ops','Depot Report'],
   shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
   workshop:['Compliance','Workshop'], invoicing:['Finance','Invoicing'],
@@ -133,6 +135,7 @@ const sectionRenderers = {
   trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
   inward: renderInward,
   fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
+  prestaging:()=>renderPrestaging('staged'),
   depotreport: renderDepotReport,
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
   workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
@@ -700,7 +703,7 @@ async function executeClearData() {
   state.db = {
     trucks: [], drivers: [], trips: [], maintenance: [], fuel: [],
     shippingLines: [], shutouts: [], interchange: [], requisitions: [],
-    vesselLineMap: [],
+    vesselLineMap: [], vesselPrestaging: [],
     workshop: [], invoices: [], billingRates: defaultBillingRates(),
     allocationRules: [], trackingPositions: {}, auditLog: [],
     settings: state.db.settings || {
@@ -734,7 +737,7 @@ const DELETE_TABLE_LABELS = {
   trucks:'Truck', drivers:'Driver', trips:'Trip', maintenance:'Maintenance record',
   fuel:'Fuel log', shutouts:'Shutout record', interchange:'Interchange record',
   shippingLines:'Shipping line', requisitions:'Requisition', workshop:'Workshop job',
-  invoices:'Invoice',
+  invoices:'Invoice', vesselPrestaging:'Vessel prestaging record',
 };
 
 
@@ -742,7 +745,7 @@ const DELETE_TABLE_SUPABASE_NAMES = {
   trucks:'trucks', drivers:'drivers', trips:'trips', maintenance:'maintenance',
   fuel:'fuel_logs', shutouts:'shutouts', interchange:'interchange',
   shippingLines:'shipping_lines', requisitions:'requisitions', workshop:'workshop_jobs',
-  invoices:'invoices',
+  invoices:'invoices', vesselPrestaging:'vessel_prestaging',
 };
 
 function openModal(title, body) {

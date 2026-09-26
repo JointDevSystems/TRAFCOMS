@@ -522,6 +522,9 @@ body.driver-portal-active .mobile-nav-bar { display: none !important; }
 .s-open { background: rgba(245,158,11,0.12); color: var(--amber); border-color: rgba(245,158,11,0.22); }
 .s-resolved { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.22); }
 .s-redelivery { background: rgba(167,139,250,0.12); color: var(--purple); border-color: rgba(167,139,250,0.22); }
+.s-staged { background: rgba(201,162,39,0.12); color: var(--gold); border-color: var(--gold-border); }
+.s-shutout { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.22); }
+.s-cancelled { background: rgba(74,82,104,0.2); color: var(--text-3); border-color: rgba(74,82,104,0.3); }
 
 /* ══ TRUCK GRID ══ */
 .truck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }

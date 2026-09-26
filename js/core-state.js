@@ -132,7 +132,7 @@ function fmtTime(iso) { return new Date(iso).toLocaleTimeString('en-KE',{hour:'2
 function fmtDate(iso) { return new Date(iso).toLocaleDateString('en-KE',{day:'2-digit',month:'short',year:'numeric'}); }
 
 function sbadge(status) {
-  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery', loaded:'Loaded', offloaded:'Offloaded' };
+  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery', loaded:'Loaded', offloaded:'Offloaded', staged:'Staged', shutout:'Shutout', cancelled:'Cancelled' };
   return `<span class="sbadge s-${status}">${labels[status]||status}</span>`;
 }
 
@@ -158,10 +158,7 @@ function isDispatch() { return state.profile?.role === 'dispatch'; }
 
 function currentRole() { return state.profile?.role || 'viewer'; }
 
-// Marks a flagged bulk-import record as reviewed. Only clears the flag —
-// it never changes the underlying data, so whatever a clerk fixed (or
-// decided to leave as-is) stays exactly as they left it; this just takes
-// the record out of the "Flagged for Review" queue.
+
 function clearReviewFlag(kind, id) {
   const arr = kind === 'trips' ? state.db.trips : state.db.interchange;
   const rec = arr.find(x => x.id === id);
@@ -322,13 +319,7 @@ function readAllExcelSheetsAsRows(wb) {
   return allRows;
 }
 
-// Sanity-checks a parsed bulk-import date and pushes a review flag if it
-// looks like a data-entry error rather than a real date — e.g. a mistyped
-// year (2027/2028/2030 instead of 2026) or an implausibly old record. This
-// does NOT block the import or alter the date — legitimate far-future
-// dispatch bookings do exist in these registers — it only surfaces the row
-// under Flagged for a human to glance at, which is the check that was
-// missing and let bad years land silently in the DB before.
+
 function flagIfImplausibleDate(dt, issueTags, flagged, label) {
   if (!dt) return;
   const now = new Date();
@@ -344,11 +335,7 @@ function flagIfImplausibleDate(dt, issueTags, flagged, label) {
   }
 }
 
-// Parses a date the way Kenyan gate/depot registers actually write them —
-// DD/MM/YYYY (or DD/MM/YY) — instead of relying on JavaScript's native
-// Date parsing, which assumes the US MM/DD/YYYY convention for slash-
-// separated dates. Genuine Excel date cells (read with cellDates:true) are
-// returned as-is since they carry no ambiguity at all.
+
 function parseFlexibleDate(raw) {
   if (raw == null || raw === '') return null;
   if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
@@ -358,9 +345,7 @@ function parseFlexibleDate(raw) {
     let [, d, mo, y, h, mi, se] = m;
     d = parseInt(d, 10); mo = parseInt(mo, 10); y = parseInt(y, 10);
     if (y < 100) y += y < 70 ? 2000 : 1900;
-    // Unambiguous case: a "day" slot over 12 can only be the day, so the
-    // fields must actually be MM/DD — swap back. Otherwise (both <= 12,
-    // the normal ambiguous case) trust DD/MM, matching this data's convention.
+
     if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const dt = new Date(y, mo - 1, d, parseInt(h || 0, 10), parseInt(mi || 0, 10), parseInt(se || 0, 10));
@@ -377,9 +362,7 @@ function fillDatalist(id, arr, mapFn) {
   el.innerHTML = arr.map(i => `<option value="${esc(mapFn(i))}"></option>`).join('');
 }
 
-// Normalizes any header spelling ("Container No.", "B/L Number", "Shipping Line")
-// down to a plain lowercase key (containerno, blnumber, shippingline) so the
-// matcher below doesn't care how the source file's columns were labelled.
+
 function normalizeRowKeys(rows) {
   return rows.map(r => {
     const norm = {};
@@ -391,16 +374,7 @@ function normalizeRowKeys(rows) {
   });
 }
 
-// Detects a bulk file's direction (Inward/Outward) from its own column
-// headers rather than its filename. Filenames are unreliable — a real
-// gate/depot register is typically named after the shipping line or date
-// range, not "inward"/"outward" ("DISPATCH.xlsx", "Recieved.xlsx" — the
-// latter doesn't contain "in" or "inward" anywhere, so the old
-// filename-only heuristic silently defaulted it to Outward). The columns
-// themselves are unambiguous: a Dispatch/gate-out register carries "Date
-// Out" + "Receiving Party" + "Release Order No.", a Received/gate-in
-// register carries "Date In" + "Delivering Party" — checked here against
-// the already-normalized (lowercased, punctuation-stripped) row keys.
+
 function sniffBulkDirectionFromRows(normalizedRows) {
   if (!normalizedRows || !normalizedRows.length) return null;
   const keys = new Set();
