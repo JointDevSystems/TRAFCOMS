@@ -603,25 +603,45 @@ function populateDepotReportLineFilter() {
 }
 
 
-function computeDepotReportDuplicates() {
-  const all = state.db.interchange;
-
-  const dayGroups = {};
-  all.forEach(ic => {
-    const key = `${(ic.container || '').toUpperCase()}::${ic.type}::${new Date(ic.date).toDateString()}`;
-    (dayGroups[key] = dayGroups[key] || []).push(ic);
-  });
-  const exactDupes = Object.values(dayGroups)
-    .filter(list => list.length > 1)
-    .map(list => ({ kind: 'Same container, type & day', records: list, ids: list.map(i => i.id) }));
-
-  _depotReportDupes = [...exactDupes];
+// Duplicate detection has to compare EVERY interchange record against every
+// other one — that's inherently a full-register operation. Doing it in the
+// browser meant the whole 11,000+ row table had to be loaded just for this
+// one feature. It now runs as a set-based query in Postgres
+// (find_interchange_duplicates()) and returns only the rows that are
+// actually part of a duplicate group — typically a couple hundred rows, not
+// the whole register — which we then group client-side exactly as before.
+async function computeDepotReportDuplicates() {
+  try {
+    const { data, error } = await supabase.rpc('find_interchange_duplicates');
+    if (error) throw error;
+    const rows = (data || []).map(icFromRow);
+    const dayGroups = {};
+    rows.forEach(ic => {
+      const key = `${(ic.container || '').toUpperCase()}::${ic.type}::${new Date(ic.date).toDateString()}`;
+      (dayGroups[key] = dayGroups[key] || []).push(ic);
+    });
+    _depotReportDupes = Object.values(dayGroups)
+      .filter(list => list.length > 1)
+      .map(list => ({ kind: 'Same container, type & day', records: list, ids: list.map(i => i.id) }));
+  } catch (e) {
+    console.error('Duplicate scan failed:', e.message);
+    toast('Duplicate scan failed — check your connection', 'error');
+    _depotReportDupes = [];
+  }
   return _depotReportDupes;
 }
 
-function renderDepotReport() {
+async function renderDepotReport() {
   populateDepotReportLineFilter();
-  computeDepotReportDuplicates();
+
+  // Show a lightweight loading state on the duplicates tab while the RPC
+  // round-trips, rather than freezing with stale counts.
+  if (_depotReportTab === 'dupes') {
+    const dupesEl = document.getElementById('depotReportDupesList');
+    if (dupesEl) dupesEl.innerHTML = '<div class="empty-state"><div class="empty-state-label">Scanning register…</div></div>';
+  }
+
+  await computeDepotReportDuplicates();
 
   const inward  = _depotReportInwardEntries();
   const outward = _depotReportOutwardEntries();

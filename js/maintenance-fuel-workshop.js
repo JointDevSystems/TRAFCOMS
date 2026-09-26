@@ -5,37 +5,151 @@ function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.typ
 
 function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
 
-function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt }; }
+function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt, receipt_img:f.receiptImg||null }; }
 
-function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt }; }
+function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt, receiptImg:r.receipt_img||'' }; }
 
 function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title, description:w.desc, tech:w.tech, status:w.status, reported:w.reported, diagnosed:w.diagnosed, parts:w.parts, labour:w.labour, total:w.total }; }
 
 function wsFromRow(r){ return { id:r.id, truckId:r.truck_id, title:r.title, desc:r.description, tech:r.tech, status:r.status, reported:r.reported, diagnosed:r.diagnosed, parts:r.parts, labour:r.labour, total:r.total }; }
 
+/* ──────────────────────────────────────────────────────────────────
+   § 14b  RECEIPT PHOTO CAPTURE (shared by admin + driver fuel forms)
+────────────────────────────────────────────────────────────────── */
+const _pendingReceiptImg = { f: null, dp: null };
+
+function handleReceiptFileSelect(input, previewId, scope) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) { toast('Please choose an image file', 'error'); input.value=''; return; }
+  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    _pendingReceiptImg[scope] = reader.result;
+    const prev = document.getElementById(previewId);
+    if (prev) prev.innerHTML = `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover" />`;
+    const actions = document.getElementById(`${scope}_receipt_img_actions`);
+    if (actions) actions.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPendingReceiptImg(scope, previewId) {
+  _pendingReceiptImg[scope] = null;
+  const fileInput = document.getElementById(`${scope}_receipt_file`);
+  if (fileInput) fileInput.value = '';
+  const prev = document.getElementById(previewId);
+  if (prev) prev.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+  const actions = document.getElementById(`${scope}_receipt_img_actions`);
+  if (actions) actions.style.display = 'none';
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 14c  STANDING FUEL PRICE / LITRE (set once, editable over time)
+────────────────────────────────────────────────────────────────── */
+function fuelPriceHistory() {
+  state.db.settings = state.db.settings || {};
+  if (!Array.isArray(state.db.settings.fuelPriceHistory)) state.db.settings.fuelPriceHistory = [];
+  return state.db.settings.fuelPriceHistory;
+}
+
+function fuelPriceHistorySorted() {
+  return [...fuelPriceHistory()].sort((a,b)=>new Date(b.effectiveDate)-new Date(a.effectiveDate) || new Date(b.recordedAt)-new Date(a.recordedAt));
+}
+
+function currentFuelPrice() {
+  const hist = fuelPriceHistorySorted();
+  return hist.length ? hist[0].price : 0;
+}
+
+function renderFuelPriceCard() {
+  const el = document.getElementById('fuelPriceCard');
+  if (!el) return;
+  const hist = fuelPriceHistorySorted();
+  const current = hist[0];
+  el.innerHTML = `
+    <div class="panel-head"><span class="panel-title">Standing Price / Litre</span>${isAdmin()?`<button class="modal-btn ghost" style="padding:3px 10px;font-size:10px" onclick="showUpdateFuelPriceModal()">Update Price</button>`:''}</div>
+    <div style="padding:14px">
+      <div style="font-family:var(--font-brand);font-size:24px;font-weight:700;color:var(--gold)">${current?`KSh ${fmt(current.price)}`:'Not set'}</div>
+      <div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${current?`Effective ${fmtDate(current.effectiveDate)}${current.note?` · ${current.note}`:''} · set by ${current.setBy||'—'}`:'Set a default so fill-up forms auto-fill with the current pump price'}</div>
+      ${hist.length>1?`<button class="modal-btn ghost" style="margin-top:10px;padding:4px 10px;font-size:10px" onclick="showFuelPriceHistoryModal()">View price history (${hist.length})</button>`:''}
+    </div>
+  `;
+}
+
+function showUpdateFuelPriceModal() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const today = new Date().toISOString().slice(0,10);
+  openModal('Update Standing Fuel Price', `
+    <div class="fg"><label>Price / Litre (KSh)</label><input id="fp_price" type="number" step="0.01" placeholder="${currentFuelPrice()||155}"/></div>
+    <div class="fg"><label>Effective Date</label><input id="fp_date" type="date" value="${today}"/></div>
+    <div class="fg"><label>Note <span class="label-optional">(optional)</span></label><input id="fp_note" placeholder="e.g. EPRA monthly revision"/></div>
+    <button class="submit-btn" onclick="saveFuelPriceUpdate()">Save Price →</button>
+  `);
+}
+
+function saveFuelPriceUpdate() {
+  const price = parseFloat(document.getElementById('fp_price').value)||0;
+  if (price<=0) { toast('Enter a valid price', 'error'); return; }
+  const entry = {
+    id: uid('FP'), price,
+    effectiveDate: document.getElementById('fp_date').value || new Date().toISOString().slice(0,10),
+    note: sanitize(document.getElementById('fp_note').value.trim()),
+    setBy: state.profile?.username || 'system',
+    recordedAt: new Date().toISOString(),
+  };
+  fuelPriceHistory().push(entry);
+  scheduleSave();
+  addAudit(state.profile.username, 'Fuel Price Updated', `KSh ${price}/L effective ${entry.effectiveDate}`);
+  closeModal();
+  renderFuelPriceCard();
+  const priceInput = document.getElementById('f_price');
+  if (priceInput && !priceInput.value) priceInput.value = price;
+  toast(`Standing fuel price set to KSh ${price}/L`, 'success');
+}
+
+function showFuelPriceHistoryModal() {
+  const hist = fuelPriceHistorySorted();
+  openModal('Fuel Price History', `
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Effective</th><th>Price/L</th><th>Note</th><th>Set By</th></tr></thead>
+      <tbody>${hist.map(h=>`<tr><td class="mono" style="font-size:10px">${fmtDate(h.effectiveDate)}</td><td class="mono" style="color:var(--gold);font-weight:700">KSh ${fmt(h.price)}</td><td style="font-size:11px;color:var(--text-2)">${h.note||'—'}</td><td style="font-size:11px;color:var(--text-3)">${h.setBy||'—'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty-td">No price history yet</td></tr>'}</tbody>
+    </table></div>
+  `);
+}
+
 function dpRenderFuelTab(el, driver) {
   const logs = state.db.fuel.filter(f=>f.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const defaultPrice = currentFuelPrice();
   el.innerHTML = `
     <div class="form-card" style="margin-bottom:14px">
       <div class="form-card-head">Log Fuel Fill-up</div>
       <div class="form-card-body">
         <div class="form-row-2">
           <div class="fg"><label>Litres</label><input id="dp_f_litres" type="number" placeholder="180"/></div>
-          <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" placeholder="155"/></div>
+          <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" placeholder="155" value="${defaultPrice||''}"/></div>
         </div>
         <div class="form-row-2">
           <div class="fg"><label>Station</label><input id="dp_f_station" placeholder="Kobil Shimanzi"/></div>
           <div class="fg"><label>Odometer (km)</label><input id="dp_f_odo" type="number" placeholder="142300"/></div>
         </div>
         <div class="fg"><label>Receipt No. <span class="label-optional">(optional)</span></label><input id="dp_f_receipt" placeholder="RCP-000"/></div>
+        <div class="fg">
+          <label>Receipt Photo <span class="label-optional">(optional)</span></label>
+          <div id="dp_receipt_img_preview" class="ic-card-img-placeholder" style="width:100%;height:90px;cursor:pointer;position:relative;overflow:hidden" onclick="document.getElementById('dp_receipt_file').click()" title="Tap to capture, scan or upload the receipt">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </div>
+          <input type="file" id="dp_receipt_file" accept="image/*" style="display:none" onchange="handleReceiptFileSelect(this,'dp_receipt_img_preview','dp')" />
+          <div id="dp_receipt_img_actions" style="display:none;margin-top:6px"><button type="button" class="modal-btn ghost" style="padding:3px 10px;font-size:10px" onclick="clearPendingReceiptImg('dp','dp_receipt_img_preview')">✕ Remove photo</button></div>
+        </div>
         <button class="submit-btn" onclick="dpAddFuelLog()">Save Fuel Log →</button>
       </div>
     </div>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">My Fuel History</span><span class="panel-meta">${logs.length} entries</span></div>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Date</th><th>Litres</th><th>Price/L</th><th>Total</th><th>Station</th></tr></thead>
-        <tbody>${logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td class="mono">${fmt(f.litres)} L</td><td class="mono">${fmt(f.pricePerLitre)}</td><td class="mono" style="color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="font-size:11px;color:var(--text-3)">${f.station}</td></tr>`).join('')||`<tr><td colspan="5" class="empty-td">No fuel logs yet</td></tr>`}</tbody>
+        <thead><tr><th>Date</th><th>Litres</th><th>Price/L</th><th>Total</th><th>Station</th><th>Receipt</th></tr></thead>
+        <tbody>${logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td class="mono">${fmt(f.litres)} L</td><td class="mono">${fmt(f.pricePerLitre)}</td><td class="mono" style="color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="font-size:11px;color:var(--text-3)">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderDriverPortal())">Attach</button>`}</td></tr>`).join('')||`<tr><td colspan="6" class="empty-td">No fuel logs yet</td></tr>`}</tbody>
       </table></div>
     </div>
   `;
@@ -54,9 +168,11 @@ function dpAddFuelLog() {
     station: sanitize(document.getElementById('dp_f_station').value.trim())||'Unknown',
     odometer: Math.max(0, parseInt(document.getElementById('dp_f_odo').value)||0),
     receipt: document.getElementById('dp_f_receipt').value.trim()||uid('RCP'),
+    receiptImg: _pendingReceiptImg.dp || '',
   };
   state.db.fuel.push(log);
   log._dirty = true;
+  _pendingReceiptImg.dp = null;
   const t = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
   if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
   scheduleSave();
@@ -167,6 +283,9 @@ function saveMaint() {
 function renderFuel() {
   fillSelect('f_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.make}`]);
   fillSelect('f_driver', state.db.drivers, d=>[d.id, d.name]);
+  renderFuelPriceCard();
+  const priceInput = document.getElementById('f_price');
+  if (priceInput && !priceInput.value) priceInput.value = currentFuelPrice() || '';
   renderFuelTable();
   renderFuelSummary();
 }
@@ -175,7 +294,7 @@ function renderFuelTable() {
   const logs = [...state.db.fuel].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const tbody = document.getElementById('fuelTableBody');
   if (!tbody) return;
-  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td></tr>`).join('') || `<tr><td colspan="7" class="empty-td">No fuel logs</td></tr>`;
+  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td></tr>`).join('') || `<tr><td colspan="8" class="empty-td">No fuel logs</td></tr>`;
 }
 
 function renderFuelSummary() {
@@ -201,14 +320,19 @@ function addFuelLog() {
     station: sanitize(document.getElementById('f_station').value.trim())||'Unknown',
     odometer: Math.max(0, parseInt(document.getElementById('f_odo').value)||0),
     receipt: document.getElementById('f_receipt').value.trim()||uid('RCP'),
+    receiptImg: _pendingReceiptImg.f || '',
   };
   state.db.fuel.push(log);
   log._dirty = true;
+  _pendingReceiptImg.f = null;
   const t = state.db.trucks.find(t=>t.id===truck);
   if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
   scheduleSave();
   addAudit(state.profile.username, 'Fuel Log', `${truckName(truck)} — ${litres}L at KSh ${price}/L`);
   ['f_litres','f_price','f_station','f_odo','f_receipt'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=''; });
+  clearPendingReceiptImg('f','f_receipt_img_preview');
+  const priceInput = document.getElementById('f_price');
+  if (priceInput) priceInput.value = currentFuelPrice() || '';
   renderFuelTable(); renderFuelSummary();
   toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
 }

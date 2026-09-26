@@ -17,6 +17,34 @@ function defaultBillingRates() {
 
 function auditToRow(a) { return { username:a.user, action:a.action, detail:a.detail, time:a.time }; }
 
+
+const OPERATIONAL_WINDOW_DAYS = 90;
+
+function operationalCutoffISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - OPERATIONAL_WINDOW_DAYS);
+  return d.toISOString();
+}
+
+
+async function ensureRowsLoaded(table, ids, existing, fromRowFn) {
+  const have = new Set(existing.map(r => r.id));
+  const missing = [...new Set((ids || []).filter(Boolean))].filter(id => !have.has(id));
+  if (!missing.length) return existing;
+  const { data, error } = await supabase.from(table).select('*').in('id', missing);
+  if (error) { console.error(`${table} backfill failed:`, error.message); return existing; }
+  (data || []).forEach(row => existing.push(fromRowFn(row)));
+  return existing;
+}
+
+async function ensureTripsLoaded(ids) {
+  return ensureRowsLoaded('trips', ids, state.db.trips, tripFromRow);
+}
+
+async function ensureInterchangeLoaded(ids) {
+  return ensureRowsLoaded('interchange', ids, state.db.interchange, icFromRow);
+}
+
 async function upsertRows(table, rows, opts) {
   if (!rows || !rows.length) return null;
   const { error } = await supabase.from(table).upsert(rows, opts || {});
@@ -72,12 +100,30 @@ async function loadDB() {
     ] = await Promise.all([
       supabase.from('trucks').select('*'),
       supabase.from('drivers').select('*'),
-      supabase.from('trips').select('*'),
+      // Operational window, not the full table: any trip that's still open
+      // (not completed) regardless of age, PLUS anything from the last
+      // OPERATIONAL_WINDOW_DAYS days so recent completed trips still show
+      // up in Dispatch/Dashboard history. Older completed trips are fetched
+      // on demand (see ensureTripsLoaded) or browsed via Trip Reports, which
+      // already queries Supabase directly with its own date range.
+      supabase.from('trips').select('*')
+        .or(`status.neq.completed,start_time.gte.${operationalCutoffISO()}`)
+        .order('start_time', { ascending: false })
+        .limit(5000),
       supabase.from('maintenance').select('*'),
       supabase.from('fuel_logs').select('*'),
       supabase.from('shipping_lines').select('*'),
       supabase.from('shutouts').select('*'),
-      supabase.from('interchange').select('*'),
+      // Same idea for interchange: keep everything still actionable
+      // (pending/approved, not yet reconciled) plus a recent window for the
+      // Interchange Management screen and day-to-day Depot Report browsing.
+      // The full register is only ever needed for the duplicate scan, which
+      // now runs server-side via find_interchange_duplicates() instead of
+      // requiring the whole table in the browser.
+      supabase.from('interchange').select('*')
+        .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
+        .order('date', { ascending: false })
+        .limit(5000),
       supabase.from('requisitions').select('*'),
       supabase.from('workshop_jobs').select('*'),
       supabase.from('invoices').select('*'),
@@ -132,8 +178,8 @@ async function loadDB() {
 
     const s = settingsRes.data;
     const settings = s
-      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null, wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com' }
-      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null, wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com' };
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null, wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com', fuelPriceHistory: Array.isArray(s.fuel_price_history) ? s.fuel_price_history : [] }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null, wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com', fuelPriceHistory: [] };
 
   
     const profiles = (profilesRes.data || []).map(p => ({
@@ -213,11 +259,16 @@ async function saveDB() {
         wialon_enabled: !!db.settings.wialonEnabled,
         wialon_token: db.settings.wialonToken || null,
         wialon_host: db.settings.wialonHost || 'https://hst-api.wialon.com',
+        fuel_price_history: db.settings.fuelPriceHistory || null,
       };
       let { error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' });
       if (error && /invoice_config/i.test(error.message || '')) {
 
         delete settingsRow.invoice_config;
+        ({ error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' }));
+      }
+      if (error && /fuel_price_history/i.test(error.message || '')) {
+        delete settingsRow.fuel_price_history;
         ({ error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' }));
       }
       if (error) { console.error('app_settings save failed:', error.message); failures.push({ table: 'app_settings', error }); }

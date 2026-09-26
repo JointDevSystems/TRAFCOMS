@@ -834,10 +834,19 @@
                                     <div class="fg"><label>Station</label><input id="f_station" placeholder="Kobil Mombasa" /></div>
                                     <div class="fg"><label>Odometer</label><input id="f_odo" type="number" placeholder="0" /></div>
                                     <div class="fg"><label>Receipt No.</label><input id="f_receipt" placeholder="RCPT-001" /></div>
+                                    <div class="fg">
+                                        <label>Receipt Photo <span class="label-optional">(optional)</span></label>
+                                        <div id="f_receipt_img_preview" class="ic-card-img-placeholder" style="width:100%;height:90px;cursor:pointer;position:relative;overflow:hidden" onclick="document.getElementById('f_receipt_file').click()" title="Tap to capture, scan or upload the receipt">
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                        </div>
+                                        <input type="file" id="f_receipt_file" accept="image/*" style="display:none" onchange="handleReceiptFileSelect(this,'f_receipt_img_preview','f')" />
+                                        <div id="f_receipt_img_actions" style="display:none;margin-top:6px"><button type="button" class="modal-btn ghost" style="padding:3px 10px;font-size:10px" onclick="clearPendingReceiptImg('f','f_receipt_img_preview')">✕ Remove photo</button></div>
+                                    </div>
                                     <button class="submit-btn" onclick="addFuelLog()">Log Fill →</button>
                                 </div>
                             </div>
                             <div>
+                                <div class="panel" id="fuelPriceCard" style="margin-bottom:14px"></div>
                                 <div class="panel" id="fuelSummaryPanel">
                                     <div class="panel-head"><span class="panel-title">Fuel Summary</span></div>
                                     <div id="fuelSummary"></div>
@@ -846,7 +855,7 @@
                                     <div class="panel-head"><span class="panel-title">Recent Fills</span></div>
                                     <div class="table-wrap">
                                         <table class="data-table">
-                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th></tr></thead>
+                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th><th>Receipt</th></tr></thead>
                                             <tbody id="fuelTableBody"></tbody>
                                         </table>
                                     </div>
