@@ -179,7 +179,9 @@ function showAddPrestageModal() {
   `);
 }
 
-
+// When a container is picked, quietly prefill (never overwrite) the
+// shipping line and origin from what's already known about its trip —
+// the clerk can still change either before saving.
 function onPrestageTripChange() {
   const tripEl = document.getElementById('ps_trip');
   const trip = tripEl && state.db.trips.find(t => t.id === tripEl.value);
@@ -295,9 +297,11 @@ function promptPrestageShutout(id) {
   if (!p) return;
   if (!canManagePrestaging()) { toast('You do not have permission to update this record', 'error'); return; }
   if (p.status !== 'staged') { toast('This record is already resolved', 'error'); return; }
+  if (typeof _pendingShutoutImg !== 'undefined') _pendingShutoutImg.ps = '';
   openModal('Report Shutout', `
     <div class="ops-notice" style="margin-bottom:10px">This moves ${esc(p.container)} into the Shutout register as having missed its vessel.</div>
     <div class="fg"><label>Reason (required)</label><textarea id="psShutoutReason" rows="3" placeholder="e.g. Vessel closed early, container arrived late…"></textarea></div>
+    ${typeof shutoutPhotoPicker === 'function' ? shutoutPhotoPicker('ps') : ''}
     <button class="submit-btn" onclick="confirmPrestageShutout('${id}')">Confirm Shutout →</button>
   `);
 }
@@ -315,10 +319,12 @@ function confirmPrestageShutout(id) {
     line: p.line || '', vessel: p.vessel || '', voyage: p.voyage || '',
     reason: sanitize(reason), truckId: p.truckId || '', driverId: p.driverId || '',
     notes: `Auto-logged from Prestaging record ${p.id}.${p.notes ? ' ' + p.notes : ''}`,
+    img: (typeof _pendingShutoutImg !== 'undefined' && _pendingShutoutImg.ps) || '',
     date: new Date().toISOString(), status: 'open',
     _dirty: true,
   };
   state.db.shutouts.push(shutout);
+  if (typeof _pendingShutoutImg !== 'undefined') _pendingShutoutImg.ps = '';
 
   p.status = 'shutout';
   p.shutoutId = shutout.id;

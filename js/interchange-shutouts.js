@@ -56,8 +56,35 @@ function findLineByCode(code, excludeId) {
   return state.db.shippingLines.find(l => l.id !== excludeId && (l.code || '').toUpperCase() === c) || null;
 }
 
+let _pendingShutoutImg = { sh: '', dp: '' };
+
+function captureShutoutPhoto(input, boxId, key) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    _pendingShutoutImg[key] = reader.result;
+    const box = document.getElementById(boxId);
+    if (box) box.innerHTML = `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function shutoutPhotoPicker(key) {
+  const boxId = `sh_photo_box_${key}`;
+  const inputId = `sh_photo_input_${key}`;
+  return `<div class="fg"><label>Photo <span class="label-optional">(optional)</span></label>
+    <div id="${boxId}" class="ic-card-img-placeholder" style="width:100%;height:90px;cursor:pointer" onclick="document.getElementById('${inputId}').click()" title="Tap to add a photo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </div>
+    <input type="file" id="${inputId}" accept="image/*" capture="environment" style="display:none" onchange="captureShutoutPhoto(this,'${boxId}','${key}')"/>
+  </div>`;
+}
+
 /* ── Shutouts tab ───────────────────────────────────────────────── */
 function dpRenderShutoutTab(el, driver) {
+  _pendingShutoutImg.dp = '';
   const mine = state.db.shutouts.filter(s=>s.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   el.innerHTML = `
     <div class="form-card" style="margin-bottom:14px">
@@ -71,6 +98,7 @@ function dpRenderShutoutTab(el, driver) {
         <div class="fg"><label>Shipping Line</label><select id="dp_sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div>
         <div class="fg"><label>Reason</label><input id="dp_sh_reason" placeholder="Why was this shutout?"/></div>
         <div class="fg"><label>Notes</label><textarea id="dp_sh_notes" rows="2"></textarea></div>
+        ${shutoutPhotoPicker('dp')}
         <button class="submit-btn" onclick="dpSaveShutout('${driver.id}')">Flag Shutout →</button>
       </div>
     </div>
@@ -94,9 +122,11 @@ function dpSaveShutout(driverId) {
     reason: sanitize(document.getElementById('dp_sh_reason').value.trim()),
     truckId: driver?.truckId||null, driverId,
     notes: sanitize(document.getElementById('dp_sh_notes').value.trim()),
+    img: _pendingShutoutImg.dp || '',
     date: new Date().toISOString(), status:'open',
     _dirty: true,
   });
+  _pendingShutoutImg.dp = '';
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Shutout Flagged (Driver)', cont);
   toast('Shutout flagged', 'success');
@@ -119,7 +149,8 @@ function renderShutout(f){
 }
 
 function showAddShutoutModal() {
-  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
+  _pendingShutoutImg.sh = '';
+  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div>${shutoutPhotoPicker('sh')}<button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
 }
 
 function saveShutout() {
@@ -138,9 +169,11 @@ function saveShutout() {
     truckId:  document.getElementById('sh_truck').value,
     driverId: document.getElementById('sh_driver').value,
     notes: sanitize(document.getElementById('sh_notes').value.trim()),
+    img: _pendingShutoutImg.sh || '',
     date: new Date().toISOString(), status:'open',
     _dirty: true,
   });
+  _pendingShutoutImg.sh = '';
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Shutout Flagged', cont);
   closeModal(); renderShutout('all');
