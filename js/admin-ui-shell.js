@@ -228,14 +228,33 @@ function showAddDriverModal() {
 }
 
 function showEditLineModal(id) {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
   const l = state.db.shippingLines.find(x => x.id === id);
   if (!l) { toast('Shipping line not found', 'error'); return; }
-  openModal(`Edit ${esc(l.code)} — ${esc(l.name)}`, `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sle_code" value="${esc(l.code)}" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sle_name" value="${esc(l.name)}"/></div></div><div class="fg"><label>Contact Email</label><input id="sle_email" type="email" value="${esc(l.contact||'')}"/></div><div class="form-row-2"><div class="fg"><label>20ft Rate (KSh)</label><input id="sle_r20" type="number" min="0" value="${l.rate20}"/></div><div class="fg"><label>40ft Rate (KSh)</label><input id="sle_r40" type="number" min="0" value="${l.rate40}"/></div></div><div class="fg"><label>40ft HC Rate (KSh)</label><input id="sle_rhc" type="number" min="0" value="${l.rateHC}"/></div><div class="fg"><label>Status</label><select id="sle_active"><option value="true" ${l.active?'selected':''}>Active</option><option value="false" ${!l.active?'selected':''}>Inactive</option></select></div><button class="submit-btn" onclick="saveShippingLineEdit('${l.id}')">Save Changes →</button>`);
+  const curE = l.currency || (l.code === 'PIL' ? 'KES' : 'USD');
+  openModal(`Edit ${esc(l.code)} — ${esc(l.name)}`, `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sle_code" value="${esc(l.code)}" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sle_name" value="${esc(l.name)}"/></div></div><div class="fg"><label>Contact Email</label><input id="sle_email" type="email" value="${esc(l.contact||'')}"/></div><div class="fg"><label>Billing Currency</label><select id="sle_currency"><option value="USD" ${curE==='USD'?'selected':''}>USD (per official schedule)</option><option value="KES" ${curE==='KES'?'selected':''}>KES — cash</option></select><div style="font-size:11px;color:var(--text-3);margin-top:4px">Rates are never auto-converted — pick the currency this line actually invoices in (e.g. PIL bills in KES cash).</div></div><div class="form-row-2"><div class="fg"><label>20ft Rate</label><input id="sle_r20" type="number" min="0" value="${l.rate20}"/></div><div class="fg"><label>40ft Rate</label><input id="sle_r40" type="number" min="0" value="${l.rate40}"/></div></div><div class="fg"><label>40ft HC Rate</label><input id="sle_rhc" type="number" min="0" value="${l.rateHC}"/></div><div class="fg"><label>Status</label><select id="sle_active"><option value="true" ${l.active?'selected':''}>Active</option><option value="false" ${!l.active?'selected':''}>Inactive</option></select></div><button class="submit-btn" onclick="saveShippingLineEdit('${l.id}')">Save Changes →</button>`);
 }
 
 function showAddLineModal() {
-  openModal('Add Shipping Line', `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sl_code" placeholder="MSC" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sl_name" placeholder="Mediterranean Shipping Co."/></div></div><div class="fg"><label>Contact Email</label><input id="sl_email" type="email" placeholder="office@line.com"/></div><div class="form-row-2"><div class="fg"><label>20ft Rate (KSh)</label><input id="sl_r20" type="number" placeholder="10000"/></div><div class="fg"><label>40ft Rate (KSh)</label><input id="sl_r40" type="number" placeholder="14000"/></div></div><div class="fg"><label>40ft HC Rate (KSh)</label><input id="sl_rhc" type="number" placeholder="16000"/></div><button class="submit-btn" onclick="saveShippingLine()">Add Line →</button>`);
+  const dflt = getOfficialLineRates('');
+  openModal('Add Shipping Line', `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sl_code" placeholder="MSC" maxlength="6" oninput="applyOfficialLineDefaults(this.value)"/></div><div class="fg"><label>Full Name</label><input id="sl_name" placeholder="Mediterranean Shipping Co."/></div></div><div class="fg"><label>Contact Email</label><input id="sl_email" type="email" placeholder="office@line.com"/></div><div class="fg"><label>Billing Currency</label><select id="sl_currency"><option value="USD" selected>USD (per official schedule)</option><option value="KES">KES — cash</option></select><div id="sl_currency_hint" style="font-size:11px;color:var(--text-3);margin-top:4px">Auto-fills from the official schedule as you type the code (e.g. PIL → KES cash rates). Rates are never converted between currencies.</div></div><div class="form-row-2"><div class="fg"><label>20ft Rate</label><input id="sl_r20" type="number" placeholder="${dflt.rate20}"/></div><div class="fg"><label>40ft Rate</label><input id="sl_r40" type="number" placeholder="${dflt.rate40}"/></div></div><div class="fg"><label>40ft HC Rate</label><input id="sl_rhc" type="number" placeholder="${dflt.rateHC}"/></div><button class="submit-btn" onclick="saveShippingLine()">Add Line →</button>`);
+}
+
+// Live-fills the Add Shipping Line rate fields from the official service
+// rate schedule as the user types a code — e.g. typing "PIL" switches the
+// currency to KES cash and fills in PIL's own rates. Never converts currency;
+// it only swaps in whichever official figures apply to that code.
+function applyOfficialLineDefaults(codeRaw) {
+  const code = (codeRaw || '').trim().toUpperCase();
+  const official = getOfficialLineRates(code);
+  const r20 = document.getElementById('sl_r20');
+  const r40 = document.getElementById('sl_r40');
+  const rhc = document.getElementById('sl_rhc');
+  const cur = document.getElementById('sl_currency');
+  if (r20) r20.placeholder = official.rate20;
+  if (r40) r40.placeholder = official.rate40;
+  if (rhc) rhc.placeholder = official.rateHC;
+  if (cur) cur.value = official.currency;
 }
 
 function openUnmappedVesselsModal() {

@@ -1,4 +1,3 @@
-
 window.SERVICE_RATE_SCHEDULE = {
   currency: 'USD',
 
@@ -71,4 +70,18 @@ window.SERVICE_RATE_SCHEDULE = {
       },
     },
   },
+};
+
+
+window.getOfficialLineRates = function (code) {
+  const sched = window.SERVICE_RATE_SCHEDULE;
+  const override = sched.lineOverrides[code];
+  const lolo = (override && override.services && override.services.lolo) || sched.services.lolo;
+  const currency = (override && override.currency) || sched.currency;
+  return {
+    currency,
+    rate20: lolo.rates['20ft'],
+    rate40: lolo.rates['40ft'],
+    rateHC: lolo.rates['40ft'],
+  };
 };

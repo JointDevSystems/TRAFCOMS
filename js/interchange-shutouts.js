@@ -1,9 +1,12 @@
 'use strict';
 
 
-function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, active:l.active }; }
+function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, currency:l.currency||'USD', active:l.active }; }
 
-function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, active:r.active }; }
+function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, currency:r.currency||(r.code==='PIL'?'KES':'USD'), active:r.active }; }
+
+
+function lineCurrencySymbol(l) { return (l.currency||'USD')==='KES' ? 'KSh' : (l.currency==='USD'?'US$':(l.currency||'US$')); }
 
 
 function vlmFromRow(r){ return { id:r.id, pattern:r.pattern, matchType:r.match_type, lineId:r.line_id, priority:r.priority, source:r.source }; }
@@ -712,10 +715,11 @@ function renderLines(f){
   if (unmappedBtn) { unmappedBtn.style.display = unmappedTotal ? 'inline-flex' : 'none'; unmappedBtn.textContent = `⚠ Resolve Unmapped Vessels (${unmappedTotal})`; }
   const grid=document.getElementById('linesGrid');
   if(!grid) return;
-  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${isAdmin()?`<button class="tbl-btn" onclick="showEditLineModal('${l.id}')">✎ Edit Rates</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+  grid.innerHTML=lines.map(l=>{const cur=lineCurrencySymbol(l);return `<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">${cur} ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">${cur} ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">${cur} ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${canFinance()?`<button class="tbl-btn" onclick="showEditLineModal('${l.id}')">✎ Edit Rates</button>`:''}</div></div>`;}).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
 }
 
 function saveShippingLineEdit(id) {
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
   const l = state.db.shippingLines.find(x => x.id === id);
   if (!l) { toast('Shipping line not found', 'error'); return; }
   const code = document.getElementById('sle_code').value.trim().toUpperCase();
@@ -727,12 +731,15 @@ function saveShippingLineEdit(id) {
   l.code = code;
   l.name = name;
   l.contact = sanitize(document.getElementById('sle_email').value.trim());
+  const officialSle = getOfficialLineRates(code);
+  l.currency = document.getElementById('sle_currency') ? document.getElementById('sle_currency').value : (l.currency || officialSle.currency);
   l.rate20 = Math.max(0, parseInt(document.getElementById('sle_r20').value) || 0);
   l.rate40 = Math.max(0, parseInt(document.getElementById('sle_r40').value) || 0);
   l.rateHC = Math.max(0, parseInt(document.getElementById('sle_rhc').value) || 0);
   l.active = document.getElementById('sle_active').value === 'true';
   scheduleSave(); closeModal(); renderLines(_linesFilter);
-  addAudit(state.profile.username, 'Shipping Line Rates Updated', `${code} — 20ft KSh ${fmt(l.rate20)} · 40ft KSh ${fmt(l.rate40)} · HC KSh ${fmt(l.rateHC)}`);
+  const symE = lineCurrencySymbol(l);
+  addAudit(state.profile.username, 'Shipping Line Rates Updated', `${code} — 20ft ${symE} ${fmt(l.rate20)} · 40ft ${symE} ${fmt(l.rate40)} · HC ${symE} ${fmt(l.rateHC)}`);
   toast(`${code} rates updated`, 'success');
 }
 
@@ -743,12 +750,18 @@ function saveShippingLine() {
   if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
   const dupLine = findLineByCode(code);
   if (dupLine) { toast(`Code ${code} is already used by ${dupLine.name}`, 'error'); return; }
+  // Defaults come straight from the official service rate schedule — no
+  // placeholder numbers, and no currency conversion (a line quoted in cash,
+  // like PIL, stays in KES; everything else stays in USD as the schedule has it).
+  const official = getOfficialLineRates(code);
+  const currencyField = document.getElementById('sl_currency');
   state.db.shippingLines.push({
     id: uid('SL'), code, name,
     contact: sanitize(document.getElementById('sl_email').value.trim()),
-    rate20: Math.max(0, parseInt(document.getElementById('sl_r20').value)||10000),
-    rate40: Math.max(0, parseInt(document.getElementById('sl_r40').value)||14000),
-    rateHC: Math.max(0, parseInt(document.getElementById('sl_rhc').value)||16000),
+    currency: currencyField ? currencyField.value : official.currency,
+    rate20: Math.max(0, parseInt(document.getElementById('sl_r20').value)) || official.rate20,
+    rate40: Math.max(0, parseInt(document.getElementById('sl_r40').value)) || official.rate40,
+    rateHC: Math.max(0, parseInt(document.getElementById('sl_rhc').value)) || official.rateHC,
     active: true,
   });
   scheduleSave(); closeModal(); renderLines('all');

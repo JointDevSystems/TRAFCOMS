@@ -252,7 +252,7 @@ function defaultSectionForRole() {
 
 function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
 
-function canFinance() { return isAdmin(); }
+function canFinance() { return isAdmin() || currentRole() === 'finance'; }
 
 function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 
@@ -289,23 +289,7 @@ function fillSelect(id, arr, mapFn) {
   el.innerHTML = `<option value="">Select…</option>` + arr.map(i=>{ const [v,l]=mapFn(i); return `<option value="${v}">${l}</option>`; }).join('');
 }
 
-// Reads EVERY sheet in an uploaded workbook and returns one combined array
-// of row objects — reading only wb.SheetNames[0] silently drops every row on
-// any sheet after the first (e.g. a second sheet of historical rows).
-//
-// A sheet is also allowed to have no header row of its own — common when a
-// second sheet is a plain continuation of the first, appended without
-// repeating the column titles. If a sheet's first row doesn't look like
-// column headers (checked against a list of words this app's known
-// templates use), the most recent real header row seen earlier in the same
-// workbook is reused positionally for that sheet instead of misreading its
-// first data row as a header.
-//
-// cellDates:true + raw:true (set by the caller's XLSX.read/sheet_to_json
-// options) means genuine Excel date cells arrive here as real JS Date
-// objects, not locale-formatted text — so there is no day/month ambiguity
-// to guess at for those cells, regardless of what date format was applied
-// to the column in Excel.
+
 const _EXCEL_HEADER_HINTS = ['container','size','type','eir','date','delivering','vessel','voyage','guarantee','gurantee','shipping','line','receiving','release','transporter','dispatch','driver','truck','reg','condition','notes','remarks','bl','cargo','work'];
 
 function readAllExcelSheetsAsRows(wb) {

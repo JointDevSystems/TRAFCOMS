@@ -33,6 +33,10 @@ async function main() {
     const { data: inserted, error } = await supabase.from('shipping_lines').insert({
       code: l.code, name: l.name, contact: l.contact,
       rate_20ft: l.rate20, rate_40ft: l.rate40, rate_hc: l.rateHC,
+      // Carry the currency the old blob already had; if it never recorded one,
+      // infer it the same way the rest of the app does (PIL bills in KES cash,
+      // everything else in USD) rather than guessing or converting a number.
+      currency: l.currency || (l.code === 'PIL' ? 'KES' : 'USD'),
       active: l.active,
     }).select('id').single();
     if (error) { console.error('shipping_lines failed:', l.code, error.message); continue; }
