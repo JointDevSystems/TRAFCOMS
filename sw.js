@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v1.2';
+const CACHE_VERSION = 'gargo-shell-v2.2';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
