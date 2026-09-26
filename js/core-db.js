@@ -78,6 +78,15 @@ async function saveDirty(table, rows, toRowFn) {
     console.warn('invoices.line_items column not found — saving without it. Run: alter table invoices add column if not exists line_items jsonb default \'[]\'::jsonb;');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.line_items; return row; }));
   }
+  // Invoices gained currency / client_address / terms columns (billing
+  // format update — USD by default, KES for PIL, full "Bill To" address,
+  // payment terms). Retry without whichever column isn't migrated yet.
+  for (const col of ['currency', 'client_address', 'terms']) {
+    if (failure && table === 'invoices' && new RegExp(`\\b${col}\\b`, 'i').test(failure.error?.message || '')) {
+      console.warn(`invoices.${col} column not found — saving without it. Run: alter table invoices add column if not exists ${col} text default '';`);
+      failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row[col]; return row; }));
+    }
+  }
   // Shutouts gained an img column (photo upload) — if the Supabase table
   // hasn't been migrated yet, drop the field and retry once rather than
   // losing the whole shutout save (the photo itself just won't persist

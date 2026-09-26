@@ -673,6 +673,15 @@ body.driver-portal-active .mobile-nav-bar { display: none !important; }
 .inv-amount { font-family: var(--font-mono); font-size: 12px; }
 .inv-bank { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-3); padding: 10px; background: var(--surface); border-radius: var(--radius); line-height: 1.6; margin-bottom: 10px; }
 .inv-notes { font-size: 11px; color: var(--text-3); padding: 10px; background: var(--surface); border-radius: var(--radius); margin-bottom: 10px; line-height: 1.6; }
+.inv-doc-logo { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; border: 1.5px solid var(--gold); color: var(--gold); font-family: var(--font-brand); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; letter-spacing: 0.5px; }
+.inv-meta-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.inv-payable-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 12px; }
+.inv-payable-row .inv-bank { margin-bottom: 0; }
+.inv-payable-row .inv-totals { margin-bottom: 0; }
+@media (max-width: 560px) {
+  .inv-meta-row { grid-template-columns: repeat(2, 1fr); }
+  .inv-payable-row { grid-template-columns: 1fr; }
+}
 
 /* ══ ALLOCATION ══ */
 .alloc-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }

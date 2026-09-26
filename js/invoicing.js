@@ -1,12 +1,12 @@
 'use strict';
 
 
-function invToRow(i)  { return { id:i.id, client:i.client, date:i.date, due:i.due, status:i.status, subtotal:i.subtotal, vat:i.vat, total:i.total, paid:i.paid, ref:i.ref, notes:i.notes, line_items: JSON.stringify(i.lineItems||[]) }; }
+function invToRow(i)  { return { id:i.id, client:i.client, client_address:i.clientAddress||'', date:i.date, due:i.due, terms:i.terms||'Due on receipt', currency:i.currency||'USD', status:i.status, subtotal:i.subtotal, vat:i.vat, total:i.total, paid:i.paid, ref:i.ref, notes:i.notes, line_items: JSON.stringify(i.lineItems||[]) }; }
 
 function invFromRow(r){
   let lineItems = [];
   try { lineItems = r.line_items ? (typeof r.line_items === 'string' ? JSON.parse(r.line_items) : r.line_items) : []; } catch(e) { lineItems = []; }
-  return { id:r.id, client:r.client, date:r.date, due:r.due, status:r.status, subtotal:r.subtotal, vat:r.vat, total:r.total, paid:r.paid, ref:r.ref, notes:r.notes, trips:[], lineItems };
+  return { id:r.id, client:r.client, clientAddress:r.client_address||'', date:r.date, due:r.due, terms:r.terms||'Due on receipt', currency:r.currency||'USD', status:r.status, subtotal:r.subtotal, vat:r.vat, total:r.total, paid:r.paid, ref:r.ref, notes:r.notes, trips:[], lineItems };
 }
 
 
@@ -30,13 +30,25 @@ function serviceRateFor(lineCode, serviceKey, sizeKey) {
   return { amount, currency: override?.currency || sched.currency, label: def.label, unit: def.unit, freeDays: def.freeDays };
 }
 
-function toKsh(amount, currency) {
-  if (currency === 'KES' || currency === 'KSh' || currency === 'KSH') return amount;
-  return amount * invoiceConfig().usdToKes;
+/** Company-wide rule: every invoice is billed in USD, except PIL — which bills in KES. */
+function invoiceCurrencyForTrips(trips) {
+  const hasPIL = (trips || []).some(t => {
+    const line = shippingLineForTrip(t);
+    return line && (line.code || '').toUpperCase() === 'PIL';
+  });
+  return hasPIL ? 'KES' : 'USD';
+}
+
+function fmtMoney(n, currency) {
+  currency = currency || 'USD';
+  const amt = Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${currency} ${amt}`;
 }
 
 /**
- * Computes the rate-card charge lines for one trip.
+ * Computes the rate-card charge lines for one trip, in the trip's own currency
+ * (USD, or KES for a PIL line — the rate schedule already keys rates that way,
+ * so no cross-currency conversion is needed for a rate-card match).
  * opts booleans default: lolo/serviceCharge/transport = true, everything else false.
  */
 function computeTripServiceCharges(trip, opts) {
@@ -48,7 +60,7 @@ function computeTripServiceCharges(trip, opts) {
   const lines = [];
 
   if (!sizeKey || !window.SERVICE_RATE_SCHEDULE) {
-    return { lines, subtotalKsh: 0, matched: false, sizeKey, lineCode };
+    return { lines, subtotal: 0, matched: false, sizeKey, lineCode };
   }
 
   const add = (svcKey, label) => {
@@ -57,7 +69,7 @@ function computeTripServiceCharges(trip, opts) {
     lines.push({
       key: svcKey, label: label || svc.label, unit: svc.unit, qty: 1,
       unitAmount: svc.amount, currency: svc.currency,
-      amountKsh: Math.round(toKsh(svc.amount, svc.currency)),
+      amount: Math.round(svc.amount * 100) / 100,
     });
   };
 
@@ -76,41 +88,48 @@ function computeTripServiceCharges(trip, opts) {
       lines.push({
         key: 'storage', label: `${svc.label} — ${billableDays} day(s) beyond ${freeDays}-day free period`,
         unit: svc.unit, qty: billableDays, unitAmount: svc.amount, currency: svc.currency,
-        amountKsh: Math.round(toKsh(svc.amount * billableDays, svc.currency)),
+        amount: Math.round(svc.amount * billableDays * 100) / 100,
       });
     }
   }
 
-  const subtotalKsh = lines.reduce((s, l) => s + l.amountKsh, 0);
-  return { lines, subtotalKsh, matched: lines.length > 0, sizeKey, lineCode, tripId: trip.id, container: trip.container };
+  const subtotal = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+  return { lines, subtotal, matched: lines.length > 0, sizeKey, lineCode, tripId: trip.id, container: trip.container };
 }
 
-/** Legacy flat-rate fallback for container types the rate card doesn't define. */
-function legacyTripCharge(trip) {
-  const rates  = state.db.billingRates?.[trip.ctype] || { base: 0, perKm: 0 };
-  const amount = rates.base + rates.perKm * (trip.distance || 0);
+/**
+ * Legacy flat-rate fallback for container types the rate card doesn't define.
+ * The legacy billing-rates table is denominated in KES, so it's converted into
+ * whichever currency the rest of the invoice is billed in.
+ */
+function legacyTripCharge(trip, currency) {
+  currency = currency || 'USD';
+  const rates    = state.db.billingRates?.[trip.ctype] || { base: 0, perKm: 0 };
+  const amtKes   = rates.base + rates.perKm * (trip.distance || 0);
+  const amount   = Math.round((currency === 'KES' ? amtKes : amtKes / invoiceConfig().usdToKes) * 100) / 100;
   return {
-    lines: [{ key: 'legacy', label: `Haulage — ${trip.ctype} (flat rate, no rate-card entry)`, unit: 'per trip', qty: 1, unitAmount: amount, currency: 'KES', amountKsh: Math.round(amount) }],
-    subtotalKsh: Math.round(amount), matched: amount > 0, sizeKey: null, lineCode: null, tripId: trip.id, container: trip.container,
+    lines: [{ key: 'legacy', label: `Haulage — ${trip.ctype} (flat rate, no rate-card entry)`, unit: 'per trip', qty: 1, unitAmount: amount, currency, amount }],
+    subtotal: amount, matched: amtKes > 0, sizeKey: null, lineCode: null, tripId: trip.id, container: trip.container,
   };
 }
 
 /** Charges a trip from the rate schedule, falling back to the legacy flat rate if it isn't matched. */
-function invoiceChargeForTrip(trip, opts) {
+function invoiceChargeForTrip(trip, opts, currency) {
   const calc = computeTripServiceCharges(trip, opts);
-  return calc.matched ? calc : legacyTripCharge(trip);
+  return calc.matched ? calc : legacyTripCharge(trip, currency);
 }
 
 /** Combines charges for a set of trips into one flat line-item list + subtotal, for one invoice. */
 function combineTripCharges(trips, opts) {
+  const currency = invoiceCurrencyForTrips(trips);
   const lineItems = [];
-  let subtotalKsh = 0;
+  let subtotal = 0;
   (trips || []).forEach(t => {
-    const calc = invoiceChargeForTrip(t, opts);
+    const calc = invoiceChargeForTrip(t, opts, currency);
     calc.lines.forEach(l => lineItems.push(Object.assign({}, l, { tripId: t.id, container: t.container, ctype: t.ctype })));
-    subtotalKsh += calc.subtotalKsh;
+    subtotal += calc.subtotal;
   });
-  return { lineItems, subtotalKsh: Math.round(subtotalKsh) };
+  return { lineItems, subtotal: Math.round(subtotal * 100) / 100, currency };
 }
 
 
@@ -122,13 +141,20 @@ function renderInvoicing(f) {
 
 function renderInvoiceKpis() {
   const inv = state.db.invoices;
-  const total    = inv.reduce((s,i)=>s+i.total,0);
-  const paid     = inv.reduce((s,i)=>s+i.paid,0);
-  const outstanding = total - paid;
-  const overdue  = inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+(i.total-i.paid),0);
+  const byCcy = {};
+  inv.forEach(i => {
+    const c = i.currency || 'USD';
+    byCcy[c] = byCcy[c] || { total: 0, paid: 0, overdue: 0, overdueCount: 0 };
+    byCcy[c].total += i.total;
+    byCcy[c].paid  += i.paid;
+    if (i.status === 'overdue') { byCcy[c].overdue += (i.total - i.paid); byCcy[c].overdueCount++; }
+  });
+  const ccys = Object.keys(byCcy).length ? Object.keys(byCcy) : ['USD'];
+  const join = (fn) => ccys.map(c => fn(c, byCcy[c] || { total:0, paid:0, overdue:0, overdueCount:0 })).join(' · ') || fmtMoney(0);
+  const outstandingLine = join((c,v)=>fmtMoney(v.total - v.paid, c));
   const kpis = document.getElementById('invKpis');
   if (!kpis) return;
-  kpis.innerHTML = `${kpiCard('Total Invoiced', fmtKsh(total), `${inv.length} invoices`, 'kpi-gold')} ${kpiCard('Collected', fmtKsh(paid), `${Math.round(paid/total*100)||0}% collected`, 'kpi-green')} ${kpiCard('Outstanding', fmtKsh(outstanding), 'Pending payment', 'kpi-blue')} ${kpiCard('Overdue', fmtKsh(overdue), `${inv.filter(i=>i.status==='overdue').length} invoices`, 'kpi-red')}`;
+  kpis.innerHTML = `${kpiCard('Total Invoiced', join((c,v)=>fmtMoney(v.total,c)), `${inv.length} invoices`, 'kpi-gold')} ${kpiCard('Collected', join((c,v)=>fmtMoney(v.paid,c)), 'Across all currencies', 'kpi-green')} ${kpiCard('Outstanding', outstandingLine, 'Pending payment', 'kpi-blue')} ${kpiCard('Overdue', join((c,v)=>fmtMoney(v.overdue,c)), `${inv.filter(i=>i.status==='overdue').length} invoices`, 'kpi-red')}`;
 }
 
 let _invFilter='all';
@@ -139,7 +165,7 @@ function renderInvoiceList(f){
   let items=f==='all'?state.db.invoices:state.db.invoices.filter(i=>i.status===f);
   const el=document.getElementById('invoicesList');
   if(!el) return;
-  el.innerHTML=`<div class="inv-grid">${items.map(inv=>`<div class="inv-card ${inv.status}" onclick="showInvoiceDetail('${inv.id}')"><div class="inv-type-tag">${inv.ref}</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">${inv.client}</div><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px"><div><div style="font-family:var(--font-brand);font-size:20px;font-weight:700;color:var(--gold)">${fmtKsh(inv.total)}</div><div style="font-size:10px;color:var(--text-3);margin-top:2px">${inv.paid?`Paid: ${fmtKsh(inv.paid)}`:'Unpaid'}</div></div>${sbadge(inv.status)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:8px">Due: ${fmtDate(inv.due)}</div></div>`).join('')||'<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-label">No invoices</div></div>'}</div>`;
+  el.innerHTML=`<div class="inv-grid">${items.map(inv=>`<div class="inv-card ${inv.status}" onclick="showInvoiceDetail('${inv.id}')"><div class="inv-type-tag">${inv.ref}</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">${inv.client}</div><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px"><div><div style="font-family:var(--font-brand);font-size:20px;font-weight:700;color:var(--gold)">${fmtMoney(inv.total, inv.currency)}</div><div style="font-size:10px;color:var(--text-3);margin-top:2px">${inv.paid?`Paid: ${fmtMoney(inv.paid, inv.currency)}`:'Unpaid'}</div></div>${sbadge(inv.status)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:8px">Due: ${fmtDate(inv.due)}</div></div>`).join('')||'<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-label">No invoices</div></div>'}</div>`;
 }
 
 async function showInvoiceDetail(id) {
@@ -149,11 +175,70 @@ async function showInvoiceDetail(id) {
   await ensureTripsLoaded(inv.trips);
   const trips = state.db.trips.filter(t=>inv.trips.includes(t.id));
   const ic = invoiceConfig();
+  const ccy = inv.currency || 'USD';
+  const vatRatePct = ic.vatRate;
   const hasLineItems = Array.isArray(inv.lineItems) && inv.lineItems.length > 0;
+
+  const rowFor = (label, container, qtyUnit, amount) => {
+    const lineVat = Math.round(amount * (vatRatePct/100) * 100) / 100;
+    return `<tr><td>${label}</td><td class="mono">${container||'—'}</td><td>${qtyUnit}</td><td class="mono" style="text-align:right">${fmtMoney(amount, ccy)}</td><td class="mono" style="text-align:right">${vatRatePct?fmtMoney(lineVat, ccy):'Exempt'}</td></tr>`;
+  };
+
   const itemRows = hasLineItems
-    ? inv.lineItems.map(l=>`<tr><td>${l.label}${l.currency && l.currency!=='KES'?` <span style="color:var(--text-3);font-size:9px">(${l.currency} ${l.unitAmount}${l.qty>1?` × ${l.qty}`:''})</span>`:''}</td><td class="mono">${l.container||'—'}</td><td>${l.unit||''}${l.qty>1?` × ${l.qty}`:''}</td><td class="mono" style="text-align:right">${fmtKsh(l.amountKsh)}</td></tr>`).join('')
-    : (trips.map(t=>`<tr><td>Haulage — ${t.ctype}</td><td class="mono">${t.container}</td><td>${t.workType}</td><td class="mono" style="text-align:right">${fmtKsh(inv.subtotal/Math.max(trips.length,1))}</td></tr>`).join('')||`<tr><td colspan="4" style="text-align:center;color:var(--text-3)">General haulage services</td></tr>`);
-  openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc"><div class="inv-doc-head"><div><div class="inv-doc-company-name">${ic.companyName}</div><div class="inv-doc-company-details">${ic.companyName} · ${ic.companyLocation}<br>${ic.companyTel} · KRA: ${ic.kraPin}</div></div><div style="text-align:right"><div class="inv-doc-id">${inv.ref}</div><div class="inv-doc-type">Tax Invoice</div><div class="inv-doc-status">${sbadge(inv.status)}</div></div></div><div class="inv-billing-row"><div><div class="inv-bill-label">Bill To</div><div class="inv-bill-name">${inv.client}</div></div><div><div class="inv-bill-label">Invoice Date</div><div class="inv-bill-detail">${fmtDate(inv.date)}</div><div class="inv-bill-label" style="margin-top:6px">Due Date</div><div class="inv-bill-detail">${fmtDate(inv.due)}</div></div></div><div class="inv-items-table-wrap"><table class="inv-items-table"><thead><tr><th>Description</th><th>Container</th><th>${hasLineItems?'Qty / Unit':'Work Type'}</th><th style="text-align:right">Amount</th></tr></thead><tbody>${itemRows}</tbody></table></div><div class="inv-totals"><div class="inv-totals-row"><span>Subtotal</span><span class="inv-amount">${fmtKsh(inv.subtotal)}</span></div><div class="inv-totals-row"><span>VAT ${ic.vatRate}%</span><span class="inv-amount">${fmtKsh(inv.vat)}</span></div>${inv.paid?`<div class="inv-totals-row"><span>Amount Paid</span><span class="inv-amount" style="color:var(--green)">-${fmtKsh(inv.paid)}</span></div>`:''}<div class="inv-totals-row total-row"><span style="font-weight:700">Balance Due</span><span class="inv-amount" style="font-size:16px;color:var(--gold);font-weight:700">${fmtKsh(inv.total-inv.paid)}</span></div></div><div class="inv-bank">Bank: ${ic.bankName} · A/C: ${ic.bankAccount} · Swift: ${ic.bankSwift} · Ref: ${inv.ref}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
+    ? inv.lineItems.map(l=>rowFor(l.label, l.container, `${l.unit||''}${l.qty>1?` × ${l.qty}`:''}`, l.amount!=null?l.amount:l.amountKsh)).join('')
+    : (trips.map(t=>rowFor(`Haulage — ${t.ctype}`, t.container, t.workType, inv.subtotal/Math.max(trips.length,1))).join('')||`<tr><td colspan="5" style="text-align:center;color:var(--text-3)">General haulage services</td></tr>`);
+
+  const addressHtml = inv.clientAddress ? esc(inv.clientAddress).replace(/\n/g,'<br>') : '';
+
+  openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc">
+    <div class="inv-doc-head">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div class="inv-doc-logo">GH</div>
+        <div>
+          <div class="inv-doc-company-name">${ic.companyName}</div>
+          <div class="inv-doc-company-details">${ic.companyLocation}<br>${ic.poBox}</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="inv-doc-type">Invoice</div>
+        <div class="inv-doc-status">${sbadge(inv.status)}</div>
+      </div>
+    </div>
+
+    <div class="inv-meta-row">
+      <div><div class="inv-bill-label">Cust VAT Reg</div><div class="inv-bill-detail">${inv.custVatReg||'—'}</div></div>
+      <div><div class="inv-bill-label">Company VAT Reg</div><div class="inv-bill-detail">${ic.companyVatReg}</div></div>
+      <div><div class="inv-bill-label">Inv. Date</div><div class="inv-bill-detail">${fmtDate(inv.date)}</div></div>
+      <div><div class="inv-bill-label">Invoice No.</div><div class="inv-bill-detail">${inv.ref}</div></div>
+    </div>
+
+    <div class="inv-billing-row">
+      <div><div class="inv-bill-label">Invoice To</div><div class="inv-bill-name">${inv.client}</div>${addressHtml?`<div class="inv-bill-detail">${addressHtml}</div>`:''}</div>
+      <div><div class="inv-bill-label">Terms</div><div class="inv-bill-detail">${inv.terms||'Due on receipt'}</div><div class="inv-bill-label" style="margin-top:6px">Due Date</div><div class="inv-bill-detail">${fmtDate(inv.due)}</div></div>
+    </div>
+
+    <div class="inv-items-table-wrap"><table class="inv-items-table"><thead><tr><th>Description</th><th>Container</th><th>${hasLineItems?'Qty / Unit':'Work Type'}</th><th style="text-align:right">Amount</th><th style="text-align:right">VAT</th></tr></thead><tbody>${itemRows}</tbody></table></div>
+
+    <div class="inv-payable-row">
+      <div class="inv-bank">
+        <strong>Invoice Payable To: ${ic.companyName}</strong><br>
+        Bank: ${ic.bankName}<br>
+        Account Number: ${ic.bankAccount}<br>
+        Currency: ${ccy}<br>
+        Branch: ${ic.branchName}<br>
+        Swift Code: ${ic.bankSwift}
+      </div>
+      <div class="inv-totals">
+        <div class="inv-totals-row"><span>Subtotal</span><span class="inv-amount">${fmtMoney(inv.subtotal, ccy)}</span></div>
+        <div class="inv-totals-row"><span>VAT ${vatRatePct}%</span><span class="inv-amount">${fmtMoney(inv.vat, ccy)}</span></div>
+        <div class="inv-totals-row total-row"><span style="font-weight:700">Total</span><span class="inv-amount" style="font-size:15px;font-weight:700">${fmtMoney(inv.total, ccy)}</span></div>
+        <div class="inv-totals-row"><span>Payments/Credits</span><span class="inv-amount">${fmtMoney(inv.paid, ccy)}</span></div>
+        <div class="inv-totals-row total-row"><span style="font-weight:700">Balance Due</span><span class="inv-amount" style="font-size:16px;color:var(--gold);font-weight:700">${fmtMoney(inv.total-inv.paid, ccy)}</span></div>
+      </div>
+    </div>
+    ${inv.notes?`<div class="inv-notes">${esc(inv.notes)}</div>`:''}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
 }
 
 function markInvoicePaid(id) {
@@ -162,7 +247,7 @@ function markInvoicePaid(id) {
   inv.status='paid'; inv.paid=inv.total;
   inv._dirty = true;
   scheduleSave();
-  addAudit(state.profile.username, 'Invoice Paid', `${inv.ref} — ${fmtKsh(inv.total)}`);
+  addAudit(state.profile.username, 'Invoice Paid', `${inv.ref} — ${fmtMoney(inv.total, inv.currency)}`);
   closeModal(); renderInvoiceList(_invFilter); renderInvoiceKpis();
   toast(`${inv.ref} marked as paid`, 'success');
 }
@@ -187,6 +272,7 @@ function showCreateInvoiceModal() {
   _ciLastLineItems = [];
   openModal('Create Invoice', `
     <div class="fg"><label>Client Name</label><input id="ci_client" placeholder="Company Ltd"/></div>
+    <div class="fg"><label>Bill To Address</label><textarea id="ci_address" rows="3" placeholder="Building, Floor&#10;Street, City"></textarea></div>
     <div class="fg"><label>Select Trips</label>
       <div style="max-height:150px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px">
         ${state.db.trips.map(t=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11.5px;cursor:pointer"><input type="checkbox" class="ci-trip-cb" value="${t.id}" onchange="recalcInvoiceFromTrips()" style="accent-color:var(--gold)">${t.container} — ${t.origin}→${t.dest} · ${t.ctype}</label>`).join('')}
@@ -208,7 +294,8 @@ function showCreateInvoiceModal() {
       </div>
     </div>
     <div id="ciBreakdown" style="font-size:11px;color:var(--text-2);margin:8px 0;max-height:140px;overflow-y:auto"><div style="color:var(--text-3)">Select trips to auto-calculate from the rate schedule.</div></div>
-    <div class="form-row-2"><div class="fg"><label>Subtotal (KSh)</label><input id="ci_sub" type="number" placeholder="0"/></div><div class="fg"><label>Due Date</label><input id="ci_due" type="date"/></div></div>
+    <div class="form-row-2"><div class="fg"><label>Subtotal</label><input id="ci_sub" type="number" step="0.01" placeholder="0"/></div><div class="fg"><label>Currency</label><select id="ci_currency"><option value="USD">USD</option><option value="KES">KES</option></select></div></div>
+    <div class="form-row-2"><div class="fg"><label>Terms</label><input id="ci_terms" value="Due on receipt"/></div><div class="fg"><label>Due Date</label><input id="ci_due" type="date"/></div></div>
     <div class="fg"><label>Notes</label><textarea id="ci_notes" rows="2"></textarea></div>
     <button class="submit-btn" onclick="saveInvoice()">Create Invoice →</button>`);
 }
@@ -226,27 +313,33 @@ function recalcInvoiceFromTrips() {
     storage:      document.getElementById('ci_svc_storage')?.checked,
     storageDays:  parseInt(document.getElementById('ci_storage_days')?.value)||0,
   };
-  const { lineItems, subtotalKsh } = combineTripCharges(trips, opts);
+  const { lineItems, subtotal, currency } = combineTripCharges(trips, opts);
   _ciLastLineItems = lineItems;
   const bd = document.getElementById('ciBreakdown');
   if (bd) {
     bd.innerHTML = lineItems.length
-      ? lineItems.map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid var(--border)"><span>${l.container} — ${l.label}${l.currency && l.currency!=='KES'?` (${l.currency} ${l.unitAmount}${l.qty>1?` × ${l.qty}`:''})`:''}</span><span class="mono">${fmtKsh(l.amountKsh)}</span></div>`).join('')
+      ? lineItems.map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid var(--border)"><span>${l.container} — ${l.label}${l.qty>1?` × ${l.qty}`:''}</span><span class="mono">${fmtMoney(l.amount, l.currency)}</span></div>`).join('')
       : `<div style="color:var(--text-3)">No matching rate for the selected trips/services — check container type or shipping line.</div>`;
   }
   const subEl = document.getElementById('ci_sub');
-  if (subEl) subEl.value = subtotalKsh || '';
+  if (subEl) subEl.value = subtotal || '';
+  const ccyEl = document.getElementById('ci_currency');
+  if (ccyEl && trips.length) ccyEl.value = currency;
 }
 
 function saveInvoice() {
   const client = document.getElementById('ci_client').value.trim();
-  const sub    = Math.max(0, parseInt(document.getElementById('ci_sub').value)||0);
+  const sub    = Math.max(0, parseFloat(document.getElementById('ci_sub').value)||0);
   if (!client||!sub) { toast('Client and amount required','error'); return; }
-  const vat   = Math.round(sub * invoiceVatRate());
-  const total = sub+vat;
+  const currency = document.getElementById('ci_currency')?.value || 'USD';
+  const vat   = Math.round(sub * invoiceVatRate() * 100) / 100;
+  const total = Math.round((sub+vat) * 100) / 100;
   const trips = [...document.querySelectorAll('.ci-trip-cb:checked')].map(cb=>cb.value);
   const inv = {
-    id: uid('INV'), client, subtotal:sub, vat, total, paid:0,
+    id: uid('INV'), client,
+    clientAddress: sanitize(document.getElementById('ci_address')?.value.trim() || ''),
+    subtotal:sub, vat, total, paid:0, currency,
+    terms: sanitize(document.getElementById('ci_terms')?.value.trim()) || 'Due on receipt',
     trips, status:'draft', ref: `INV-${Date.now().toString().slice(-6)}`,
     date: new Date().toISOString(),
     due: document.getElementById('ci_due').value||new Date(Date.now()+30*86400000).toISOString(),
@@ -269,13 +362,13 @@ function autoGenerateInvoices() {
   let legacyCount = 0;
   tripsWithoutInvoice.forEach(t=>{
     const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
-    const { lineItems, subtotalKsh } = combineTripCharges([t]); // LOLO/Reefer + Service Charge + Transport, per the rate schedule
+    const { lineItems, subtotal, currency } = combineTripCharges([t]); // LOLO/Reefer + Service Charge + Transport, per the rate schedule
     if (!lineItems.some(l=>l.key!=='legacy')) legacyCount++;
-    const sub = subtotalKsh;
-    const vat = Math.round(sub * invoiceVatRate());
+    const vat = Math.round(subtotal * invoiceVatRate() * 100) / 100;
     state.db.invoices.push({
       id: uid('INV'), client: line? `${line.name} (Auto)` :'Client (Auto)',
-      subtotal:sub, vat, total:sub+vat, paid:0,
+      clientAddress: '', currency, terms: 'Due on receipt',
+      subtotal, vat, total: Math.round((subtotal+vat)*100)/100, paid:0,
       trips:[t.id], status:'draft', lineItems,
       ref: `INV-${Date.now().toString().slice(-4)}-${uid('').slice(0,3)}`,
       date: new Date().toISOString(),
@@ -318,13 +411,15 @@ function saveBillingRates() { scheduleSave(); addAudit(state.profile.username,'B
 function invoiceConfig() {
   const c = state.db.settings?.invoiceConfig || {};
   return {
-    companyName:     c.companyName     || state.db.settings?.companyName || 'Gargo Logistics Ltd',
-    companyLocation: c.companyLocation || 'Mombasa, Kenya',
+    companyName:     c.companyName     || 'Gargo Haven Depot Limited',
+    companyLocation: c.companyLocation || 'Refinery Road, Changamwe, Mombasa',
+    poBox:           c.poBox           || 'P.O. Box 3291 GPO Msa',
     companyTel:      c.companyTel      || '+254 116 307 751',
-    kraPin:          c.kraPin          || 'P051234567X',
-    bankName:        c.bankName        || 'Equity Bank',
-    bankAccount:     c.bankAccount     || '1234567890',
-    bankSwift:       c.bankSwift       || 'EQBLKENX',
+    companyVatReg:   c.companyVatReg   || 'PO52380957H',
+    bankName:        c.bankName        || 'Family Bank',
+    bankAccount:     c.bankAccount     || '',
+    branchName:      c.branchName      || '',
+    bankSwift:       c.bankSwift       || 'FABLKENA',
     vatRate:         (typeof c.vatRate === 'number') ? c.vatRate : 16,
     usdToKes:        (typeof c.usdToKes === 'number' && c.usdToKes > 0) ? c.usdToKes : 129,
   };
@@ -339,24 +434,28 @@ function renderInvoiceConfigForm() {
   el.innerHTML = `
     <div class="fg" style="margin:0"><label>Company Name</label><input id="ic_companyName" value="${c.companyName}"/></div>
     <div class="fg" style="margin:0"><label>Location</label><input id="ic_companyLocation" value="${c.companyLocation}"/></div>
+    <div class="fg" style="margin:0"><label>P.O. Box</label><input id="ic_poBox" value="${c.poBox}"/></div>
     <div class="fg" style="margin:0"><label>Phone</label><input id="ic_companyTel" value="${c.companyTel}"/></div>
-    <div class="fg" style="margin:0"><label>KRA PIN</label><input id="ic_kraPin" value="${c.kraPin}"/></div>
+    <div class="fg" style="margin:0"><label>Company VAT Reg.</label><input id="ic_companyVatReg" value="${c.companyVatReg}"/></div>
     <div class="fg" style="margin:0"><label>Bank Name</label><input id="ic_bankName" value="${c.bankName}"/></div>
-    <div class="fg" style="margin:0"><label>Bank Account</label><input id="ic_bankAccount" value="${c.bankAccount}"/></div>
-    <div class="fg" style="margin:0"><label>Bank Swift</label><input id="ic_bankSwift" value="${c.bankSwift}"/></div>
+    <div class="fg" style="margin:0"><label>Bank Account Number</label><input id="ic_bankAccount" value="${c.bankAccount}"/></div>
+    <div class="fg" style="margin:0"><label>Branch</label><input id="ic_branchName" value="${c.branchName}"/></div>
+    <div class="fg" style="margin:0"><label>Bank Swift Code</label><input id="ic_bankSwift" value="${c.bankSwift}"/></div>
     <div class="fg" style="margin:0"><label>VAT Rate (%)</label><input id="ic_vatRate" type="number" step="0.1" value="${c.vatRate}"/></div>
-    <div class="fg" style="margin:0"><label>USD → KES Rate</label><input id="ic_usdToKes" type="number" step="0.01" value="${c.usdToKes}"/></div>
+    <div class="fg" style="margin:0"><label>USD → KES Rate <span style="color:var(--text-3);font-weight:400">(legacy fallback conversion only)</span></label><input id="ic_usdToKes" type="number" step="0.01" value="${c.usdToKes}"/></div>
   `;
 }
 
 function saveInvoiceConfig() {
   const cfg = {
-    companyName:     sanitize(document.getElementById('ic_companyName').value.trim())     || 'Gargo Logistics Ltd',
+    companyName:     sanitize(document.getElementById('ic_companyName').value.trim())     || 'Gargo Haven Depot Limited',
     companyLocation: sanitize(document.getElementById('ic_companyLocation').value.trim()),
+    poBox:           sanitize(document.getElementById('ic_poBox').value.trim()),
     companyTel:      sanitize(document.getElementById('ic_companyTel').value.trim()),
-    kraPin:          sanitize(document.getElementById('ic_kraPin').value.trim()),
+    companyVatReg:   sanitize(document.getElementById('ic_companyVatReg').value.trim()) || 'PO52380957H',
     bankName:        sanitize(document.getElementById('ic_bankName').value.trim()),
     bankAccount:     sanitize(document.getElementById('ic_bankAccount').value.trim()),
+    branchName:      sanitize(document.getElementById('ic_branchName').value.trim()),
     bankSwift:       sanitize(document.getElementById('ic_bankSwift').value.trim()),
     vatRate:         Math.max(0, parseFloat(document.getElementById('ic_vatRate').value) || 0),
     usdToKes:        Math.max(0.01, parseFloat(document.getElementById('ic_usdToKes').value) || 129),
