@@ -70,7 +70,14 @@ async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
 async function saveDirty(table, rows, toRowFn) {
   const dirty = (rows || []).filter(r => r._dirty);
   if (!dirty.length) return null;
-  const failure = await upsertRowsChunked(table, dirty.map(toRowFn));
+  let failure = await upsertRowsChunked(table, dirty.map(toRowFn));
+  // Invoices gained a line_items column (rate-schedule breakdown) — if the
+  // Supabase table hasn't been migrated yet, drop the field and retry once
+  // rather than losing the whole invoice save.
+  if (failure && table === 'invoices' && /line_items/i.test(failure.error?.message || '')) {
+    console.warn('invoices.line_items column not found — saving without it. Run: alter table invoices add column if not exists line_items jsonb default \'[]\'::jsonb;');
+    failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.line_items; return row; }));
+  }
   if (failure) return failure;
   dirty.forEach(r => { delete r._dirty; });
   return null;
