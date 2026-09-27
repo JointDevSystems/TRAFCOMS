@@ -1,4 +1,4 @@
-const CACHE_VERSION = '2.6';
+const CACHE_VERSION = '2.7';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
