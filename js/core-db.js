@@ -120,7 +120,7 @@ async function loadDB() {
       trucksRes, driversRes, tripsRes, maintRes, fuelRes, linesRes,
       shutoutsRes, icRes, reqRes, wsRes, invRes, invTripsRes,
       billingRes, allocRes, trackRes, auditRes, settingsRes, profilesRes,
-      vlmRes, vpsRes,
+      vlmRes, vpsRes, crRes,
     ] = await Promise.all([
       supabase.from('trucks').select('*'),
       supabase.from('drivers').select('*'),
@@ -161,6 +161,7 @@ async function loadDB() {
       supabase.from('profiles').select('*'),
       supabase.from('vessel_line_map').select('*'),
       supabase.from('vessel_prestaging').select('*'),
+      supabase.from('container_repairs').select('*').order('created_at', { ascending: false }).limit(2000),
     ]);
 
     if (trucksRes.error) throw trucksRes.error;
@@ -176,6 +177,7 @@ async function loadDB() {
     const shippingLines  = (linesRes.data || []).map(lineFromRow);
     const vesselLineMap  = (vlmRes.data || []).map(vlmFromRow).sort((a, b) => a.priority - b.priority);
     const vesselPrestaging = (vpsRes.data || []).map(prestageFromRow);
+    const containerRepairs = (crRes.data || []).map(crFromRow);
     const shutouts       = (shutoutsRes.data || []).map(shutoutFromRow);
     const interchange    = (icRes.data || []).map(icFromRow);
     const requisitions   = (reqRes.data || []).map(reqFromRow);
@@ -221,7 +223,7 @@ async function loadDB() {
       trucks, drivers, trips, maintenance, fuel, shippingLines, shutouts,
       interchange, requisitions, workshop, invoices, billingRates,
       allocationRules, trackingPositions, auditLog, settings, profiles,
-      vesselLineMap, vesselPrestaging,
+      vesselLineMap, vesselPrestaging, containerRepairs,
     };
   } catch (e) {
     console.warn('Failed to load from Supabase:', e);
@@ -254,6 +256,8 @@ async function saveDB() {
     failures.push(await saveDirty('requisitions', db.requisitions, reqToRow));
     
     failures.push(await saveDirty('workshop_jobs', db.workshop, wsToRow));
+
+    failures.push(await saveDirty('container_repairs', db.containerRepairs, crToRow));
 
     failures.push(await saveDirty('invoices', db.invoices, invToRow));
     await syncInvoiceTrips(db.invoices);
@@ -340,7 +344,7 @@ function remapSeedIds(db) {
   remapOwnIds(db.drivers,       idMap.drivers);
   remapOwnIds(db.trips,         idMap.trips);
   remapOwnIds(db.invoices,      idMap.invoices);
-  [db.maintenance, db.fuel, db.shutouts, db.interchange, db.requisitions, db.workshop, db.profiles, db.auditLog, db.allocationRules, db.vesselPrestaging]
+  [db.maintenance, db.fuel, db.shutouts, db.interchange, db.requisitions, db.workshop, db.profiles, db.auditLog, db.allocationRules, db.vesselPrestaging, db.containerRepairs]
     .forEach(arr => remapOwnIds(arr, null));
 
   db.drivers.forEach(d => { d.truckId = d.truckId ? (idMap.trucks.get(d.truckId) || null) : null; });
@@ -372,6 +376,9 @@ function remapSeedIds(db) {
     p.driverId = p.driverId ? (idMap.drivers.get(p.driverId)      || null) : null;
   });
   db.workshop.forEach(w => { w.truckId = w.truckId ? (idMap.trucks.get(w.truckId) || null) : null; });
+  (db.containerRepairs || []).forEach(c => {
+    c.line = c.line ? (idMap.shippingLines.get(c.line) || null) : null;
+  });
   db.requisitions.forEach(r => { if (idMap.drivers.has(r.requester)) r.requester = idMap.drivers.get(r.requester); });
   db.invoices.forEach(inv => { inv.trips = (inv.trips || []).map(tid => idMap.trips.get(tid)).filter(Boolean); });
 
@@ -410,6 +417,7 @@ async function clearAllTables() {
   await del('allocation_rules', 'id');
   await del('billing_rates', 'ctype');
   await del('workshop_jobs', 'id');
+  await del('container_repairs', 'id');
   await del('requisitions', 'id');
   await del('interchange', 'id');
   await del('shutouts', 'id');
@@ -453,6 +461,7 @@ async function initDB() {
       interchange: [],
       requisitions: [],
       workshop: [],
+      containerRepairs: [],
       invoices: [],
       billingRates: defaultBillingRates(),
       allocationRules: [],
@@ -463,6 +472,9 @@ async function initDB() {
       vesselLineMap: [],
       vesselPrestaging: []
     };
+  }
+  if (!Array.isArray(state.db.containerRepairs)) {
+    state.db.containerRepairs = [];
   }
   if (!state.db.settings) {
     state.db.settings = {
@@ -492,7 +504,7 @@ function subscribeLiveSync() {
   const tables = [
     'trucks', 'drivers', 'trips', 'maintenance', 'fuel_logs', 'shutouts',
     'interchange', 'requisitions', 'workshop_jobs', 'invoices',
-    'shipping_lines', 'allocation_rules', 'vessel_prestaging',
+    'shipping_lines', 'allocation_rules', 'vessel_prestaging', 'container_repairs',
   ];
 
   let channel = supabase.channel('gargo-live-sync');

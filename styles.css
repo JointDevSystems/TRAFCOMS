@@ -525,6 +525,7 @@ body.driver-portal-active .mobile-nav-bar { display: none !important; }
 .s-staged { background: rgba(201,162,39,0.12); color: var(--gold); border-color: var(--gold-border); }
 .s-shutout { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.22); }
 .s-cancelled { background: rgba(74,82,104,0.2); color: var(--text-3); border-color: rgba(74,82,104,0.3); }
+.s-awaiting_approval { background: rgba(245,158,11,0.12); color: var(--amber); border-color: rgba(245,158,11,0.22); }
 
 /* ══ TRUCK GRID ══ */
 .truck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }

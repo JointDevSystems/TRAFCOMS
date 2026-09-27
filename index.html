@@ -299,7 +299,7 @@
                     </button>
                     <button class="nav-item" onclick="showSection('workshop',this)" data-section="workshop">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                        Workshop
+                        Workshop <span class="nav-badge warn" id="badge-workshop"></span>
                     </button>
 
                     <div class="nav-group-label" id="sidebarAdminGroupLabel">Admin &amp; Reports</div>
@@ -999,19 +999,48 @@
                         <div class="sec-toolbar">
                             <div class="sec-title">Workshop</div>
                             <div class="filter-row">
-                                <button class="filter-btn active" onclick="filterWorkshop('all',this)">All</button>
-                                <button class="filter-btn" onclick="filterWorkshop('reported',this)">Reported</button>
-                                <button class="filter-btn" onclick="filterWorkshop('diagnosed',this)">Diagnosed</button>
-                                <button class="filter-btn" onclick="filterWorkshop('in_progress',this)">In Progress</button>
-                                <button class="filter-btn" onclick="filterWorkshop('completed',this)">Completed</button>
-                                <button class="action-btn" onclick="showAddWorkshopJobModal()">+ New Job Card</button>
+                                <button class="filter-btn active" onclick="switchWorkshopTab('trucks',this)">Truck Jobs</button>
+                                <button class="filter-btn" onclick="switchWorkshopTab('containers',this)">Container Repairs</button>
                             </div>
                         </div>
-                        <div class="ops-notice">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                            Workshop job card approvals and status advances are handled in the Admin section only.
+
+                        <!-- Truck Jobs tab -->
+                        <div id="wsTabTrucks">
+                            <div class="sec-toolbar" style="padding:0 0 12px">
+                                <div class="filter-row">
+                                    <button class="filter-btn active" onclick="filterWorkshop('all',this)">All</button>
+                                    <button class="filter-btn" onclick="filterWorkshop('reported',this)">Reported</button>
+                                    <button class="filter-btn" onclick="filterWorkshop('diagnosed',this)">Diagnosed</button>
+                                    <button class="filter-btn" onclick="filterWorkshop('in_progress',this)">In Progress</button>
+                                    <button class="filter-btn" onclick="filterWorkshop('completed',this)">Completed</button>
+                                    <button class="action-btn" onclick="showAddWorkshopJobModal()">+ New Job Card</button>
+                                </div>
+                            </div>
+                            <div class="ops-notice">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                Workshop job card approvals and status advances are handled in the Admin section only.
+                            </div>
+                            <div id="workshopList"></div>
                         </div>
-                        <div id="workshopList"></div>
+
+                        <!-- Container Repairs tab -->
+                        <div id="wsTabContainers" style="display:none">
+                            <div class="sec-toolbar" style="padding:0 0 12px">
+                                <div class="filter-row">
+                                    <button class="filter-btn active" onclick="filterContainerRepairs('all',this)">All</button>
+                                    <button class="filter-btn" onclick="filterContainerRepairs('awaiting_approval',this)">Awaiting Approval</button>
+                                    <button class="filter-btn" onclick="filterContainerRepairs('approved',this)">Approved</button>
+                                    <button class="filter-btn" onclick="filterContainerRepairs('in_progress',this)">In Progress</button>
+                                    <button class="filter-btn" onclick="filterContainerRepairs('completed',this)">Completed</button>
+                                    <button class="action-btn" onclick="showAddContainerRepairModal()">+ New Repair Job</button>
+                                </div>
+                            </div>
+                            <div class="ops-notice">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                Pull container, survey and damage details straight from an Interchange record, attach the shipping line's EIR / repair approval, then track the job through to completion with before &amp; after photos.
+                            </div>
+                            <div id="containerRepairsList"></div>
+                        </div>
                     </section>
 
                     <!-- ══ ADMIN SECTIONS ══ -->

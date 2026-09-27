@@ -24,6 +24,7 @@ function buildBadges() {
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
   set('badge-prestaging',   (db.vesselPrestaging||[]).filter(p=>p.status==='staged').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
+  set('badge-workshop',     (db.containerRepairs||[]).filter(c=>c.status==='awaiting_approval').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
   set('badge-depotreport',  computeDepotReportDuplicates().length);
 }
@@ -138,7 +139,7 @@ const sectionRenderers = {
   prestaging:()=>renderPrestaging('staged'),
   depotreport: renderDepotReport,
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
-  workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
+  workshop:renderWorkshopSection, invoicing:()=>renderInvoicing('all'),
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
   reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:initTrackingSection,
   usermgmt:renderUserMgmt, settings:renderSettings,
@@ -738,6 +739,7 @@ const DELETE_TABLE_LABELS = {
   fuel:'Fuel log', shutouts:'Shutout record', interchange:'Interchange record',
   shippingLines:'Shipping line', requisitions:'Requisition', workshop:'Workshop job',
   invoices:'Invoice', vesselPrestaging:'Vessel prestaging record',
+  containerRepairs:'Container repair job',
 };
 
 
@@ -746,6 +748,7 @@ const DELETE_TABLE_SUPABASE_NAMES = {
   fuel:'fuel_logs', shutouts:'shutouts', interchange:'interchange',
   shippingLines:'shipping_lines', requisitions:'requisitions', workshop:'workshop_jobs',
   invoices:'invoices', vesselPrestaging:'vessel_prestaging',
+  containerRepairs:'container_repairs',
 };
 
 function openModal(title, body) {

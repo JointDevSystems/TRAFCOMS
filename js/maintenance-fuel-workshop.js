@@ -13,6 +13,42 @@ function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title
 
 function wsFromRow(r){ return { id:r.id, truckId:r.truck_id, title:r.title, desc:r.description, tech:r.tech, status:r.status, reported:r.reported, diagnosed:r.diagnosed, parts:r.parts, labour:r.labour, total:r.total }; }
 
+/* -- Container Repairs row mappers -- */
+function crToRow(c) {
+  return {
+    id: c.id, container: c.container, ctype: c.ctype || null, line_id: c.line || null,
+    interchange_id: c.interchangeId || null, survey_id: c.surveyId || null,
+    eir_number: c.eirNumber || null, condition: c.condition || null,
+    repairs: JSON.stringify(c.repairs || []), repair_total: c.repairTotal || 0,
+    gate_in_photo: c.gateInPhoto || '', approval_doc: c.approvalDoc || '', approval_doc_name: c.approvalDocName || null,
+    approved_by_line: c.approvedByLine || null, approval_reference: c.approvalReference || null,
+    pre_repair_photos: JSON.stringify(c.preRepairPhotos || []), post_repair_photos: JSON.stringify(c.postRepairPhotos || []),
+    status: c.status || 'awaiting_approval', tech: c.tech || null,
+    labour_cost: c.labourCost || 0, material_cost: c.materialCost || 0, total_cost: c.totalCost || 0,
+    notes: c.notes || null, created_by: c.createdBy || null, created_at: c.createdAt || new Date().toISOString(),
+    completed_at: c.completedAt || null,
+  };
+}
+
+function crFromRow(r) {
+  let repairs = []; try { repairs = r.repairs ? (typeof r.repairs === 'string' ? JSON.parse(r.repairs) : r.repairs) : []; } catch (e) { repairs = []; }
+  let pre = []; try { pre = r.pre_repair_photos ? (typeof r.pre_repair_photos === 'string' ? JSON.parse(r.pre_repair_photos) : r.pre_repair_photos) : []; } catch (e) { pre = []; }
+  let post = []; try { post = r.post_repair_photos ? (typeof r.post_repair_photos === 'string' ? JSON.parse(r.post_repair_photos) : r.post_repair_photos) : []; } catch (e) { post = []; }
+  return {
+    id: r.id, container: r.container, ctype: r.ctype || '', line: r.line_id || null,
+    interchangeId: r.interchange_id || null, surveyId: r.survey_id || null,
+    eirNumber: r.eir_number || '', condition: r.condition || '',
+    repairs, repairTotal: r.repair_total || 0,
+    gateInPhoto: r.gate_in_photo || '', approvalDoc: r.approval_doc || '', approvalDocName: r.approval_doc_name || '',
+    approvedByLine: r.approved_by_line || '', approvalReference: r.approval_reference || '',
+    preRepairPhotos: pre, postRepairPhotos: post,
+    status: r.status || 'awaiting_approval', tech: r.tech || '',
+    labourCost: r.labour_cost || 0, materialCost: r.material_cost || 0, totalCost: r.total_cost || 0,
+    notes: r.notes || '', createdBy: r.created_by || '', createdAt: r.created_at,
+    completedAt: r.completed_at || null,
+  };
+}
+
 /* ──────────────────────────────────────────────────────────────────
    § 14b  RECEIPT PHOTO CAPTURE (shared by admin + driver fuel forms)
 ────────────────────────────────────────────────────────────────── */
@@ -342,7 +378,7 @@ function addFuelLog() {
 ────────────────────────────────────────────────────────────────── */
 let _wsFilter='all';
 
-function filterWorkshop(f,btn){ _wsFilter=f; document.querySelectorAll('#sec-workshop .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderWorkshop(f); }
+function filterWorkshop(f,btn){ _wsFilter=f; document.querySelectorAll('#wsTabTrucks .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderWorkshop(f); }
 
 function renderWorkshop(f){
   let items=f==='all'?state.db.workshop:state.db.workshop.filter(w=>w.status===f);
@@ -393,4 +429,423 @@ function advanceWorkshop(id, status) {
   addAudit(state.profile.username, 'Workshop Update', `${w.title} → ${status}`);
   renderAdminWorkshop(); renderWorkshop(_wsFilter);
   toast(`Job updated to ${status}`, 'success');
+}
+
+/* ----------------------------------------------------------------------
+   SS 21  CONTAINER REPAIRS (Workshop -> Container Repairs tab)
+   Borrows container/survey details from Interchange, tracks the
+   shipping line's EIR/repair approval, and carries gate-in -> pre ->
+   post-repair photos through to job completion.
+---------------------------------------------------------------------- */
+let _wsTab = 'trucks';
+let _crFilter = 'all';
+
+function switchWorkshopTab(tab, btn) {
+  _wsTab = tab;
+  const trucksEl = document.getElementById('wsTabTrucks');
+  const containersEl = document.getElementById('wsTabContainers');
+  if (trucksEl) trucksEl.style.display = tab === 'trucks' ? 'block' : 'none';
+  if (containersEl) containersEl.style.display = tab === 'containers' ? 'block' : 'none';
+  document.querySelectorAll('#sec-workshop > .sec-toolbar > .filter-row > .filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab === 'trucks') renderWorkshop(_wsFilter); else renderContainerRepairs(_crFilter);
+}
+
+function renderWorkshopSection() {
+  if (_wsTab === 'containers') renderContainerRepairs(_crFilter); else renderWorkshop(_wsFilter);
+}
+
+function crStatusLabel(s) { return { awaiting_approval:'Awaiting Approval', approved:'Approved', in_progress:'In Progress', completed:'Completed' }[s] || s; }
+
+function filterContainerRepairs(f, btn) {
+  _crFilter = f;
+  document.querySelectorAll('#wsTabContainers .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderContainerRepairs(f);
+}
+
+/* Interchange records that look like they need repair - the pool a new
+   repair job can be pulled from. */
+function eligibleRepairSourceInterchange() {
+  return (state.db.interchange || [])
+    .filter(ic => (ic.repairs && ic.repairs.length) || /damag|repair/i.test(ic.condition || ''))
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 150);
+}
+
+/* Same photo lookup Interchange's own "Photos" button uses - pulls the
+   gate photo plus any photos captured at survey time. */
+async function resolveContainerPhotos(ic) {
+  let photos = [];
+  if (ic.surveyId) {
+    let s = (_surveyRegisterData.find(x => x.id === ic.surveyId)) || _surveyLookupCache[ic.surveyId];
+    if (!s) { try { s = await window.bookingDocs.surveyById(ic.surveyId); if (s) _surveyLookupCache[s.id] = s; } catch (e) { /* fall through */ } }
+    if (s && Array.isArray(s.photos)) photos = s.photos.slice();
+  }
+  if (ic.img && photos.indexOf(ic.img) === -1) photos.unshift(ic.img);
+  return photos;
+}
+
+function renderContainerRepairs(f) {
+  if (!Array.isArray(state.db.containerRepairs)) state.db.containerRepairs = [];
+  const all = [...state.db.containerRepairs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const items = f === 'all' ? all : all.filter(c => c.status === f);
+  const el = document.getElementById('containerRepairsList');
+  if (!el) return;
+  el.innerHTML = items.map(c => {
+    const thumb = c.gateInPhoto
+      ? `<img src="${c.gateInPhoto}" style="width:100%;height:100%;object-fit:cover" />`
+      : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+    const itemsCount = (c.repairs || []).length;
+    const damageLine = itemsCount ? `${itemsCount} damage item${itemsCount > 1 ? 's' : ''} \u00b7 KSh ${Number(c.repairTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'No itemised damage on file';
+    const approvalLine = c.approvalDoc
+      ? `\u2713 Shipping line approval on file${c.approvalReference ? ` \u00b7 Ref ${esc(c.approvalReference)}` : ''}`
+      : '\u26a0 Awaiting shipping line approval document';
+    const postCount = (c.postRepairPhotos || []).length;
+    const actions = [];
+    actions.push(`<button class="modal-btn ghost" onclick="showContainerRepairPhotos('${c.id}')">\ud83d\udcf7 Photos</button>`);
+    if (!c.approvalDoc) actions.push(`<button class="modal-btn primary" onclick="showAttachApprovalModal('${c.id}')">Attach Approval</button>`);
+    if (c.status === 'approved') actions.push(`<button class="modal-btn ghost" onclick="advanceContainerRepair('${c.id}','in_progress')">Start Repair</button>`);
+    if (c.status === 'in_progress') actions.push(`<button class="modal-btn success" onclick="advanceContainerRepair('${c.id}','completed')">Mark Complete</button>`);
+    if (c.status !== 'completed') actions.push(`<button class="modal-btn ghost" onclick="uploadPostRepairPhoto('${c.id}')">+ Post-Repair Photo</button>`);
+    return `<div class="ic-card">
+      <div class="ic-card-img-placeholder" style="cursor:pointer;overflow:hidden" onclick="showContainerRepairPhotos('${c.id}')" title="View photos">${thumb}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <div class="mono" style="font-size:13px;color:var(--gold)">${esc(c.container)}</div>
+          ${sbadge(c.status)}
+        </div>
+        <div style="font-size:11.5px;color:var(--text-2)">${esc(c.ctype || '\u2014')} \u00b7 ${lineName(c.line)}${c.eirNumber ? ` \u00b7 EIR ${esc(c.eirNumber)}` : ''}</div>
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${damageLine}</div>
+        <div style="font-size:10.5px;margin-top:2px;color:${c.approvalDoc ? 'var(--green)' : 'var(--amber)'}">${approvalLine}</div>
+        ${c.tech ? `<div style="font-size:10px;color:var(--text-3);margin-top:2px">Technician: ${esc(c.tech)}</div>` : ''}
+        ${postCount ? `<div style="font-size:10px;color:var(--text-3);margin-top:2px">${postCount} post-repair photo${postCount > 1 ? 's' : ''} on file</div>` : ''}
+        ${c.notes ? `<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${esc(c.notes)}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${actions.join('')}</div>
+    </div>`;
+  }).join('') || '<div class="empty-state"><div class="empty-state-icon">\ud83d\udee0\ufe0f</div><div class="empty-state-label">No container repair jobs</div></div>';
+}
+
+function showAddContainerRepairModal() {
+  window._repairItems.cr = [];
+  window._pendingCRApprovalDoc = '';
+  window._pendingCRApprovalDocName = '';
+  window._crGatePhotos = [];
+  window._crSourceInterchangeId = null;
+  window._crSourceSurveyId = null;
+  const sourceOptions = eligibleRepairSourceInterchange().map(ic =>
+    `<option value="${ic.id}">${esc(ic.container)} \u2014 ${esc(lineName(ic.line))} \u2014 ${fmtDate(ic.date)}${ic.eirNumber ? ` (EIR ${esc(ic.eirNumber)})` : ''}</option>`
+  ).join('');
+  const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option>${t}</option>`).join('');
+  openModal('New Container Repair Job', `
+    <div class="fg">
+      <label>Pull From Interchange Record <span class="label-optional">(recommended)</span></label>
+      <select id="cr_source" onchange="onRepairSourceChange()">
+        <option value="">\u2014 Manual entry / no matching interchange record \u2014</option>
+        ${sourceOptions}
+      </select>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Container No.</label><input id="cr_cont" list="containerHistory" placeholder="MSCU1234566" oninput="markContainerValidity(this)"/></div>
+      <div class="fg"><label>Container Type/Size</label><select id="cr_ctype">${typeOptions}</select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Shipping Line</label><select id="cr_line">${state.db.shippingLines.map(l => `<option value="${l.id}">${l.code}</option>`).join('')}</select></div>
+      <div class="fg"><label>EIR / Reference No.</label><input id="cr_eir" placeholder="From gate interchange record"/></div>
+    </div>
+    <div class="fg"><label>Condition</label><select id="cr_cond"><option>Damaged</option><option>Needs Repair</option><option>Dirty</option></select></div>
+    <div id="cr_gatePhotoBox" style="margin-bottom:14px"></div>
+    ${tariffPickerHtml('cr')}
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px">Shipping Line Approval</div>
+    <div class="ops-notice" style="margin-bottom:10px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Upload the EIR / interchange document showing the shipping line has approved this container for repair. You can also attach this later.
+    </div>
+    <div class="fg">
+      <div id="cr_approval_box" class="ic-card-img-placeholder" style="width:100%;height:90px;cursor:pointer" onclick="document.getElementById('cr_approval_input').click()" title="Tap to upload the approval document">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </div>
+      <input type="file" id="cr_approval_input" accept="image/*,application/pdf" style="display:none" onchange="captureCRApprovalDoc(this)"/>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Approved By (Shipping Line) <span class="label-optional">(optional)</span></label><input id="cr_approved_by" placeholder="Name / contact"/></div>
+      <div class="fg"><label>Approval Reference <span class="label-optional">(optional)</span></label><input id="cr_approval_ref" placeholder="Their reference no."/></div>
+    </div>
+    <div class="fg"><label>Notes</label><textarea id="cr_notes" rows="2" placeholder="Additional context\u2026"></textarea></div>
+    <button class="submit-btn" onclick="saveContainerRepair()">Create Repair Job \u2192</button>
+  `);
+  renderRepairItemsList('cr');
+}
+
+async function onRepairSourceChange() {
+  const id = document.getElementById('cr_source').value;
+  const gateBox = document.getElementById('cr_gatePhotoBox');
+  window._crSourceInterchangeId = id || null;
+  if (!id) { if (gateBox) gateBox.innerHTML = ''; window._crGatePhotos = []; window._crSourceSurveyId = null; return; }
+  const ic = state.db.interchange.find(i => i.id === id);
+  if (!ic) return;
+  document.getElementById('cr_cont').value = ic.container;
+  markContainerValidity(document.getElementById('cr_cont'));
+  if (ic.ctype) document.getElementById('cr_ctype').value = ic.ctype;
+  if (ic.line) document.getElementById('cr_line').value = ic.line;
+  document.getElementById('cr_eir').value = ic.eirNumber || '';
+  const condSel = document.getElementById('cr_cond');
+  if ([...condSel.options].some(o => o.value === ic.condition)) condSel.value = ic.condition;
+  window._repairItems.cr = (ic.repairs || []).map(r => ({ ...r }));
+  renderRepairItemsList('cr');
+  window._crSourceSurveyId = ic.surveyId || null;
+
+  if (gateBox) gateBox.innerHTML = '<div style="font-size:10.5px;color:var(--text-3)">Loading gate-in photo\u2026</div>';
+  const photos = await resolveContainerPhotos(ic);
+  window._crGatePhotos = photos;
+  if (!gateBox) return;
+  gateBox.innerHTML = photos.length
+    ? `<div style="font-size:10px;color:var(--text-3);margin-bottom:6px">Gate-in photo${photos.length > 1 ? 's' : ''} on file \u2014 carried over automatically</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap">${photos.map(p => `<img src="${p}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" onclick="openPhotoLightbox('${p}')"/>`).join('')}</div>`
+    : `<div style="font-size:10.5px;color:var(--text-3)">No gate-in photo on file for this container yet.</div>`;
+}
+
+function captureCRApprovalDoc(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf';
+  if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
+  if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    window._pendingCRApprovalDoc = reader.result;
+    window._pendingCRApprovalDocName = file.name;
+    const box = document.getElementById('cr_approval_box');
+    if (box) {
+      box.innerHTML = isPdf
+        ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-2);font-size:10.5px">\ud83d\udcc4<div style="margin-top:4px">${esc(file.name)}</div></div>`
+        : `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveContainerRepair() {
+  const cont = document.getElementById('cr_cont').value.trim().toUpperCase();
+  if (!cont) { toast('Container number required', 'error'); return; }
+  const contIssue = containerFormatIssue(cont);
+  if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
+  const line = document.getElementById('cr_line').value;
+  if (!line) { toast('Shipping line required', 'error'); return; }
+  const repairs = window._repairItems.cr || [];
+  const approvalDoc = window._pendingCRApprovalDoc || '';
+  const hasApproval = !!approvalDoc;
+  state.db.containerRepairs.push({
+    id: uid('CR'), container: cont,
+    ctype: document.getElementById('cr_ctype').value,
+    line,
+    interchangeId: window._crSourceInterchangeId || null,
+    surveyId: window._crSourceSurveyId || null,
+    eirNumber: sanitize(document.getElementById('cr_eir').value.trim()),
+    condition: document.getElementById('cr_cond').value,
+    repairs, repairTotal: repairItemsTotal(repairs),
+    gateInPhoto: (window._crGatePhotos && window._crGatePhotos[0]) || '',
+    approvalDoc, approvalDocName: window._pendingCRApprovalDocName || '',
+    approvedByLine: sanitize(document.getElementById('cr_approved_by').value.trim()),
+    approvalReference: sanitize(document.getElementById('cr_approval_ref').value.trim()),
+    preRepairPhotos: (window._crGatePhotos || []).slice(1),
+    postRepairPhotos: [],
+    status: hasApproval ? 'approved' : 'awaiting_approval',
+    tech: '', labourCost: 0, materialCost: 0, totalCost: 0,
+    notes: sanitize(document.getElementById('cr_notes').value.trim()),
+    createdBy: state.profile?.username || 'system',
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    _dirty: true,
+  });
+  window._repairItems.cr = [];
+  window._pendingCRApprovalDoc = ''; window._pendingCRApprovalDocName = '';
+  window._crGatePhotos = []; window._crSourceInterchangeId = null; window._crSourceSurveyId = null;
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Container Repair Job Created', `${cont}${hasApproval ? ' (approval attached)' : ' (pending shipping line approval)'}`);
+  closeModal();
+  renderContainerRepairs(_crFilter);
+  toast(hasApproval ? 'Repair job created \u2014 approved' : 'Repair job created \u2014 attach shipping line approval to proceed', 'success');
+}
+
+function showAttachApprovalModal(id) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  window._pendingCRApprovalDoc = ''; window._pendingCRApprovalDocName = '';
+  openModal(`Attach Shipping Line Approval \u2014 ${esc(c.container)}`, `
+    <div class="fg">
+      <div id="cr_approval_box2" class="ic-card-img-placeholder" style="width:100%;height:100px;cursor:pointer" onclick="document.getElementById('cr_approval_input2').click()" title="Tap to upload the approval document">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </div>
+      <input type="file" id="cr_approval_input2" accept="image/*,application/pdf" style="display:none" onchange="captureCRApprovalDoc2(this)"/>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Approved By (Shipping Line)</label><input id="cr_approved_by2" value="${esc(c.approvedByLine || '')}" placeholder="Name / contact"/></div>
+      <div class="fg"><label>Approval Reference</label><input id="cr_approval_ref2" value="${esc(c.approvalReference || '')}" placeholder="Their reference no."/></div>
+    </div>
+    <button class="submit-btn" onclick="saveAttachedApproval('${id}')">Save Approval \u2192</button>
+  `);
+}
+
+function captureCRApprovalDoc2(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf';
+  if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
+  if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    window._pendingCRApprovalDoc = reader.result;
+    window._pendingCRApprovalDocName = file.name;
+    const box = document.getElementById('cr_approval_box2');
+    if (box) {
+      box.innerHTML = isPdf
+        ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-2);font-size:10.5px">\ud83d\udcc4<div style="margin-top:4px">${esc(file.name)}</div></div>`
+        : `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveAttachedApproval(id) {
+  if (!window._pendingCRApprovalDoc) { toast('Choose the approval document first', 'error'); return; }
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  c.approvalDoc = window._pendingCRApprovalDoc;
+  c.approvalDocName = window._pendingCRApprovalDocName || '';
+  c.approvedByLine = sanitize(document.getElementById('cr_approved_by2').value.trim());
+  c.approvalReference = sanitize(document.getElementById('cr_approval_ref2').value.trim());
+  if (c.status === 'awaiting_approval') c.status = 'approved';
+  c._dirty = true;
+  window._pendingCRApprovalDoc = ''; window._pendingCRApprovalDocName = '';
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Container Repair Approval Attached', c.container);
+  closeModal();
+  renderContainerRepairs(_crFilter);
+  toast('Shipping line approval attached', 'success');
+}
+
+function showStartRepairModal(id) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  if (!c.approvalDoc) { toast('Attach the shipping line approval before starting repair work', 'error'); return; }
+  openModal(`Start Repair \u2014 ${esc(c.container)}`, `
+    <div class="fg"><label>Technician</label><input id="cr_start_tech" placeholder="Tech name"/></div>
+    <div class="form-row-2">
+      <div class="fg"><label>Labour Estimate (KSh)</label><input id="cr_start_labour" type="number" placeholder="0"/></div>
+      <div class="fg"><label>Materials Estimate (KSh)</label><input id="cr_start_material" type="number" placeholder="0"/></div>
+    </div>
+    <button class="submit-btn" onclick="confirmStartRepair('${id}')">Start Repair Job \u2192</button>
+  `);
+}
+
+function confirmStartRepair(id) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  c.tech = sanitize(document.getElementById('cr_start_tech').value.trim());
+  c.labourCost = Math.max(0, parseInt(document.getElementById('cr_start_labour').value) || 0);
+  c.materialCost = Math.max(0, parseInt(document.getElementById('cr_start_material').value) || 0);
+  c.totalCost = c.labourCost + c.materialCost;
+  c.status = 'in_progress';
+  c._dirty = true;
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Container Repair Started', c.container);
+  closeModal();
+  renderContainerRepairs(_crFilter);
+  toast('Repair job in progress', 'success');
+}
+
+function advanceContainerRepair(id, status) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  if (status === 'in_progress') { showStartRepairModal(id); return; }
+  if (status === 'completed') {
+    if (!(c.postRepairPhotos || []).length) { toast('Add at least one post-repair photo before marking this job complete', 'error'); return; }
+    if (!confirm(`Mark ${c.container} as repair completed?`)) return;
+    c.status = 'completed';
+    c.completedAt = new Date().toISOString();
+  } else {
+    c.status = status;
+  }
+  c._dirty = true;
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Container Repair Updated', `${c.container} \u2192 ${status}`);
+  renderContainerRepairs(_crFilter);
+  toast(`Job updated to ${crStatusLabel(status)}`, 'success');
+}
+
+function uploadPostRepairPhoto(id) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) return;
+  if ((c.postRepairPhotos || []).length >= 8) { toast('Maximum 8 post-repair photos per job', 'error'); return; }
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast('Image too large \u2014 max 2MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      c.postRepairPhotos = c.postRepairPhotos || [];
+      c.postRepairPhotos.push(reader.result);
+      c._dirty = true;
+      scheduleSave();
+      toast('Post-repair photo added', 'success');
+      renderContainerRepairs(_crFilter);
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function removePostRepairPhoto(id, idx) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c || !c.postRepairPhotos) return;
+  c.postRepairPhotos.splice(idx, 1);
+  c._dirty = true;
+  scheduleSave();
+  showContainerRepairPhotos(id);
+  renderContainerRepairs(_crFilter);
+}
+
+async function showContainerRepairPhotos(id) {
+  const c = state.db.containerRepairs.find(x => x.id === id);
+  if (!c) { toast('Repair job not found', 'error'); return; }
+  openModal(`Photos \u2014 ${sanitize(c.container) || 'Container'}`, '<div class="empty-state"><div class="empty-state-label">Loading\u2026</div></div>');
+
+  let gatePhotos = [];
+  if (c.surveyId) {
+    let s = (_surveyRegisterData.find(x => x.id === c.surveyId)) || _surveyLookupCache[c.surveyId];
+    if (!s) { try { s = await window.bookingDocs.surveyById(c.surveyId); if (s) _surveyLookupCache[s.id] = s; } catch (e) { /* fall through */ } }
+    if (s && Array.isArray(s.photos)) gatePhotos = s.photos.slice();
+  }
+  if (c.gateInPhoto && gatePhotos.indexOf(c.gateInPhoto) === -1) gatePhotos.unshift(c.gateInPhoto);
+  (c.preRepairPhotos || []).forEach(p => { if (gatePhotos.indexOf(p) === -1) gatePhotos.push(p); });
+  const post = c.postRepairPhotos || [];
+
+  const body = document.getElementById('modalBody');
+  if (!body) return;
+
+  const section = (title, photos, removable) => photos.length ? `
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">${title} (${photos.length})</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${photos.map((src, i) => `
+      <div style="position:relative">
+        <img src="${src}" alt="${esc(title)} photo ${i + 1}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--border)" onclick="openPhotoLightbox(this.src)">
+        ${removable ? `<button class="modal-btn danger" style="position:absolute;top:4px;right:4px;padding:1px 6px;font-size:9px" onclick="event.stopPropagation();removePostRepairPhoto('${id}',${i})">\u2715</button>` : ''}
+      </div>`).join('')}</div>` : '';
+
+  const approvalBlock = c.approvalDoc ? `
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Shipping Line Approval</div>
+    ${c.approvalDoc.startsWith('data:application/pdf')
+      ? `<a href="${c.approvalDoc}" target="_blank" rel="noopener" class="modal-btn ghost">\ud83d\udcc4 View ${esc(c.approvalDocName || 'approval document')}</a>`
+      : `<img src="${c.approvalDoc}" style="width:120px;height:120px;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--border)" onclick="openPhotoLightbox(this.src)">`}
+  ` : '';
+
+  body.innerHTML = (gatePhotos.length || post.length || approvalBlock)
+    ? `${section('Gate-In / Pre-Repair', gatePhotos, false)}${section('Post-Repair', post, isAdmin())}${approvalBlock}`
+    : '<div class="empty-state"><div class="empty-state-label">No photos on file yet for this container</div></div>';
 }
