@@ -251,17 +251,26 @@ async function trcRunTripReport() {
   if (btn) { btn.textContent = 'Running…'; btn.disabled = true; }
 
   try {
-    let q = supabase.from('trips').select('*');
-    if (fromVal)  q = q.gte('start_time', new Date(fromVal).toISOString());
-    if (toVal)    q = q.lte('start_time', new Date(toVal).toISOString());
-    if (truckId)  q = q.eq('truck_id', truckId);
-    if (driverId) q = q.eq('driver_id', driverId);
-    if (status)   q = q.eq('status', status);
-    if (workType) q = q.eq('work_type', workType);
-    if (outwardType) q = q.eq('outward_type', outwardType);
-    q = q.order('start_time', { ascending: false }).limit(5000);
+    const buildQuery = () => {
+      let q = supabase.from('trips').select('*');
+      if (fromVal)  q = q.gte('start_time', new Date(fromVal).toISOString());
+      if (toVal)    q = q.lte('start_time', new Date(toVal).toISOString());
+      if (truckId)  q = q.eq('truck_id', truckId);
+      if (driverId) q = q.eq('driver_id', driverId);
+      if (status)   q = q.eq('status', status);
+      if (workType) q = q.eq('work_type', workType);
+      if (outwardType) q = q.eq('outward_type', outwardType);
+      return q.order('start_time', { ascending: false });
+    };
 
-    const { data, error } = await q;
+    // Uses the same fetchAllPaginated helper as loadDB() (core-db.js) so a
+    // wide date range can't silently truncate the report at a fixed row
+    // count — the summary and export should always reflect every matching
+    // trip, not just the first page of them. Each page rebuilds the query
+    // from scratch rather than re-ranging one shared builder, since a
+    // Supabase query builder shouldn't be re-awaited after it has already
+    // been sent once.
+    const { data, error } = await fetchAllPaginated((from, to) => buildQuery().range(from, to));
     if (error) throw error;
 
     const rows = (data || []).map(tripFromRow);
@@ -353,14 +362,16 @@ async function trcRunAuditQuery() {
   if (btn) { btn.textContent = 'Running…'; btn.disabled = true; }
 
   try {
-    let q = supabase.from('audit_log').select('*');
-    if (fromVal) q = q.gte('time', new Date(fromVal).toISOString());
-    if (toVal)   q = q.lte('time', new Date(toVal).toISOString());
-    if (user)    q = q.eq('username', user);
-    if (search)  q = q.or(`action.ilike.%${search}%,detail.ilike.%${search}%`);
-    q = q.order('time', { ascending: false }).limit(2000);
+    const buildQuery = () => {
+      let q = supabase.from('audit_log').select('*');
+      if (fromVal) q = q.gte('time', new Date(fromVal).toISOString());
+      if (toVal)   q = q.lte('time', new Date(toVal).toISOString());
+      if (user)    q = q.eq('username', user);
+      if (search)  q = q.or(`action.ilike.%${search}%,detail.ilike.%${search}%`);
+      return q.order('time', { ascending: false });
+    };
 
-    const { data, error } = await q;
+    const { data, error } = await fetchAllPaginated((from, to) => buildQuery().range(from, to));
     if (error) throw error;
 
     const rows = (data || []).map(a=>({ id:a.id, user:a.username, action:a.action, detail:a.detail, time:a.time }));

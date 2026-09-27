@@ -26,6 +26,26 @@ function operationalCutoffISO() {
   return d.toISOString();
 }
 
+// Fetches every row matching a filtered query, in fixed-size pages, instead
+// of a single request with a hard .limit(). A hard limit silently truncates
+// once a table (or a bulk import) grows past that number — e.g. a 5000-row
+// cap will quietly drop to 5000 even when 8,000+ rows actually match, which
+// then corrupts anything counting off the result (KPIs, unmapped-line
+// notices, etc). queryFactory(from, to) must return a fresh Supabase query
+// with .range(from, to) applied (ranges are inclusive on both ends).
+async function fetchAllPaginated(queryFactory, pageSize = 1000) {
+  let all = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await queryFactory(from, from + pageSize - 1);
+    if (error) return { data: all, error };
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return { data: all, error: null };
+}
+
 
 async function ensureRowsLoaded(table, ids, existing, fromRowFn) {
   const have = new Set(existing.map(r => r.id));
@@ -130,10 +150,12 @@ async function loadDB() {
       // up in Dispatch/Dashboard history. Older completed trips are fetched
       // on demand (see ensureTripsLoaded) or browsed via Trip Reports, which
       // already queries Supabase directly with its own date range.
-      supabase.from('trips').select('*')
-        .or(`status.neq.completed,start_time.gte.${operationalCutoffISO()}`)
-        .order('start_time', { ascending: false })
-        .limit(5000),
+      fetchAllPaginated((from, to) =>
+        supabase.from('trips').select('*')
+          .or(`status.neq.completed,start_time.gte.${operationalCutoffISO()}`)
+          .order('start_time', { ascending: false })
+          .range(from, to)
+      ),
       supabase.from('maintenance').select('*'),
       supabase.from('fuel_logs').select('*'),
       supabase.from('shipping_lines').select('*'),
@@ -144,10 +166,12 @@ async function loadDB() {
       // The full register is only ever needed for the duplicate scan, which
       // now runs server-side via find_interchange_duplicates() instead of
       // requiring the whole table in the browser.
-      supabase.from('interchange').select('*')
-        .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
-        .order('date', { ascending: false })
-        .limit(5000),
+      fetchAllPaginated((from, to) =>
+        supabase.from('interchange').select('*')
+          .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
+          .order('date', { ascending: false })
+          .range(from, to)
+      ),
       supabase.from('requisitions').select('*'),
       supabase.from('workshop_jobs').select('*'),
       supabase.from('invoices').select('*'),
