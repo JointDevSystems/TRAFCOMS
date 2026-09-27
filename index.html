@@ -690,6 +690,10 @@
                                             <div class="fg"><label>Driver</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
                                         </div>
                                         <div class="form-row-2">
+                                            <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="iw_transporter" placeholder="Transporting company" /></div>
+                                            <div class="fg"><label>Driver ID Number <span class="label-optional">(optional)</span></label><input id="iw_driver_id" placeholder="National ID no." /></div>
+                                        </div>
+                                        <div class="form-row-2">
                                             <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
                                             <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label>
                                                 <select id="iw_cargo_status"><option value="">—</option><option>Empty</option><option>Laden / Full</option><option>Part Load</option><option>Damaged Cargo</option></select>
@@ -697,12 +701,12 @@
                                         </div>
                                         <div class="fg"><label>Notes</label><textarea id="iw_notes" rows="2" placeholder="Remarks…"></textarea></div>
                                         <div class="fg">
-                                            <label>Container Photo <span class="label-optional">(optional)</span></label>
+                                            <label>Container Photos <span class="label-optional">(optional, up to 6)</span></label>
                                             <div class="file-upload-area" id="inwardImgUpload" onclick="document.getElementById('iw_img').click()">
                                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                <span id="inwardImgLabel">Upload container photo</span>
+                                                <span id="inwardImgLabel">Upload container photos</span>
                                             </div>
-                                            <input type="file" id="iw_img" accept="image/*" style="display:none" onchange="previewInwardImg(event)" />
+                                            <input type="file" id="iw_img" accept="image/*" multiple style="display:none" onchange="previewInwardImg(event)" />
                                         </div>
                                         <div id="inwardImgPreview" style="display:none;margin-bottom:10px"></div>
                                         <div class="fg">

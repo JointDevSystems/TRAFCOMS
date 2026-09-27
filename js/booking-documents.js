@@ -656,6 +656,7 @@
         tare_weight: payload.tareWeight || null,
         vessel: payload.vessel || null,
         voyage: payload.voyage || null,
+        source_interchange_id: payload.sourceInterchangeId || null,
         transporter: payload.transporter || null,
         truck_reg: payload.truckReg || null,
         trailer_number: payload.trailerNumber || null,

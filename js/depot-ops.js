@@ -33,7 +33,7 @@ function reverseGeocodeZone(lat, lng) {
 let _wialonLastZoneFetch = {};
 
 
-let _inwardImg = '';
+let _inwardImages = [];
 
 function renderInward() {
   populateInwardSelects();
@@ -135,7 +135,9 @@ async function renderInwardAwaitingSurvey() {
         ${hasGuarantee ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}
         <div class="dqi-time" style="margin:0">${timeAgo(ic.date)}</div>
       </div>
-      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')">Mark Surveyed →</button>
+      ${ic.bookingId
+        ? `<button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="openSurveyModal('${ic.bookingId}')">Start Survey →</button>`
+        : `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')" title="No DepOps booking on file for this record (created before this workflow) — quick local status flip only">Mark Surveyed (quick) →</button>`}
     </div>`;
   }).join('');
 }
@@ -185,8 +187,9 @@ async function createInwardEntry() {
   const icId = uid('IC');
   const ctype = composeCtype(document.getElementById('iw_size').value, document.getElementById('iw_type').value);
   const cargoStatusEl = document.getElementById('iw_cargo_status');
+  const photos = _inwardImages.slice();
 
-  state.db.interchange.push({
+  const icRecord = {
     id: icId, container: cont, type,
     ctype,
     line: document.getElementById('iw_line').value,
@@ -195,6 +198,8 @@ async function createInwardEntry() {
     driver: driver ? driver.id : '',
     truckRegText:   truck  ? '' : sanitize(truckVal),
     driverNameText: driver ? '' : sanitize(driverVal),
+    transporter: sanitize(document.getElementById('iw_transporter').value.trim()),
+    driverIdNumber: sanitize(document.getElementById('iw_driver_id').value.trim()),
     eirNumber: sanitize(document.getElementById('iw_eir').value.trim()),
     blNumber: sanitize(document.getElementById('iw_bl').value.trim()),
     vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
@@ -204,12 +209,13 @@ async function createInwardEntry() {
     cargoStatus: cargoStatusEl ? cargoStatusEl.value : '',
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
-    date: dateVal, status: 'pending', img: _inwardImg || '',
+    date: dateVal, status: 'pending', img: photos[0] || '', photos,
     dateOut: null, receivingParty: '', releaseOrderNo: '',
     needsSurvey, surveyStatus: needsSurvey ? 'awaiting_survey' : null,
-    surveyedAt: null, surveyedBy: null,
+    surveyedAt: null, surveyedBy: null, bookingId: null,
     _dirty: true,
-  });
+  };
+  state.db.interchange.push(icRecord);
   buildBadges();
   addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
   refreshContainerHistory();
@@ -220,6 +226,20 @@ async function createInwardEntry() {
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
 
+
+  if (needsSurvey) {
+    try {
+      const bookingId = await createDepotBookingFromInterchange(icRecord);
+      if (bookingId) {
+        icRecord.bookingId = bookingId;
+        icRecord._dirty = true;
+        renderInwardAwaitingSurvey();
+        if (typeof renderDepOpsAwaitingSurvey === 'function') renderDepOpsAwaitingSurvey();
+      }
+    } catch (e) {
+      toast(`Entry saved, but couldn't queue ${cont} for DepOps survey (${e.message || e})`, 'warning', 6000);
+    }
+  }
 
   if (guaranteeFile) {
     try {
@@ -235,14 +255,50 @@ async function createInwardEntry() {
   }
 }
 
+/* ── Companion DepOps booking for gate-flagged containers ──────────
+   When a container is flagged for survey via Inward Container Entry
+   (checkbox at creation, or "Send to Survey" on an existing record),
+   this creates a matching public_bookings row so the container flows
+   through the exact same DepOps survey → allocation pipeline as a
+   customer booking. Linked back to the interchange row via bookingId,
+   and forward via depot_surveys.source_interchange_id once surveyed. */
+async function createDepotBookingFromInterchange(ic) {
+  const truck  = ic.truck  ? state.db.trucks.find(t => t.id === ic.truck)   : null;
+  const driver = ic.driver ? state.db.drivers.find(d => d.id === ic.driver) : null;
+  const payload = {
+    booking_kind: 'depot',
+    intake_source: 'gate',
+    status: 'imported',
+    service_type: 'Depot Storage',
+    storage_status: 'awaiting_survey',
+    full_name: driver ? driver.name : (ic.driverNameText || 'Gate Entry'),
+    email: '',
+    phone: '',
+    container: ic.container || '',
+    cargo_type: ic.ctype || '',
+    shipping_line_id: ic.line || null,
+    vessel: ic.vessel || '',
+    voyage: ic.voyage || '',
+    bl_number: ic.blNumber || '',
+    eir_number: ic.eirNumber || '',
+    transporter: ic.transporter || '',
+    truck_reg: truck ? truck.reg : (ic.truckRegText || ''),
+    driver_name: driver ? driver.name : (ic.driverNameText || ''),
+    driver_id_number: ic.driverIdNumber || '',
+  };
+  const { data, error } = await supabase.from('public_bookings').insert(payload).select('id').single();
+  if (error) { toast(`Could not create DepOps booking record: ${error.message}`, 'error'); return null; }
+  return data.id;
+}
+
 function clearInwardForm(skipRepopulate) {
-  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no','iw_transporter','iw_driver_id'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
   const typeEl = document.getElementById('iw_type_movement'); if (typeEl) typeEl.value = 'Gate-In';
   const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
   const cargoStatusEl = document.getElementById('iw_cargo_status'); if (cargoStatusEl) cargoStatusEl.value = '';
   const surveyEl = document.getElementById('iw_needs_survey'); if (surveyEl) surveyEl.checked = false;
-  _inwardImg = '';
+  _inwardImages = [];
   const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
   renderInwardImgPreview();
   clearInwardGuaranteeFile();
@@ -250,13 +306,18 @@ function clearInwardForm(skipRepopulate) {
 }
 
 function previewInwardImg(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (!file.type.startsWith('image/')) { toast('Not an image file', 'error'); return; }
-  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => { _inwardImg = ev.target.result; renderInwardImgPreview(); };
-  reader.readAsDataURL(file);
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  const room = 6 - _inwardImages.length;
+  if (room <= 0) { toast('Maximum 6 photos — remove one to add another', 'error'); e.target.value = ''; return; }
+  files.slice(0, room).forEach(file => {
+    if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
+    if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB`, 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => { _inwardImages.push(ev.target.result); renderInwardImgPreview(); };
+    reader.readAsDataURL(file);
+  });
+  if (files.length > room) toast(`Only ${room} more photo${room===1?'':'s'} could be added (max 6)`, 'warning');
   e.target.value = '';
 }
 
@@ -264,14 +325,14 @@ function renderInwardImgPreview() {
   const wrap  = document.getElementById('inwardImgPreview');
   const label = document.getElementById('inwardImgLabel');
   if (!wrap) return;
-  if (!_inwardImg) { wrap.style.display = 'none'; wrap.innerHTML=''; if (label) label.textContent = 'Upload container photo'; return; }
+  if (!_inwardImages.length) { wrap.style.display = 'none'; wrap.innerHTML=''; if (label) label.textContent = 'Upload container photos'; return; }
   wrap.style.display = 'block';
-  wrap.innerHTML = `<div class="container-img-thumb"><img src="${_inwardImg}" /><button type="button" class="container-img-remove" onclick="clearInwardImg()" title="Remove">✕</button></div>`;
-  if (label) label.textContent = '1 photo attached';
+  wrap.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${_inwardImages.map((src,i)=>`<div class="container-img-thumb"><img src="${src}" /><button type="button" class="container-img-remove" onclick="clearInwardImg(${i})" title="Remove">✕</button></div>`).join('')}</div>`;
+  if (label) label.textContent = `${_inwardImages.length} photo${_inwardImages.length>1?'s':''} attached`;
 }
 
-function clearInwardImg() {
-  _inwardImg = '';
+function clearInwardImg(i) {
+  if (typeof i === 'number') _inwardImages.splice(i, 1); else _inwardImages = [];
   const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
   renderInwardImgPreview();
 }
@@ -1023,15 +1084,15 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Consignee</label><input id="sv_consignee" value="${sanitize(booking.company || booking.full_name || '')}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl"></div>
-      <div class="fg"><label>EIR / Reference No.</label><input id="sv_eir" placeholder="Transporter's own EIR no."></div>
+      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="${sanitize(booking.bl_number || '')}"></div>
+      <div class="fg"><label>EIR / Reference No.</label><input id="sv_eir" value="${sanitize(booking.eir_number || '')}" placeholder="Transporter's own EIR no."></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Vessel</label><input id="sv_vessel"></div>
-      <div class="fg"><label>Voyage</label><input id="sv_voyage"></div>
+      <div class="fg"><label>Vessel</label><input id="sv_vessel" value="${sanitize(booking.vessel || '')}"></div>
+      <div class="fg"><label>Voyage</label><input id="sv_voyage" value="${sanitize(booking.voyage || '')}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Transporter</label><input id="sv_transporter"></div>
+      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="${sanitize(booking.transporter || '')}"></div>
       <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1"></div>
     </div>
     <div class="form-row-2">
@@ -1039,12 +1100,12 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck"></div>
+      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" value="${sanitize(booking.truck_reg || '')}"></div>
       <div class="fg"><label>Trailer Number</label><input id="sv_trailer"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Driver Name</label><input id="sv_driver"></div>
-      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id"></div>
+      <div class="fg"><label>Driver Name</label><input id="sv_driver" value="${sanitize(booking.driver_name || '')}"></div>
+      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="${sanitize(booking.driver_id_number || '')}"></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Surveyed By</label><input id="sv_clerk" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
@@ -1071,6 +1132,19 @@ async function openSurveyModal(bookingId) {
   const svContEl = document.getElementById('sv_container');
   if (svContEl) markContainerValidity(svContEl);
   renderRepairItemsList('sv');
+
+  // Gate-originated booking (from Inward Container Entry) — carry over any
+  // photos already captured at the gate instead of asking for them again.
+  const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
+  if (sourceIc && sourceIc.photos && sourceIc.photos.length) {
+    _surveyImages = sourceIc.photos.slice();
+    const preview = document.getElementById('sv_images_preview');
+    if (preview) {
+      preview.innerHTML = _surveyImages.map(src =>
+        `<img src="${src}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--border)" />`
+      ).join('');
+    }
+  }
 }
 
 function onSurveyConditionChange() {
@@ -1106,9 +1180,11 @@ async function saveSurvey(bookingId) {
     if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   }
   const repairItems = repairItemsFor('sv');
+  const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
   try {
     const survey = await window.bookingDocs.recordSurvey({
       bookingId,
+      sourceInterchangeId: sourceIc ? sourceIc.id : null,
       container,
       containerType: val('sv_ctype'),
       containerSize: val('sv_ctype'),
@@ -1137,7 +1213,9 @@ async function saveSurvey(bookingId) {
     const heavy = val('sv_condition') === 'heavily_damaged';
 
 
-    if (!heavy && bookingId && survey && survey.id) {
+    if (sourceIc) {
+      syncSurveyBackToInterchange(sourceIc, survey, heavy);
+    } else if (!heavy && bookingId && survey && survey.id) {
       await generateInterchangeFromSurvey(bookingId, survey.id);
     }
 
@@ -1147,9 +1225,43 @@ async function saveSurvey(bookingId) {
     renderDepOpsAllocationQueue();
     renderDepOpsStorageList();
     if (typeof renderDepOpsEscalations === 'function') renderDepOpsEscalations();
+    if (typeof renderInwardAwaitingSurvey === 'function') renderInwardAwaitingSurvey();
+    if (typeof renderInwardStillInStorage === 'function') renderInwardStillInStorage();
+    if (state.currentSection === 'interchange') renderInterchange(_icFilter || 'all');
   } catch (e) {
     toast(e.message || 'Could not save survey', 'error');
   }
+}
+
+/* Gate-originated survey (source_interchange_id set): the interchange row
+   this booking was created from is updated in place with the survey
+   findings, rather than a fresh Depot-In interchange record being
+   generated — keeping Inward Container Entry's own status in sync. */
+function syncSurveyBackToInterchange(ic, survey, heavy) {
+  const conditionMap = { full_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+  if (survey.container) ic.container = survey.container.toUpperCase();
+  ic.condition = conditionMap[survey.condition_status] || ic.condition;
+  ic.surveyId = survey.id;
+  ic.surveyStatus = heavy ? 'escalated' : 'surveyed';
+  ic.surveyedAt = survey.surveyed_at || new Date().toISOString();
+  ic.surveyedBy = (state.profile && state.profile.username) || ic.surveyedBy;
+  if (survey.vessel) ic.vessel = survey.vessel;
+  if (survey.voyage) ic.voyage = survey.voyage;
+  if (survey.bl_number) ic.blNumber = survey.bl_number;
+  if (survey.eir_number) ic.eirNumber = survey.eir_number;
+  if (survey.transporter) ic.transporter = survey.transporter;
+  if (survey.driver_id_number) ic.driverIdNumber = survey.driver_id_number;
+  if (survey.photos && survey.photos.length) {
+    ic.photos = survey.photos.slice();
+    ic.img = survey.photos[0];
+  }
+  if (survey.tariff_items && survey.tariff_items.length) {
+    ic.repairs = survey.tariff_items;
+    ic.repairTotal = repairItemsTotal(survey.tariff_items);
+  }
+  ic._dirty = true;
+  scheduleSave();
+  addAudit((state.profile && state.profile.username) || 'system', 'Inward Entry Surveyed', ic.container);
 }
 
 async function generateInterchangeFromSurvey(bookingId, surveyId) {
