@@ -94,7 +94,10 @@ function renderInwardStillInStorage() {
         <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.ctype || '—')} · ${esc(lineName(ic.line))}</div>
         <div style="font-size:10px;color:var(--text-3)">In since ${fmtDate(ic.date)}${ic.notes==='Bulk import' ? ' · migrated record' : ''}</div>
       </div>
-      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${!ic.surveyStatus ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>` : ''}
+        <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
+      </div>
     </div>`).join('');
 }
 
