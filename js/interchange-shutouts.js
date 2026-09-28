@@ -1,9 +1,9 @@
 'use strict';
 
 
-function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, currency:l.currency||'USD', active:l.active }; }
+function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, currency:l.currency||'USD', active:l.active, rates:(l.rates&&typeof l.rates==='object')?l.rates:null }; }
 
-function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, currency:r.currency||(r.code==='PIL'?'KES':'USD'), active:r.active }; }
+function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, currency:r.currency||(r.code==='PIL'?'KES':'USD'), active:r.active, rates:(r.rates&&typeof r.rates==='object')?r.rates:null }; }
 
 
 function lineCurrencySymbol(l) { return (l.currency||'USD')==='KES' ? 'KSh' : (l.currency==='USD'?'US$':(l.currency||'US$')); }
@@ -773,18 +773,126 @@ let _linesFilter='all';
 
 function filterLines(f,btn){ _linesFilter=f; document.querySelectorAll('#sec-shippinglines .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderLines(f); }
 
+/* ──────────────────────────────────────────────────────────────────
+   SHIPPING LINES — full rate schedule (per line), edit, delete
+   Rates live in shipping_lines.rates (jsonb): { serviceKey: { '20ft', '40ft', currency, freeDays? } }
+   Service keys / labels come from window.SERVICE_RATE_SCHEDULE, in the order of the rates sheet.
+────────────────────────────────────────────────────────────────── */
+const LINE_RATE_GROUPS = [
+  { title: 'Empty Container Charges', keys: ['lolo', 'loloBatch6'] },
+  { title: 'Service Charge',          keys: ['serviceCharge'] },
+  { title: 'Storage Charge',          keys: ['storage'] },
+  { title: 'Transport Rate',          keys: ['transport'] },
+  { title: 'Reefer Containers',       keys: ['reefer'] },
+  { title: 'Other Charges',           keys: ['portPreStack1', 'lastMileTransport', 'photoCharges'] },
+];
+const LINE_RATE_KEYS = LINE_RATE_GROUPS.flatMap(g => g.keys);
+
+function lineServiceDef(key) { return (window.SERVICE_RATE_SCHEDULE?.services || {})[key] || { label: key, unit: '' }; }
+
+function officialServiceRates(code, key) {
+  const sched = window.SERVICE_RATE_SCHEDULE || {};
+  const ov = code ? sched.lineOverrides?.[String(code).trim().toUpperCase()] : null;
+  const def = ov?.services?.[key] || sched.services?.[key] || {};
+  return { '20ft': def.rates?.['20ft'] ?? null, '40ft': def.rates?.['40ft'] ?? null, freeDays: def.freeDays ?? sched.services?.[key]?.freeDays ?? null };
+}
+
+// What this line is charged for a service: its saved rates if it has them, else the official schedule.
+function lineServiceRates(l, key) {
+  const s = l?.rates?.[key];
+  if (s && typeof s === 'object' && ('20ft' in s || '40ft' in s)) {
+    return { '20ft': s['20ft'] ?? null, '40ft': s['40ft'] ?? null, freeDays: s.freeDays ?? officialServiceRates(l.code, key).freeDays };
+  }
+  return officialServiceRates(l?.code, key);
+}
+
+function lineRatesFormHTML(prefix, l, code) {
+  const val = v => (v == null ? '' : esc(v));
+  const touch = 'oninput="this.dataset.touched=\'1\'"';
+  return LINE_RATE_GROUPS.map(g => `
+    <div style="margin:14px 0 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">${esc(g.title)}</div>
+    ${g.keys.map(key => {
+      const def = lineServiceDef(key);
+      const r = l ? lineServiceRates(l, key) : officialServiceRates(code, key);
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(def.label)}</div>
+        <div style="font-size:10.5px;color:var(--text-3);margin:2px 0 8px">${esc(def.unit || '')}${def.uponRequestOnly ? ' \u00b7 upon request only' : ''}</div>
+        <div class="form-row-2" style="margin-bottom:0">
+          <div class="fg" style="margin:0"><label>20 ft</label><input id="${prefix}_r_${key}_20" type="number" min="0" step="0.01" value="${val(r['20ft'])}" ${touch}/></div>
+          <div class="fg" style="margin:0"><label>40 ft</label><input id="${prefix}_r_${key}_40" type="number" min="0" step="0.01" value="${val(r['40ft'])}" ${touch}/></div>
+        </div>
+        ${key === 'storage' ? `<div class="fg" style="margin:8px 0 0"><label>Free storage period (days) \u2014 rates above apply thereafter</label><input id="${prefix}_r_storage_free" type="number" min="0" step="1" value="${val(r.freeDays)}" ${touch}/></div>` : ''}
+        ${def.note ? `<div style="font-size:10.5px;color:var(--text-3);margin-top:6px">${esc(def.note)}</div>` : ''}
+      </div>`;
+    }).join('')}`).join('') +
+    `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;margin-top:2px">Leave a rate blank if that service is not charged for this line. Amounts are in the billing currency chosen above and are never converted.</div>`;
+}
+
+// Reads the rate inputs back. Per-service currency is kept as saved unless the line's billing currency was changed.
+function readLineRatesForm(prefix, existing, currency, currencyChanged) {
+  const out = {};
+  let bad = null;
+  const num = id => {
+    const raw = (document.getElementById(id)?.value || '').trim();
+    if (raw === '') return null;
+    const n = parseFloat(raw);
+    return (isFinite(n) && n >= 0) ? Math.round(n * 100) / 100 : NaN;
+  };
+  for (const key of LINE_RATE_KEYS) {
+    const r20 = num(`${prefix}_r_${key}_20`), r40 = num(`${prefix}_r_${key}_40`);
+    if (Number.isNaN(r20) || Number.isNaN(r40)) { bad = bad || lineServiceDef(key).label; continue; }
+    const entry = { '20ft': r20, '40ft': r40 };
+    if (key === 'storage') {
+      const fd = num(`${prefix}_r_storage_free`);
+      if (Number.isNaN(fd)) { bad = bad || 'Free storage period'; continue; }
+      entry.freeDays = fd == null ? null : Math.round(fd);
+    }
+    const prev = existing?.[key]?.currency;
+    entry.currency = (!currencyChanged && prev) ? prev : currency;
+    out[key] = entry;
+  }
+  return { rates: out, error: bad ? `Invalid rate for "${bad}" \u2014 use a number of 0 or more` : null };
+}
+
+function lineLegacyRates(rates) {
+  const r20 = Math.round(Number(rates?.lolo?.['20ft']) || 0), r40 = Math.round(Number(rates?.lolo?.['40ft']) || 0);
+  return { rate20: r20, rate40: r40 };
+}
+
 function renderLines(f){
   let lines=f==='all'?state.db.shippingLines:state.db.shippingLines.filter(l=>l.active);
   const unmappedTotal = (state.db.interchange||[]).filter(ic=>!ic.line).length;
   const summary=document.getElementById('linesSummary');
   if(summary){
-    summary.innerHTML=`<div class="panel"><div class="panel-head"><span class="panel-title">Summary</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Lines</span><span class="fsr-val">${state.db.shippingLines.length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Active</span><span class="fsr-val">${state.db.shippingLines.filter(l=>l.active).length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Trips (all)</span><span class="fsr-val">${state.db.trips.length}</span></div>${unmappedTotal?`<div class="fuel-summary-row"><span class="fsr-label" style="color:var(--gold)">⚠ Interchange records with no line</span><span class="fsr-val">${unmappedTotal}</span></div>`:''}</div>`;
+    summary.innerHTML=`<div class="panel"><div class="panel-head"><span class="panel-title">Summary</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Lines</span><span class="fsr-val">${state.db.shippingLines.length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Active</span><span class="fsr-val">${state.db.shippingLines.filter(l=>l.active).length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Trips (all)</span><span class="fsr-val">${state.db.trips.length}</span></div>${unmappedTotal?`<div class="fuel-summary-row"><span class="fsr-label" style="color:var(--gold)">\u26a0 Interchange records with no line</span><span class="fsr-val">${unmappedTotal}</span></div>`:''}</div>`;
   }
   const unmappedBtn = document.getElementById('unmappedVesselsBtn');
-  if (unmappedBtn) { unmappedBtn.style.display = unmappedTotal ? 'inline-flex' : 'none'; unmappedBtn.textContent = `⚠ Resolve Unmapped Vessels (${unmappedTotal})`; }
+  if (unmappedBtn) { unmappedBtn.style.display = unmappedTotal ? 'inline-flex' : 'none'; unmappedBtn.textContent = `\u26a0 Resolve Unmapped Vessels (${unmappedTotal})`; }
   const grid=document.getElementById('linesGrid');
   if(!grid) return;
-  grid.innerHTML=lines.map(l=>{const cur=lineCurrencySymbol(l);return `<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">${cur} ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">${cur} ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">${cur} ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${canFinance()?`<button class="tbl-btn" onclick="showEditLineModal('${l.id}')">✎ Edit Rates</button>`:''}</div></div>`;}).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+  grid.innerHTML=lines.map(l=>{
+    const cur = lineCurrencySymbol(l);
+    const lolo = lineServiceRates(l, 'lolo'), trn = lineServiceRates(l, 'transport');
+    const show = v => v == null ? '\u2014' : fmt(v);
+    return `<div class="line-card"><div class="line-code-badge">${esc(l.code)}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(l.name)}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${esc(l.contact||'')}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">${cur} ${show(lolo['20ft'])}<b>LOLO 20ft</b></div><div class="ts">${cur} ${show(lolo['40ft'])}<b>LOLO 40ft</b></div><div class="ts">${cur} ${show(trn['20ft'])} / ${show(trn['40ft'])}<b>Transport 20/40</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">${sbadge(l.active?'active':'off_duty')}<div style="display:flex;gap:6px"><button class="tbl-btn" onclick="showLineRateCard('${esc(l.id)}')">Rates</button>${canFinance()?`<button class="tbl-btn" onclick="showEditLineModal('${esc(l.id)}')">\u270e Edit</button>`:''}${isAdmin()?`<button class="tbl-btn" style="color:var(--red)" onclick="deleteShippingLine('${esc(l.id)}')">\ud83d\uddd1 Delete</button>`:''}</div></div></div>`;
+  }).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+}
+
+function showLineRateCard(id) {
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l) return;
+  const cur = lineCurrencySymbol(l);
+  const cell = v => v == null ? '<span style="color:var(--text-3)">\u2014</span>' : `${cur} ${fmt(v)}`;
+  const rows = LINE_RATE_GROUPS.map(g => `<tr><td colspan="3" style="padding:12px 8px 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">${esc(g.title)}</td></tr>` +
+    g.keys.map(key => {
+      const def = lineServiceDef(key), r = lineServiceRates(l, key);
+      const extra = key === 'storage' && r.freeDays != null ? `<div style="font-size:10px;color:var(--text-3)">Free for ${esc(r.freeDays)} days, then per day</div>` : (def.uponRequestOnly ? '<div style="font-size:10px;color:var(--text-3)">Upon request only</div>' : `<div style="font-size:10px;color:var(--text-3)">${esc(def.unit || '')}</div>`);
+      return `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 8px;font-size:12px">${esc(def.label)}${extra}</td><td class="mono" style="padding:7px 8px;text-align:right">${cell(r['20ft'])}</td><td class="mono" style="padding:7px 8px;text-align:right">${cell(r['40ft'])}</td></tr>`;
+    }).join('')).join('');
+  openModal(`${esc(l.code)} \u2014 Rate Card`, `
+    <div style="font-size:11.5px;color:var(--text-2);margin-bottom:8px">${esc(l.name)} \u00b7 billed in <b>${esc(l.currency || 'USD')}</b></div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:1px"><th style="padding:6px 8px">Service</th><th style="padding:6px 8px;text-align:right">20 ft</th><th style="padding:6px 8px;text-align:right">40 ft</th></tr></thead><tbody>${rows}</tbody></table>
+    ${canFinance() ? `<button class="submit-btn" style="margin-top:14px" onclick="showEditLineModal('${esc(l.id)}')">\u270e Edit this line</button>` : ''}`);
 }
 
 function saveShippingLineEdit(id) {
@@ -794,47 +902,121 @@ function saveShippingLineEdit(id) {
   const code = document.getElementById('sle_code').value.trim().toUpperCase();
   const name = document.getElementById('sle_name').value.trim();
   if (!code || !name) { toast('Code and name required', 'error'); return; }
-  if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
+  if (code.length > 30) { toast('Code must be max 30 characters', 'error'); return; }
   const dupLine = findLineByCode(code, id);
   if (dupLine) { toast(`Code ${code} is already used by ${dupLine.name}`, 'error'); return; }
+  const currency = document.getElementById('sle_currency').value;
+  const parsed = readLineRatesForm('sle', l.rates, currency, currency !== (l.currency || 'USD'));
+  if (parsed.error) { toast(parsed.error, 'error', 5000); return; }
+
+  const before = JSON.stringify(l.rates || {}) + '|' + l.currency;
   l.code = code;
   l.name = name;
   l.contact = sanitize(document.getElementById('sle_email').value.trim());
-  const officialSle = getOfficialLineRates(code);
-  l.currency = document.getElementById('sle_currency') ? document.getElementById('sle_currency').value : (l.currency || officialSle.currency);
-  l.rate20 = Math.max(0, parseInt(document.getElementById('sle_r20').value) || 0);
-  l.rate40 = Math.max(0, parseInt(document.getElementById('sle_r40').value) || 0);
-  l.rateHC = Math.max(0, parseInt(document.getElementById('sle_rhc').value) || 0);
+  l.currency = currency;
+  l.rates = parsed.rates;
+  Object.assign(l, lineLegacyRates(parsed.rates));
+  l.rateHC = l.rate40;
   l.active = document.getElementById('sle_active').value === 'true';
   scheduleSave(); closeModal(); renderLines(_linesFilter);
-  const symE = lineCurrencySymbol(l);
-  addAudit(state.profile.username, 'Shipping Line Rates Updated', `${code} — 20ft ${symE} ${fmt(l.rate20)} · 40ft ${symE} ${fmt(l.rate40)} · HC ${symE} ${fmt(l.rateHC)}`);
-  toast(`${code} rates updated`, 'success');
+  const changedRates = before !== (JSON.stringify(l.rates) + '|' + l.currency);
+  addAudit(state.profile.username, changedRates ? 'Shipping Line Rates Updated' : 'Shipping Line Updated', `${code} \u2014 ${currency} \u00b7 LOLO 20ft ${l.rate20} / 40ft ${l.rate40}`);
+  toast(`${code} updated`, 'success');
 }
 
 function saveShippingLine() {
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
   const code = document.getElementById('sl_code').value.trim().toUpperCase();
   const name = document.getElementById('sl_name').value.trim();
   if (!code||!name) { toast('Code and name required', 'error'); return; }
-  if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
+  if (code.length > 30) { toast('Code must be max 30 characters', 'error'); return; }
   const dupLine = findLineByCode(code);
   if (dupLine) { toast(`Code ${code} is already used by ${dupLine.name}`, 'error'); return; }
-  // Defaults come straight from the official service rate schedule — no
-  // placeholder numbers, and no currency conversion (a line quoted in cash,
-  // like PIL, stays in KES; everything else stays in USD as the schedule has it).
-  const official = getOfficialLineRates(code);
-  const currencyField = document.getElementById('sl_currency');
+  const currency = document.getElementById('sl_currency').value;
+  const parsed = readLineRatesForm('sl', null, currency, true);
+  if (parsed.error) { toast(parsed.error, 'error', 5000); return; }
+  const legacy = lineLegacyRates(parsed.rates);
   state.db.shippingLines.push({
     id: uid('SL'), code, name,
     contact: sanitize(document.getElementById('sl_email').value.trim()),
-    currency: currencyField ? currencyField.value : official.currency,
-    rate20: Math.max(0, parseInt(document.getElementById('sl_r20').value)) || official.rate20,
-    rate40: Math.max(0, parseInt(document.getElementById('sl_r40').value)) || official.rate40,
-    rateHC: Math.max(0, parseInt(document.getElementById('sl_rhc').value)) || official.rateHC,
+    currency, rates: parsed.rates,
+    rate20: legacy.rate20, rate40: legacy.rate40, rateHC: legacy.rate40,
     active: true,
   });
   scheduleSave(); closeModal(); renderLines('all');
+  addAudit(state.profile.username, 'Shipping Line Added', `${code} \u2014 ${name} (${currency})`);
   toast(`${code} added`, 'success');
+}
+
+async function setShippingLineActive(id, active) {
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l || !canFinance()) return;
+  l.active = active;
+  scheduleSave(); closeModal(); renderLines(_linesFilter);
+  addAudit(state.profile.username, active ? 'Shipping Line Activated' : 'Shipping Line Deactivated', l.code);
+  toast(`${l.code} marked ${active ? 'active' : 'inactive'}`, 'success');
+}
+
+// Admin-only. A line that trips, bookings, interchange etc. still point at can't be deleted without
+// orphaning that history, so the server is asked first and the delete is blocked with a reason.
+async function deleteShippingLine(id) {
+  if (!isAdmin()) { toast('Admin rights required to delete shipping lines', 'error'); return; }
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l) { toast('Shipping line not found', 'error'); return; }
+  openModal(`Delete ${esc(l.code)}`, '<div style="font-size:12.5px;color:var(--text-2)">Checking where this line is used\u2026</div>');
+
+  const count = (table, col) => supabase.from(table).select('id', { count: 'exact', head: true }).eq(col, id);
+  const usedBy = [
+    ['trip(s)', 'trips', 'shipping_line_id'], ['booking(s)', 'public_bookings', 'shipping_line_id'],
+    ['interchange record(s)', 'interchange', 'line_id'], ['shutout record(s)', 'shutouts', 'line_id'],
+    ['vessel prestaking record(s)', 'vessel_prestaking', 'line_id'], ['container repair job(s)', 'container_repairs', 'line_id'],
+    ['depot storage zone(s)', 'depot_storage_zones', 'shipping_line_id'], ['depot survey(s)', 'depot_surveys', 'shipping_line_id'],
+  ];
+  const removedToo = [
+    ['portal user link(s)', 'shipping_line_users', 'shipping_line_id'], ['vessel mapping(s)', 'vessel_line_map', 'line_id'],
+    ['rate override(s)', 'shipping_line_rate_overrides', 'line_id'],
+  ];
+  let results;
+  try {
+    results = await Promise.all([...usedBy, ...removedToo].map(async ([label, table, col]) => {
+      const { count: n, error } = await count(table, col);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      return { label, n: n || 0 };
+    }));
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = `<div class="ops-notice">Could not check usage, so nothing was deleted \u2014 ${esc(e.message)}</div>`;
+    return;
+  }
+  const blockers = results.slice(0, usedBy.length).filter(r => r.n > 0);
+  const cascades = results.slice(usedBy.length).filter(r => r.n > 0);
+  const body = document.getElementById('modalBody');
+  if (blockers.length) {
+    body.innerHTML = `
+      <div class="ops-notice" style="margin-bottom:12px"><b>${esc(l.code)} can\u2019t be deleted</b> \u2014 deleting it would orphan its history:</div>
+      <ul style="margin:0 0 14px 18px;padding:0;font-size:12.5px;color:var(--text-2);line-height:1.7">${blockers.map(b => `<li><b>${fmt(b.n)}</b> ${esc(b.label)}</li>`).join('')}</ul>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Mark it inactive instead: it disappears from dropdowns and new work, but past records and invoices stay intact.</div>
+      <div style="display:flex;gap:8px">${l.active ? `<button class="submit-btn" style="margin-top:0;flex:1" onclick="setShippingLineActive('${esc(l.id)}', false)">Mark ${esc(l.code)} inactive</button>` : ''}<button class="modal-btn ghost" onclick="closeModal()">Close</button></div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="vault-banner"><div class="vault-banner-label">\u26a0 IRREVERSIBLE ACTION</div><div class="vault-banner-desc">Permanently delete <b>${esc(l.code)} \u2014 ${esc(l.name)}</b> and its rate card. Nothing else in the system uses it.${cascades.length ? ` This also removes ${cascades.map(c => `${fmt(c.n)} ${esc(c.label)}`).join(', ')}.` : ''}</div></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="modal-btn danger" onclick="executeDeleteShippingLine('${esc(l.id)}')">Delete ${esc(l.code)}</button><button class="modal-btn ghost" onclick="closeModal()">Cancel</button></div>`;
+}
+
+async function executeDeleteShippingLine(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const idx = state.db.shippingLines.findIndex(x => x.id === id);
+  if (idx === -1) return;
+  const l = state.db.shippingLines[idx];
+  const { data, error } = await supabase.from('shipping_lines').delete().eq('id', id).select('id');
+  if (error) { toast(`Could not delete \u2014 ${error.message}`, 'error', 6000); return; }
+  if (!data || !data.length) { toast('Nothing was deleted \u2014 you may not have permission, or it is already gone', 'error', 6000); return; }
+  state.db.shippingLines.splice(idx, 1);
+  state.db.vesselLineMap = (state.db.vesselLineMap || []).filter(m => (m.line || m.lineId || m.line_id) !== id);
+  addAudit(state.profile.username, 'Shipping Line Deleted', `${l.code} \u2014 ${l.name}`);
+  closeModal();
+  renderLines(_linesFilter);
+  toast(`${l.code} deleted`, 'success');
 }
 
 

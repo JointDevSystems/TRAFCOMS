@@ -20,11 +20,18 @@ function isReeferCtype(ctype) { return /reefer/i.test(ctype || ''); }
 
 function shippingLineForTrip(t) { return state.db.shippingLines.find(l => l.id === t.shippingLine) || null; }
 
-function serviceRateFor(lineCode, serviceKey, sizeKey) {
+function serviceRateFor(lineCode, serviceKey, sizeKey, line) {
   const sched = window.SERVICE_RATE_SCHEDULE;
   if (!sched || !sizeKey) return null;
   const override = lineCode ? sched.lineOverrides?.[lineCode.toUpperCase()] : null;
   const def = (override?.services && override.services[serviceKey]) || (sched.services && sched.services[serviceKey]);
+  // A line's own saved rate card (Shipping Lines -> Edit) wins over the built-in schedule.
+  const stored = line?.rates?.[serviceKey];
+  if (stored && typeof stored === 'object' && ('20ft' in stored || '40ft' in stored)) {
+    const amt = stored[sizeKey];
+    if (amt == null || amt === '') return null; // blank = not charged for this line
+    return { amount: Number(amt), currency: line.currency || override?.currency || sched.currency, label: def?.label || serviceKey, unit: def?.unit, freeDays: stored.freeDays ?? def?.freeDays };
+  }
   const amount = def?.rates?.[sizeKey];
   if (def == null || amount == null) return null;
   return { amount, currency: override?.currency || sched.currency, label: def.label, unit: def.unit, freeDays: def.freeDays };
@@ -64,7 +71,7 @@ function computeTripServiceCharges(trip, opts) {
   }
 
   const add = (svcKey, label) => {
-    const svc = serviceRateFor(lineCode, svcKey, sizeKey);
+    const svc = serviceRateFor(lineCode, svcKey, sizeKey, line);
     if (!svc) return;
     lines.push({
       key: svcKey, label: label || svc.label, unit: svc.unit, qty: 1,
@@ -81,8 +88,8 @@ function computeTripServiceCharges(trip, opts) {
   if (opts.photo)         add('photoCharges');
 
   if (opts.storage) {
-    const svc = serviceRateFor(lineCode, 'storage', sizeKey);
-    const freeDays = svc?.freeDays || window.SERVICE_RATE_SCHEDULE.services.storage?.freeDays || 0;
+    const svc = serviceRateFor(lineCode, 'storage', sizeKey, line);
+    const freeDays = svc?.freeDays ?? window.SERVICE_RATE_SCHEDULE.services.storage?.freeDays ?? 0;
     const billableDays = Math.max(0, Math.round(opts.storageDays) - freeDays);
     if (svc && billableDays > 0) {
       lines.push({
