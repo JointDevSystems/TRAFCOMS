@@ -3,7 +3,7 @@ const CACHE_VERSION = '3.1';
 const STATIC_FILES = [
   './icons/icon-192.png',
   './icons/icon-512.png',
-];
+]; 
 
 const SHELL_FILES = [
   './',
