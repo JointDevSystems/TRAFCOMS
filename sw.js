@@ -16,7 +16,7 @@ const SHELL_FILES = [
   './js/dispatch-trips.js',
   './js/depot-ops.js',
   './js/interchange-shutouts.js',
-  './js/vessel-prestaging.js',
+  './js/vessel-prestaking.js',
   './js/maintenance-fuel-workshop.js',
   './js/invoicing.js',
   './js/allocation.js',

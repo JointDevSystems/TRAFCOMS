@@ -2,7 +2,7 @@
 
 
 
-function prestageToRow(p) {
+function prestakeToRow(p) {
   return {
     id: p.id,
     trip_id: p.tripId || null,
@@ -27,7 +27,7 @@ function prestageToRow(p) {
   };
 }
 
-function prestageFromRow(r) {
+function prestakeFromRow(r) {
   return {
     id: r.id,
     tripId: r.trip_id,
@@ -55,9 +55,9 @@ function prestageFromRow(r) {
 // The only source of truth for "which containers can be staged". A trip
 // qualifies if it's an outward (Depot → Port) trip that has reached
 // 'completed' status, and it doesn't already have an open staged record.
-function prestagingEligibleTrips() {
+function prestakingEligibleTrips() {
   const staged = new Set(
-    (state.db.vesselPrestaging || [])
+    (state.db.vesselPrestaking || [])
       .filter(p => p.status === 'staged')
       .map(p => p.tripId)
   );
@@ -66,55 +66,55 @@ function prestagingEligibleTrips() {
     .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 }
 
-function prestageTripLabel(t) {
+function prestakeTripLabel(t) {
   const line = t.shippingLine ? lineName(t.shippingLine) : '—';
   return `${t.container} — ${t.ctype || '—'} · ${line}${t.outwardType ? ' · ' + t.outwardType : ''}`;
 }
 
-function canManagePrestaging() { return isAdmin() || isDispatch() || isClerk(); }
+function canManagePrestaking() { return isAdmin() || isDispatch() || isClerk(); }
 
-let _prestageFilter = 'staged';
+let _prestakeFilter = 'staged';
 
-function filterPrestaging(f, btn) {
-  _prestageFilter = f;
-  document.querySelectorAll('#sec-prestaging .filter-btn').forEach(b => b.classList.remove('active'));
+function filterPrestaking(f, btn) {
+  _prestakeFilter = f;
+  document.querySelectorAll('#sec-prestaking .filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  renderPrestagingList(f);
+  renderPrestakingList(f);
 }
 
-function renderPrestaging(f) {
-  _prestageFilter = f || _prestageFilter;
-  renderPrestagingKpis();
-  renderPrestagingList(_prestageFilter);
+function renderPrestaking(f) {
+  _prestakeFilter = f || _prestakeFilter;
+  renderPrestakingKpis();
+  renderPrestakingList(_prestakeFilter);
 }
 
-function renderPrestagingKpis() {
-  const all = state.db.vesselPrestaging || [];
+function renderPrestakingKpis() {
+  const all = state.db.vesselPrestaking || [];
   const staged  = all.filter(p => p.status === 'staged').length;
   const loaded  = all.filter(p => p.status === 'loaded').length;
   const shutout = all.filter(p => p.status === 'shutout').length;
-  const el = document.getElementById('prestagingKpis');
+  const el = document.getElementById('prestakingKpis');
   if (!el) return;
   el.innerHTML = [
     kpiCard('Awaiting Vessel Loading', staged, 'Staged, not yet loaded', 'kpi-gold'),
     kpiCard('Loaded', loaded, 'Confirmed on board', 'kpi-green'),
     kpiCard('Shutouts', shutout, 'Missed their vessel', 'kpi-red'),
-    kpiCard('Eligible Containers', prestagingEligibleTrips().length, 'Arrived at port, not yet staged', 'kpi-blue'),
+    kpiCard('Eligible Containers', prestakingEligibleTrips().length, 'Arrived at port, not yet staged', 'kpi-blue'),
   ].join('');
 }
 
-function renderPrestagingList(f) {
-  const all = state.db.vesselPrestaging || [];
+function renderPrestakingList(f) {
+  const all = state.db.vesselPrestaking || [];
   const items = (f === 'all' ? all : all.filter(p => p.status === f))
     .slice()
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const el = document.getElementById('prestagingList');
+  const el = document.getElementById('prestakingList');
   if (!el) return;
-  el.innerHTML = items.map(prestageCard).join('') ||
-    '<div class="empty-state"><div class="empty-state-icon">🚢</div><div class="empty-state-label">No prestaging records in this filter</div></div>';
+  el.innerHTML = items.map(prestakeCard).join('') ||
+    '<div class="empty-state"><div class="empty-state-icon">🚢</div><div class="empty-state-label">No prestaking records in this filter</div></div>';
 }
 
-function prestageCard(p) {
+function prestakeCard(p) {
   const line = p.line ? lineName(p.line) : '—';
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -136,22 +136,22 @@ function prestageCard(p) {
     </div>
     ${p.notes ? `<div style="margin-top:8px;font-size:10.5px;color:var(--text-3);font-style:italic">${esc(p.notes)}</div>` : ''}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="modal-btn ghost" onclick="showPrestageDetail('${p.id}')">View / Manage</button>
+      <button class="modal-btn ghost" onclick="showPrestakeDetail('${p.id}')">View / Manage</button>
     </div>
   </div>`;
 }
 
-function showAddPrestageModal() {
-  if (!canManagePrestaging()) { toast('You do not have permission to stage containers', 'error'); return; }
-  const eligible = prestagingEligibleTrips();
+function showAddPrestakeModal() {
+  if (!canManagePrestaking()) { toast('You do not have permission to stage containers', 'error'); return; }
+  const eligible = prestakingEligibleTrips();
   const portLocations = (window.bookingDocs && window.bookingDocs.PORT_LOCATIONS) || [];
   const portOptions = portLocations.map(loc => `<option value="${sanitize(loc)}">${sanitize(loc)}</option>`).join('');
   openModal('Prestake Container for Vessel Loading', `
     ${!eligible.length ? '<div class="ops-notice" style="margin-bottom:12px">No containers are currently eligible. A container must have a completed Depot → Port outward trip that hasn\u2019t already been staged.</div>' : ''}
     <div class="fg"><label>Container <span class="label-optional">(only completed Depot → Port arrivals shown)</span></label>
-      <select id="ps_trip" onchange="onPrestageTripChange()">
+      <select id="ps_trip" onchange="onPrestakeTripChange()">
         <option value="">— Select container —</option>
-        ${eligible.map(t => `<option value="${t.id}">${esc(prestageTripLabel(t))}</option>`).join('')}
+        ${eligible.map(t => `<option value="${t.id}">${esc(prestakeTripLabel(t))}</option>`).join('')}
       </select>
     </div>
     <div class="form-row-2">
@@ -175,14 +175,14 @@ function showAddPrestageModal() {
       <div class="fg"><label>Destination / Berth <span class="label-optional">(optional)</span></label><input id="ps_dest" placeholder="e.g. Berth 12, KPA Container Terminal 2"/></div>
     </div>
     <div class="fg"><label>Remarks / Instructions <span class="label-optional">(optional)</span></label><textarea id="ps_notes" rows="2" placeholder="Gate pass reference, priority, special handling, expected time…"></textarea></div>
-    <button class="submit-btn" onclick="savePrestage()">Save Prestaking →</button>
+    <button class="submit-btn" onclick="savePrestake()">Save Prestaking →</button>
   `);
 }
 
 // When a container is picked, quietly prefill (never overwrite) the
 // shipping line and origin from what's already known about its trip —
 // the clerk can still change either before saving.
-function onPrestageTripChange() {
+function onPrestakeTripChange() {
   const tripEl = document.getElementById('ps_trip');
   const trip = tripEl && state.db.trips.find(t => t.id === tripEl.value);
   if (!trip) return;
@@ -195,7 +195,7 @@ function onPrestageTripChange() {
   }
 }
 
-function savePrestage() {
+function savePrestake() {
   const tripEl = document.getElementById('ps_trip');
   const tripId = tripEl ? tripEl.value : '';
   if (!tripId) { toast('Select a container first', 'error'); return; }
@@ -206,8 +206,8 @@ function savePrestage() {
     toast('This container is no longer eligible — it must be a completed Depot → Port arrival', 'error');
     return;
   }
-  const alreadyStaged = (state.db.vesselPrestaging || []).some(p => p.tripId === tripId && p.status === 'staged');
-  if (alreadyStaged) { toast('This container already has an open prestaging record', 'error'); return; }
+  const alreadyStaged = (state.db.vesselPrestaking || []).some(p => p.tripId === tripId && p.status === 'staged');
+  if (alreadyStaged) { toast('This container already has an open prestaking record', 'error'); return; }
 
   const vessel = sanitize(document.getElementById('ps_vessel').value.trim());
   if (!vessel) { toast('Vessel name is required', 'error'); return; }
@@ -235,22 +235,22 @@ function savePrestage() {
     shutoutId: null,
     _dirty: true,
   };
-  state.db.vesselPrestaging = state.db.vesselPrestaging || [];
-  state.db.vesselPrestaging.push(p);
+  state.db.vesselPrestaking = state.db.vesselPrestaking || [];
+  state.db.vesselPrestaking.push(p);
   scheduleSave();
-  addAudit(state.profile.username, 'Container Prestaged', `${p.container} → ${vessel}${voyage ? ' / ' + voyage : ''}`);
+  addAudit(state.profile.username, 'Container Prestaked', `${p.container} → ${vessel}${voyage ? ' / ' + voyage : ''}`);
   closeModal();
-  renderPrestaging('staged');
+  renderPrestaking('staged');
   buildBadges();
   toast(`${p.container} staged for vessel loading`, 'success');
 }
 
-function showPrestageDetail(id) {
-  const p = (state.db.vesselPrestaging || []).find(x => x.id === id);
+function showPrestakeDetail(id) {
+  const p = (state.db.vesselPrestaking || []).find(x => x.id === id);
   if (!p) return;
   const line = p.line ? lineName(p.line) : '—';
-  const canAct = canManagePrestaging() && p.status === 'staged';
-  openModal(`Prestaging — ${p.container}`, `
+  const canAct = canManagePrestaking() && p.status === 'staged';
+  openModal(`Prestaking — ${p.container}`, `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${esc(p.container)}</div></div>
       <div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${esc(p.ctype || '—')}</div></div>
@@ -266,20 +266,20 @@ function showPrestageDetail(id) {
       <div class="fg" style="margin:0"><label>Status</label><div>${sbadge(p.status)}</div></div>
     </div>
     ${p.notes ? `<div class="ops-notice">${esc(p.notes)}</div>` : ''}
-    ${p.shutoutId ? `<div class="ops-notice" style="margin-top:10px">This container's prestaging was converted to a Shutout record — see the Shutout section for details.</div>` : ''}
+    ${p.shutoutId ? `<div class="ops-notice" style="margin-top:10px">This container's prestaking was converted to a Shutout record — see the Shutout section for details.</div>` : ''}
     <div style="font-size:10px;color:var(--text-3);margin-top:10px">Staged by ${esc(p.createdBy || '—')} · ${timeAgo(p.createdAt)}</div>
     ${canAct ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="modal-btn success" onclick="markPrestageLoaded('${p.id}')">✓ Mark Loaded on Vessel</button>
-      <button class="modal-btn danger" onclick="promptPrestageShutout('${p.id}')">⚠ Report Shutout</button>
-      <button class="modal-btn ghost" onclick="cancelPrestage('${p.id}')">Cancel Record</button>
+      <button class="modal-btn success" onclick="markPrestakeLoaded('${p.id}')">✓ Mark Loaded on Vessel</button>
+      <button class="modal-btn danger" onclick="promptPrestakeShutout('${p.id}')">⚠ Report Shutout</button>
+      <button class="modal-btn ghost" onclick="cancelPrestake('${p.id}')">Cancel Record</button>
     </div>` : (p.status !== 'staged' ? '<div style="font-size:11px;color:var(--text-3);margin-top:10px">This record is resolved — no further changes.</div>' : '')}
   `);
 }
 
-function markPrestageLoaded(id) {
-  const p = (state.db.vesselPrestaging || []).find(x => x.id === id);
+function markPrestakeLoaded(id) {
+  const p = (state.db.vesselPrestaking || []).find(x => x.id === id);
   if (!p) return;
-  if (!canManagePrestaging()) { toast('You do not have permission to update this record', 'error'); return; }
+  if (!canManagePrestaking()) { toast('You do not have permission to update this record', 'error'); return; }
   if (p.status !== 'staged') { toast('This record is already resolved', 'error'); return; }
   p.status = 'loaded';
   p.resolvedAt = new Date().toISOString();
@@ -287,27 +287,27 @@ function markPrestageLoaded(id) {
   scheduleSave();
   addAudit(state.profile.username, 'Container Loaded on Vessel', `${p.container} — ${p.vessel || 'vessel'}${p.voyage ? ' / ' + p.voyage : ''}`);
   closeModal();
-  renderPrestaging(_prestageFilter);
+  renderPrestaking(_prestakeFilter);
   buildBadges();
   toast(`${p.container} marked loaded`, 'success');
 }
 
-function promptPrestageShutout(id) {
-  const p = (state.db.vesselPrestaging || []).find(x => x.id === id);
+function promptPrestakeShutout(id) {
+  const p = (state.db.vesselPrestaking || []).find(x => x.id === id);
   if (!p) return;
-  if (!canManagePrestaging()) { toast('You do not have permission to update this record', 'error'); return; }
+  if (!canManagePrestaking()) { toast('You do not have permission to update this record', 'error'); return; }
   if (p.status !== 'staged') { toast('This record is already resolved', 'error'); return; }
   if (typeof _pendingShutoutImg !== 'undefined') _pendingShutoutImg.ps = '';
   openModal('Report Shutout', `
     <div class="ops-notice" style="margin-bottom:10px">This moves ${esc(p.container)} into the Shutout register as having missed its vessel.</div>
     <div class="fg"><label>Reason (required)</label><textarea id="psShutoutReason" rows="3" placeholder="e.g. Vessel closed early, container arrived late…"></textarea></div>
     ${typeof shutoutPhotoPicker === 'function' ? shutoutPhotoPicker('ps') : ''}
-    <button class="submit-btn" onclick="confirmPrestageShutout('${id}')">Confirm Shutout →</button>
+    <button class="submit-btn" onclick="confirmPrestakeShutout('${id}')">Confirm Shutout →</button>
   `);
 }
 
-function confirmPrestageShutout(id) {
-  const p = (state.db.vesselPrestaging || []).find(x => x.id === id);
+function confirmPrestakeShutout(id) {
+  const p = (state.db.vesselPrestaking || []).find(x => x.id === id);
   if (!p) return;
   if (p.status !== 'staged') { toast('This record is already resolved', 'error'); return; }
   const reasonEl = document.getElementById('psShutoutReason');
@@ -318,7 +318,7 @@ function confirmPrestageShutout(id) {
     id: uid('SHT'), container: p.container,
     line: p.line || '', vessel: p.vessel || '', voyage: p.voyage || '',
     reason: sanitize(reason), truckId: p.truckId || '', driverId: p.driverId || '',
-    notes: `Auto-logged from Prestaging record ${p.id}.${p.notes ? ' ' + p.notes : ''}`,
+    notes: `Auto-logged from Prestaking record ${p.id}.${p.notes ? ' ' + p.notes : ''}`,
     img: (typeof _pendingShutoutImg !== 'undefined' && _pendingShutoutImg.ps) || '',
     date: new Date().toISOString(), status: 'open',
     _dirty: true,
@@ -332,27 +332,27 @@ function confirmPrestageShutout(id) {
   p._dirty = true;
 
   scheduleSave();
-  addAudit(state.profile.username, 'Prestaging Shutout', `${p.container} — ${reason}`);
+  addAudit(state.profile.username, 'Prestaking Shutout', `${p.container} — ${reason}`);
   closeModal();
-  renderPrestaging(_prestageFilter);
+  renderPrestaking(_prestakeFilter);
   buildBadges();
   if (typeof refreshContainerHistory === 'function') refreshContainerHistory();
   toast(`${p.container} moved to Shutout register`, 'warning');
 }
 
-function cancelPrestage(id) {
-  const p = (state.db.vesselPrestaging || []).find(x => x.id === id);
+function cancelPrestake(id) {
+  const p = (state.db.vesselPrestaking || []).find(x => x.id === id);
   if (!p) return;
-  if (!canManagePrestaging()) { toast('You do not have permission to update this record', 'error'); return; }
+  if (!canManagePrestaking()) { toast('You do not have permission to update this record', 'error'); return; }
   if (p.status !== 'staged') { toast('This record is already resolved', 'error'); return; }
-  if (!confirm(`Cancel the prestaging record for ${p.container}? The container will become available to stage again.`)) return;
+  if (!confirm(`Cancel the prestaking record for ${p.container}? The container will become available to stage again.`)) return;
   p.status = 'cancelled';
   p.resolvedAt = new Date().toISOString();
   p._dirty = true;
   scheduleSave();
-  addAudit(state.profile.username, 'Prestaging Cancelled', p.container);
+  addAudit(state.profile.username, 'Prestaking Cancelled', p.container);
   closeModal();
-  renderPrestaging(_prestageFilter);
+  renderPrestaking(_prestakeFilter);
   buildBadges();
-  toast('Prestaging record cancelled', 'info');
+  toast('Prestaking record cancelled', 'info');
 }

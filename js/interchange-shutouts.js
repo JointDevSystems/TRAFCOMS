@@ -640,7 +640,7 @@ async function downloadInspectionReport(surveyId) {
   kv(MARGIN + 126, y, 'Status', s.escalated ? 'Escalated' : 'Completed');
   y += 12;
   kv(MARGIN, y, 'Inspection Method', 'Manual');
-  kv(MARGIN + 63, y, 'Overall Condition', (s.condition_status||'').replace(/_/g,' ').toUpperCase());
+  kv(MARGIN + 63, y, 'Overall Condition', conditionStatusLabel(s.condition_status).toUpperCase());
   kv(MARGIN + 126, y, 'Surveyed By', s.clerk_name || '—');
   y += 16;
 
@@ -682,7 +682,7 @@ async function downloadInspectionReport(surveyId) {
   [
     { label: 'DAMAGE REPORTS', value: String(repairs.length) },
     { label: 'EST. REPAIR COST', value: `KSh ${damageTotal.toLocaleString(undefined,{minimumFractionDigits:2})}` },
-    { label: 'CONDITION', value: (s.condition_status||'').replace(/_/g,' ').toUpperCase() },
+    { label: 'CONDITION', value: conditionStatusLabel(s.condition_status).toUpperCase() },
   ].forEach((box, i) => {
     const bx = MARGIN + i * (stripW + 4.5);
     doc.setDrawColor(210); doc.setLineWidth(0.3); doc.roundedRect(bx, y, stripW, 18, 1.5, 1.5, 'S');

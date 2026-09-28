@@ -147,10 +147,10 @@ async function main() {
   }
   console.log(`interchange: ${icCount} migrated`);
 
-  // ── 9b. vessel_prestaging (references trips, shipping_lines, trucks, drivers) ──
+  // ── 9b. vessel_prestaking (references trips, shipping_lines, trucks, drivers) ──
   let pstgCount = 0;
-  for (const p of db.vesselPrestaging || []) {
-    const { error } = await supabase.from('vessel_prestaging').insert({
+  for (const p of db.vesselPrestaking || []) {
+    const { error } = await supabase.from('vessel_prestaking').insert({
       trip_id: idMap.trips.get(p.tripId) || null,
       container: p.container, ctype: p.ctype || null,
       line_id: idMap.shippingLines.get(p.line) || null,
@@ -167,10 +167,10 @@ async function main() {
       // this link preserved, add .select('id').single() to the shutouts
       // insert and map old shutout id -> new id like invoices does.
     });
-    if (error) { console.error('vessel_prestaging failed:', p.id, error.message); continue; }
+    if (error) { console.error('vessel_prestaking failed:', p.id, error.message); continue; }
     pstgCount++;
   }
-  console.log(`vessel_prestaging: ${pstgCount} migrated`);
+  console.log(`vessel_prestaking: ${pstgCount} migrated`);
 
   // ── 10. requisitions (no FKs — requester is stored as free text) ──
   let reqCount = 0;

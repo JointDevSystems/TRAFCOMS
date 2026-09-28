@@ -1168,7 +1168,7 @@ async function openSurveyModal(bookingId) {
     <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
 
     <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
-      <option value="full_grade">Full Grade</option>
+      <option value="food_grade">Food Grade</option>
       <option value="under_repair">Under Repair</option>
       <option value="damaged">Damaged</option>
       <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
@@ -1259,7 +1259,7 @@ async function saveSurvey(bookingId) {
       clerkName: val('sv_clerk'),
       sealNumber: val('sv_seal'),
       gatePassNumber: val('sv_gatepass'),
-      conditionStatus: val('sv_condition') || 'full_grade',
+      conditionStatus: val('sv_condition') || 'food_grade',
       remarks: val('sv_remarks'),
       photos: _surveyImages,
       tariffItems: repairItems,
@@ -1292,7 +1292,7 @@ async function saveSurvey(bookingId) {
    findings, rather than a fresh Depot-In interchange record being
    generated — keeping Inward Container Entry's own status in sync. */
 function syncSurveyBackToInterchange(ic, survey, heavy) {
-  const conditionMap = { full_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+  const conditionMap = { food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
   if (survey.container) ic.container = survey.container.toUpperCase();
   ic.condition = conditionMap[survey.condition_status] || ic.condition;
   ic.surveyId = survey.id;
@@ -1325,7 +1325,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
     const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
     if (!survey) { toast('No survey found for this container', 'error'); return; }
     if (survey.interchange_generated_at) { return; }
-    const conditionMap = { full_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+    const conditionMap = { food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
     const matchedTruck = state.db.trucks.find(t => (t.reg || '').toUpperCase() === (survey.truck_reg || '').toUpperCase());
     const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
 
@@ -1454,7 +1454,7 @@ function openJointSurveyModal(bookingId, surveyId) {
     <div class="fg"><label>Final Condition</label><select id="js_condition">
       <option value="damaged">Damaged — accept into storage as damaged</option>
       <option value="under_repair">Under Repair — accept, route to workshop</option>
-      <option value="full_grade">Full Grade — original finding overturned</option>
+      <option value="food_grade">Food Grade — original finding overturned</option>
     </select></div>
     <div class="fg"><label>Joint Survey Notes</label><textarea id="js_notes" rows="3" placeholder="Findings, agreement/disagreement with first survey..."></textarea></div>
     <div style="display:flex;gap:8px;margin-top:6px">
@@ -1516,7 +1516,7 @@ async function renderDepOpsYardMap() {
             <div style="font-size:10.5px;color:var(--text-3)">${occCount}/${slots.length} slots · max ${maxStack}-high</div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(26px,1fr));gap:3px">
-            ${slots.map(s => `<div title="Slot ${s.slot_number}${s.container ? ' — ' + sanitize(s.container) : ''} (${s.condition_status})" class="yard-slot yard-slot-${s.condition_status}"></div>`).join('')}
+            ${slots.map(s => `<div title="Slot ${s.slot_number}${s.container ? ' — ' + sanitize(s.container) : ''} (${conditionStatusLabel(s.condition_status)})" class="yard-slot yard-slot-${s.condition_status}"></div>`).join('')}
           </div>
           ${overLimit ? `<div style="font-size:10.5px;color:var(--red,#ef4444);margin-top:4px">⚠ Occupancy exceeds declared capacity — review against KMA §6.1 (85% max occupancy)</div>` : ''}
         </div>`;
@@ -1525,7 +1525,7 @@ async function renderDepOpsYardMap() {
     }
     html += `<div class="panel"><div class="panel-head"><span class="panel-title">Legend</span></div><div style="padding:10px 14px;display:flex;gap:14px;flex-wrap:wrap;font-size:11px">
       <span><span class="yard-slot yard-slot-empty" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Empty</span>
-      <span><span class="yard-slot yard-slot-full_grade" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Full Grade</span>
+      <span><span class="yard-slot yard-slot-food_grade" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Food Grade</span>
       <span><span class="yard-slot yard-slot-under_repair" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Under Repair</span>
       <span><span class="yard-slot yard-slot-damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Damaged</span>
       <span><span class="yard-slot yard-slot-heavily_damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Heavily Damaged</span>
@@ -1563,7 +1563,7 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.transporter||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
-        <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'full_grade' ? 'approved' : 'pending'))} ${sanitize((s.condition_status||'').replace(/_/g,' '))}</td>
+        <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'food_grade' ? 'approved' : 'pending'))} ${sanitize(conditionStatusLabel(s.condition_status))}</td>
         <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
         <td style="padding:6px 8px"><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button></td>
         <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>
@@ -1652,7 +1652,7 @@ async function renderDepOpsMasterList() {
           <td style="padding:6px 8px" class="mono">${sanitize(b.container||'—')}</td>
           <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
           <td style="padding:6px 8px">${sbadge(b.storage_status==='escalated'?'rejected':b.storage_status==='surveyed'||b.storage_status==='allocated'?'approved':'pending')} ${MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status||'—')}</td>
-          <td style="padding:6px 8px">${s ? sanitize((s.condition_status||'').replace(/_/g,' ')) : '—'}</td>
+          <td style="padding:6px 8px">${s ? sanitize(conditionStatusLabel(s.condition_status)) : '—'}</td>
           <td style="padding:6px 8px">${loc}</td>
           <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
         </tr>`;
@@ -1951,7 +1951,7 @@ async function showBlockSlotsModal(blockId) {
 function manualAssignSlot(blockId, slotNumber) {
   openModal(`Assign Slot ${slotNumber}`, `
     <div class="fg"><label>Container No.</label><input id="ms_container" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>
-    <div class="fg"><label>Condition</label><select id="ms_condition"><option value="full_grade">Full Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
+    <div class="fg"><label>Condition</label><select id="ms_condition"><option value="food_grade">Food Grade</option><option value="under_repair">Under Repair</option><option value="damaged">Damaged</option></select></div>
     <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Use this for containers already on-site with no matching booking — e.g. after a physical stock-take. Containers coming through Public Bookings should go through Survey/Allocation above instead, so their paperwork stays linked.</div>
     <button class="submit-btn" onclick="saveManualAssignSlot('${blockId}',${slotNumber})">Assign →</button>
   `);

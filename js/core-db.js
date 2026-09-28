@@ -184,7 +184,7 @@ async function loadDB() {
       supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
       supabase.from('profiles').select('*'),
       supabase.from('vessel_line_map').select('*'),
-      supabase.from('vessel_prestaging').select('*'),
+      supabase.from('vessel_prestaking').select('*'),
       supabase.from('container_repairs').select('*').order('created_at', { ascending: false }).limit(2000),
     ]);
 
@@ -200,7 +200,7 @@ async function loadDB() {
     const fuel           = (fuelRes.data || []).map(fuelFromRow);
     const shippingLines  = (linesRes.data || []).map(lineFromRow);
     const vesselLineMap  = (vlmRes.data || []).map(vlmFromRow).sort((a, b) => a.priority - b.priority);
-    const vesselPrestaging = (vpsRes.data || []).map(prestageFromRow);
+    const vesselPrestaking = (vpsRes.data || []).map(prestakeFromRow);
     const containerRepairs = (crRes.data || []).map(crFromRow);
     const shutouts       = (shutoutsRes.data || []).map(shutoutFromRow);
     const interchange    = (icRes.data || []).map(icFromRow);
@@ -221,7 +221,7 @@ async function loadDB() {
 
     const trackingPositions = {};
     (trackRes.data || []).forEach(r => {
-      trackingPositions[r.truck_id] = { lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone, lastUpdate: r.last_update, source: r.source || 'driver_app' };
+      trackingPositions[r.truck_id] = mapPositionRow(r);
     });
 
     const auditLog = (auditRes.data || [])
@@ -230,8 +230,8 @@ async function loadDB() {
 
     const s = settingsRes.data;
     const settings = s
-      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null, wialonEnabled: !!s.wialon_enabled, wialonToken: s.wialon_token || '', wialonHost: s.wialon_host || 'https://hst-api.wialon.com', fuelPriceHistory: Array.isArray(s.fuel_price_history) ? s.fuel_price_history : [] }
-      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null, wialonEnabled: false, wialonToken: '', wialonHost: 'https://hst-api.wialon.com', fuelPriceHistory: [] };
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd', invoiceConfig: s.invoice_config || null, wialonEnabled: !!s.wialon_enabled, wialonHost: s.wialon_host || 'https://hst-api.wialon.com', fuelPriceHistory: Array.isArray(s.fuel_price_history) ? s.fuel_price_history : [] }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd', invoiceConfig: null, wialonEnabled: false, wialonHost: 'https://hst-api.wialon.com', fuelPriceHistory: [] };
 
   
     const profiles = (profilesRes.data || []).map(p => ({
@@ -247,7 +247,7 @@ async function loadDB() {
       trucks, drivers, trips, maintenance, fuel, shippingLines, shutouts,
       interchange, requisitions, workshop, invoices, billingRates,
       allocationRules, trackingPositions, auditLog, settings, profiles,
-      vesselLineMap, vesselPrestaging, containerRepairs,
+      vesselLineMap, vesselPrestaking, containerRepairs,
     };
   } catch (e) {
     console.warn('Failed to load from Supabase:', e);
@@ -275,7 +275,7 @@ async function saveDB() {
 
     failures.push(await saveDirty('interchange', db.interchange, icToRow));
 
-    failures.push(await saveDirty('vessel_prestaging', db.vesselPrestaging, prestageToRow));
+    failures.push(await saveDirty('vessel_prestaking', db.vesselPrestaking, prestakeToRow));
     
     failures.push(await saveDirty('requisitions', db.requisitions, reqToRow));
     
@@ -291,10 +291,10 @@ async function saveDB() {
 
     failures.push(await upsertRows('allocation_rules', db.allocationRules.map(allocToRow)));
 
-    const trackingRows = Object.entries(db.trackingPositions || {}).map(([truckId, p]) => ({
-      truck_id: truckId, lat: p.lat, lng: p.lng, speed: p.speed, heading: p.heading, zone: p.zone, last_update: p.lastUpdate, source: p.source || 'driver_app',
-    }));
-    failures.push(await upsertRows('tracking_positions', trackingRows, { onConflict: 'truck_id' }));
+    // NOTE: tracking_positions is deliberately NOT written from here. Positions are owned by the
+    // wialon-sync edge function (Wialon trucks) and by each driver's own pings (phone trucks).
+    // Re-upserting this browser's in-memory copy on every save used to overwrite fresh server
+    // positions with stale ones.
 
     const unsavedAudit = (db.auditLog || []).filter(a => !a._saved);
     if (unsavedAudit.length) {
@@ -313,7 +313,6 @@ async function saveDB() {
         mpesa: db.settings.mpesa,
         invoice_config: db.settings.invoiceConfig || null,
         wialon_enabled: !!db.settings.wialonEnabled,
-        wialon_token: db.settings.wialonToken || null,
         wialon_host: db.settings.wialonHost || 'https://hst-api.wialon.com',
         fuel_price_history: db.settings.fuelPriceHistory || null,
       };
@@ -368,7 +367,7 @@ function remapSeedIds(db) {
   remapOwnIds(db.drivers,       idMap.drivers);
   remapOwnIds(db.trips,         idMap.trips);
   remapOwnIds(db.invoices,      idMap.invoices);
-  [db.maintenance, db.fuel, db.shutouts, db.interchange, db.requisitions, db.workshop, db.profiles, db.auditLog, db.allocationRules, db.vesselPrestaging, db.containerRepairs]
+  [db.maintenance, db.fuel, db.shutouts, db.interchange, db.requisitions, db.workshop, db.profiles, db.auditLog, db.allocationRules, db.vesselPrestaking, db.containerRepairs]
     .forEach(arr => remapOwnIds(arr, null));
 
   db.drivers.forEach(d => { d.truckId = d.truckId ? (idMap.trucks.get(d.truckId) || null) : null; });
@@ -393,7 +392,7 @@ function remapSeedIds(db) {
     i.truck  = i.truck  ? (idMap.trucks.get(i.truck)         || null) : null;
     i.driver = i.driver ? (idMap.drivers.get(i.driver)       || null) : null;
   });
-  (db.vesselPrestaging || []).forEach(p => {
+  (db.vesselPrestaking || []).forEach(p => {
     p.tripId   = p.tripId   ? (idMap.trips.get(p.tripId)          || null) : null;
     p.line     = p.line     ? (idMap.shippingLines.get(p.line)    || null) : null;
     p.truckId  = p.truckId  ? (idMap.trucks.get(p.truckId)        || null) : null;
@@ -445,7 +444,7 @@ async function clearAllTables() {
   await del('requisitions', 'id');
   await del('interchange', 'id');
   await del('shutouts', 'id');
-  await del('vessel_prestaging', 'id');
+  await del('vessel_prestaking', 'id');
   await del('fuel_logs', 'id');
   await del('maintenance', 'id');
   await del('trips', 'id');
@@ -494,7 +493,7 @@ async function initDB() {
       settings: {},
       profiles: [],
       vesselLineMap: [],
-      vesselPrestaging: []
+      vesselPrestaking: []
     };
   }
   if (!Array.isArray(state.db.containerRepairs)) {
@@ -509,7 +508,6 @@ async function initDB() {
       companyName: 'Gargo Logistics Ltd',
       invoiceConfig: null,
       wialonEnabled: false,
-      wialonToken: '',
       wialonHost: 'https://hst-api.wialon.com'
     };
   }
@@ -528,7 +526,7 @@ function subscribeLiveSync() {
   const tables = [
     'trucks', 'drivers', 'trips', 'maintenance', 'fuel_logs', 'shutouts',
     'interchange', 'requisitions', 'workshop_jobs', 'invoices',
-    'shipping_lines', 'allocation_rules', 'vessel_prestaging', 'container_repairs',
+    'shipping_lines', 'allocation_rules', 'vessel_prestaking', 'container_repairs',
   ];
 
   let channel = supabase.channel('gargo-live-sync');

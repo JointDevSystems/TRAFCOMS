@@ -452,6 +452,11 @@ function flaggedPreview(list, max = 200) {
     : list;
 }
 
+// Display label for a survey condition value, e.g. 'food_grade' -> 'food grade'.
+function conditionStatusLabel(v) {
+  return String(v || '').replace(/_/g, ' ');
+}
+
 function pickField(r, keys) {
   for (const k of keys) { if (r[k] != null && String(r[k]).trim() !== '') return String(r[k]).trim(); }
   return '';

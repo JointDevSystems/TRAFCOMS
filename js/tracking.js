@@ -120,17 +120,22 @@ function onDriverGeoError(err) {
 let _nominatimQueue = Promise.resolve();
 
 
-const WIALON_POLL_INTERVAL_MS = 25000;
+// ── Live GPS: server-synced Wialon + driver phones ────────────────────────────
+// Wialon positions are pulled SERVER-SIDE by the wialon-sync edge function (cron, every minute)
+// and written to tracking_positions; driver phones write their own rows. The browser only READS
+// positions. It never talks to Wialon for live data and never holds the Wialon API token.
 
-let _wialonSid = null;
+const TRACKING_REFRESH_MS = 30000;   // fallback refresh while Live Tracking is open (realtime does the rest)
+const GPS_STALE_MINUTES = 15;        // a fix older than this can't be trusted as "current"
+const SYNC_STALE_MINUTES = 6;        // wialon-sync runs every minute; older means the pipeline is behind
+const MOVING_SPEED_THRESHOLD_KMH = 3;
 
-let _wialonPollTimer = null;
+let _trackingRefreshTimer = null;
 
 function wialonConfig() {
   const s = state.db?.settings || {};
   return {
     enabled: !!s.wialonEnabled,
-    token: (s.wialonToken || '').trim(),
     host: (s.wialonHost || 'https://hst-api.wialon.com').trim().replace(/\/+$/, ''),
   };
 }
@@ -139,137 +144,159 @@ function wialonTrackedTrucks() {
   return (state.db?.trucks || []).filter(t => t.wialonUnitId);
 }
 
-async function wialonApi(host, svc, params, sid) {
+// One mapper for every path that loads a tracking_positions row (initial load, refresh, realtime).
+function mapPositionRow(r) {
+  return {
+    lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone,
+    lastUpdate: r.last_update, source: r.source || 'driver_app',
+    moving: r.moving ?? null, stoppedSince: r.stopped_since || null, syncedAt: r.synced_at || null,
+  };
+}
+
+function minutesSince(iso) {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  return isNaN(t) ? Infinity : (Date.now() - t) / 60000;
+}
+
+function fmtStopDuration(mins) {
+  if (typeof mins !== 'number' || !isFinite(mins) || mins < 0) return '';
+  if (mins < 60) return Math.max(1, Math.round(mins)) + 'm';
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return h + 'h' + (m ? ' ' + m + 'm' : '');
+}
+
+// Single source of truth for "what is this truck doing right now" — used by the badge, the list
+// order, the map marker colour and the counts, so they can never disagree.
+//   none    no position row at all
+//   stale   we can't trust the data: server sync is behind (Wialon) or phone fix is old
+//   offline the sync is healthy but the Wialon tracker itself stopped reporting
+//   moving / stopped   a current fix (speed above a small noise threshold counts as moving)
+function truckMovingState(truckId) {
+  const p = state.db.trackingPositions?.[truckId];
+  if (!p) return { kind: 'none', p: null };
+  const fixAge = minutesSince(p.lastUpdate);
+  if (p.source === 'wialon') {
+    if (minutesSince(p.syncedAt || p.lastUpdate) > SYNC_STALE_MINUTES) return { kind: 'stale', p, fixAge };
+    if (fixAge > GPS_STALE_MINUTES) return { kind: 'offline', p, fixAge };
+  } else if (fixAge > GPS_STALE_MINUTES) {
+    return { kind: 'stale', p, fixAge };
+  }
+  const moving = p.moving === true || (p.speed || 0) > MOVING_SPEED_THRESHOLD_KMH;
+  const stopMin = (!moving && p.stoppedSince) ? minutesSince(p.stoppedSince) : null;
+  return { kind: moving ? 'moving' : 'stopped', p, fixAge, stopMin };
+}
+
+function truckMovementBadge(truckId) {
+  const s = truckMovingState(truckId);
+  if (s.kind === 'none') return '<span style="color:var(--text-3)">— No GPS fix</span>';
+  const p = s.p, seen = timeAgo(p.lastUpdate);
+  if (s.kind === 'offline') return `<span style="color:#d99a2b">⚠ Tracker offline · last seen ${seen}</span>`;
+  if (s.kind === 'stale') return `<span style="color:#d99a2b">⚠ No recent fix · last seen ${seen}</span>`;
+  if (s.kind === 'moving') return `<span style="color:var(--green,#3ecf6e)">● Moving${p.speed > 0 ? ' · ' + Math.round(p.speed) + ' km/h' : ''}</span>`;
+  const dur = fmtStopDuration(s.stopMin);
+  return `<span style="color:var(--text-3)">■ Stopped${dur ? ' · ' + dur : ''}</span>`;
+}
+
+function truckMarkerColour(kind) {
+  return kind === 'moving' ? '#3ecf6e' : kind === 'stopped' ? '#8b8b8b' : '#d99a2b';
+}
+
+function positionSourceLabel(p) { return p?.source === 'wialon' ? 'Wialon GPS' : 'Driver Phone'; }
+
+// Fallback refresh, only while Live Tracking is open and the tab is visible. Realtime already pushes
+// changes; this just covers a dropped websocket. (Old function names are kept as thin wrappers because
+// login, logout and truck-linking code still call them.)
+function startTrackingAutoRefresh() {
+  if (_trackingRefreshTimer) return;
+  _trackingRefreshTimer = setInterval(() => {
+    if (document.hidden || state.currentSection !== 'livetracking') return;
+    refreshTracking(true);
+  }, TRACKING_REFRESH_MS);
+}
+function stopTrackingAutoRefresh() {
+  if (_trackingRefreshTimer) { clearInterval(_trackingRefreshTimer); _trackingRefreshTimer = null; }
+}
+function startWialonPolling() { startTrackingAutoRefresh(); }
+function stopWialonPolling() { stopTrackingAutoRefresh(); }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.currentUser && state.currentSection === 'livetracking') refreshTracking(true);
+});
+
+// ── Admin-only: test a token that was just typed into the settings form ──────────────────────────
+// This is the ONLY place the browser talks to Wialon, and only with a token the admin is typing right now
+// (to check it and to list unit IDs). Saved tokens live on the server and can't be read back.
+async function wialonRemoteCall(host, svc, params, sid) {
   const url = `${host}/wialon/ajax.html?svc=${encodeURIComponent(svc)}&params=${encodeURIComponent(JSON.stringify(params))}${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Wialon HTTP ${res.status}`);
   const data = await res.json();
-  if (data && typeof data.error === 'number' && data.error !== 0) {
-    const err = new Error(`Wialon error ${data.error}`);
-    err.wialonCode = data.error;
-    throw err;
-  }
+  if (data && typeof data.error === 'number' && data.error !== 0) throw new Error(`Wialon error ${data.error}`);
   return data;
 }
 
-// token/login — exchanges the long-lived API token for a session id (sid/eid).
-async function wialonLogin(force) {
-  const { token, host } = wialonConfig();
-  if (!token) throw new Error('No Wialon API token configured');
-  if (_wialonSid && !force) return _wialonSid;
-  const data = await wialonApi(host, 'token/login', { token });
-  if (!data?.eid) throw new Error('Wialon login did not return a session id');
-  _wialonSid = data.eid;
-  return _wialonSid;
-}
-
-
-async function wialonFetchAllUnits() {
-  const { host } = wialonConfig();
-  const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
-  let sid = await wialonLogin();
-  try {
-    return await wialonApi(host, 'core/search_items', { spec, force: 1, flags: 1025, from: 0, to: 0 }, sid);
-  } catch (e) {
-    if (e.wialonCode === 1 || e.wialonCode === 4) { // 1=not logged in, 4=invalid session — retry once with a fresh login
-      sid = await wialonLogin(true);
-      return await wialonApi(host, 'core/search_items', { spec, force: 1, flags: 1025, from: 0, to: 0 }, sid);
-    }
-    throw e;
-  }
-}
-
-
-async function pollWialonPositions() {
-  const cfg = wialonConfig();
-  if (!cfg.enabled || !cfg.token) return;
-
-  const trackedTrucks = wialonTrackedTrucks();
-  if (!trackedTrucks.length) return;
-
-  let result;
-  try {
-    result = await wialonFetchAllUnits();
-  } catch (e) {
-    console.warn('Wialon poll failed:', e.message);
-    return;
-  }
-
-  const byId = {};
-  (result?.items || []).forEach(u => { byId[String(u.id)] = u; });
-
-  let changed = false;
-  for (const truck of trackedTrucks) {
-    const unit = byId[String(truck.wialonUnitId)];
-    const p = unit?.pos;
-    if (!p) continue; // unit not visible to this token, or no fix reported yet
-
-    const speed = Math.max(0, Math.round(p.s || 0));
-    const heading = headingToCompass(p.c);
-
-    let zone = state.db.trackingPositions?.[truck.id]?.zone;
-    const zoneStale = !zone || (Date.now() - (_wialonLastZoneFetch[truck.id] || 0) > ZONE_LOOKUP_INTERVAL_MS);
-    if (zoneStale) {
-      try { zone = await reverseGeocodeZone(p.y, p.x); } catch { /* keep previous zone on failure */ }
-      _wialonLastZoneFetch[truck.id] = Date.now();
-    }
-
-    const lastUpdate = p.t ? new Date(p.t * 1000).toISOString() : new Date().toISOString();
-    const row = { truck_id: truck.id, lat: p.y, lng: p.x, speed, heading, zone, last_update: lastUpdate, source: 'wialon' };
-    const { error } = await supabase.from('tracking_positions').upsert(row, { onConflict: 'truck_id' });
-    if (error) { console.error('Wialon tracking write failed:', truck.reg, error.message); continue; }
-    state.db.trackingPositions[truck.id] = { lat: p.y, lng: p.x, speed, heading, zone, lastUpdate, source: 'wialon' };
-    changed = true;
-  }
-
-  if (changed && state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
-}
-
-function startWialonPolling() {
-  const cfg = wialonConfig();
-  if (!cfg.enabled || !cfg.token || !wialonTrackedTrucks().length) { stopWialonPolling(); return; }
-  if (_wialonPollTimer) return;
-  pollWialonPositions();
-  _wialonPollTimer = setInterval(pollWialonPositions, WIALON_POLL_INTERVAL_MS);
-}
-
-function stopWialonPolling() {
-  if (_wialonPollTimer) { clearInterval(_wialonPollTimer); _wialonPollTimer = null; }
-  _wialonSid = null;
-}
-
-
 async function testWialonConnection() {
-  const hostEl  = document.getElementById('st_wialonHost');
-  const tokenEl = document.getElementById('st_wialonToken');
-  const host  = (hostEl?.value || 'https://hst-api.wialon.com').trim().replace(/\/+$/, '');
-  const token = (tokenEl?.value || '').trim();
-  if (!token) { toast('Enter a Wialon API token first', 'error'); return; }
+  const host  = (document.getElementById('st_wialonHost')?.value || 'https://hst-api.wialon.com').trim().replace(/\/+$/, '');
+  const token = (document.getElementById('st_wialonToken')?.value || '').trim();
+  if (!token) { toast('Paste a token into the field to test it — a saved token is only used by the server and can\u2019t be read back', 'info', 4500); return; }
   toast('Testing Wialon connection…', 'info', 1500);
+  let sid;
   try {
-    const data = await wialonApi(host, 'token/login', { token });
-    if (!data?.eid) throw new Error('No session returned');
-    _wialonSid = data.eid;
-    toast(`Connected to Wialon${data.user?.nm ? ' as ' + data.user.nm : ''} ✓`, 'success');
+    const login = await wialonRemoteCall(host, 'token/login', { token });
+    sid = login?.eid;
+    if (!sid) throw new Error('No session returned');
+    const found = await wialonRemoteCall(host, 'core/search_items', {
+      spec: { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' },
+      force: 1, flags: 1, from: 0, to: 0,
+    }, sid);
+    const units = (found?.items || []).slice().sort((a, b) => String(a.nm).localeCompare(String(b.nm)));
+    const linked = new Map(wialonTrackedTrucks().map(t => [String(t.wialonUnitId), t.reg]));
+    toast(`Connected to Wialon${login.user?.nm ? ' as ' + login.user.nm : ''} ✓`, 'success');
+    openModal('Wialon units this token can see', `
+      <div style="font-size:11.5px;color:var(--text-2);line-height:1.6;margin-bottom:10px">
+        Enter the <b>ID</b> on the matching truck's detail card under Fleet → Wialon GPS Unit. Remember to click <b>Save</b> on the settings form to store the token.
+      </div>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="text-align:left;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:1px"><th style="padding:8px">Unit name</th><th style="padding:8px">ID</th><th style="padding:8px">Linked to</th></tr></thead>
+          <tbody>${units.map(u => `<tr style="border-top:1px solid var(--border)"><td style="padding:8px">${esc(u.nm)}</td><td class="mono" style="padding:8px;color:var(--gold)">${esc(u.id)}</td><td style="padding:8px;color:var(--text-3)">${linked.has(String(u.id)) ? esc(linked.get(String(u.id))) : '—'}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:12px;color:var(--text-3)">This token can\u2019t see any units — check the Wialon user\u2019s access rights.</td></tr>'}</tbody>
+        </table>
+      </div>`);
   } catch (e) {
     toast(`Wialon connection failed — ${e.message}`, 'error');
+  } finally {
+    if (sid) { try { await wialonRemoteCall(host, 'core/logout', {}, sid); } catch { /* best effort */ } }
   }
 }
 
-function saveWialonSettings() {
+async function saveWialonSettings() {
+  if (!isAdmin()) { toast('Only administrators can change GPS settings', 'error'); return; }
   const enabled = !!document.getElementById('st_wialonEnabled')?.checked;
   const host    = (document.getElementById('st_wialonHost')?.value || '').trim() || 'https://hst-api.wialon.com';
   const token   = (document.getElementById('st_wialonToken')?.value || '').trim();
+  if (!/^https:\/\//i.test(host)) { toast('Wialon host must start with https://', 'error'); return; }
 
+  if (token) {
+    const { error } = await supabase.rpc('set_wialon_token', { p_token: token });
+    if (error) { toast('Could not save the token — ' + error.message, 'error', 5000); return; }
+  }
   state.db.settings = state.db.settings || {};
   state.db.settings.wialonEnabled = enabled;
   state.db.settings.wialonHost = host;
-  state.db.settings.wialonToken = token;
   scheduleSave();
-  addAudit(state.profile.username, 'Wialon Settings', `GPS integration ${enabled ? 'enabled' : 'disabled'}`);
+  addAudit(state.profile.username, 'Wialon Settings', `GPS integration ${enabled ? 'enabled' : 'disabled'}${token ? ' · API token updated' : ''}`);
   toast('Wialon settings saved', 'success');
   renderSettings();
-  if (enabled) startWialonPolling(); else stopWialonPolling();
+}
+
+async function clearWialonToken() {
+  if (!isAdmin()) return;
+  if (!confirm('Remove the saved Wialon token? Live Wialon positions will stop updating until a new token is saved.')) return;
+  const { error } = await supabase.rpc('set_wialon_token', { p_token: '' });
+  if (error) { toast('Could not remove the token — ' + error.message, 'error'); return; }
+  addAudit(state.profile.username, 'Wialon Settings', 'API token removed');
+  toast('Wialon token removed', 'success');
+  renderWialonSettingsForm();
 }
 
 // Inline "Wialon Unit ID" editor on the truck detail modal (admin only).
@@ -280,9 +307,8 @@ function saveTruckWialonId(id) {
   t.wialonUnitId = val;
   scheduleSave();
   addAudit(state.profile.username, 'Wialon Unit Linked', `${t.reg} → ${val || '(cleared)'}`);
-  toast(val ? `${t.reg} linked to Wialon unit ${val}` : `${t.reg} unlinked from Wialon`, 'success');
+  toast(val ? `${t.reg} linked to Wialon unit ${val} — first position arrives within a minute` : `${t.reg} unlinked from Wialon`, 'success');
   showTruckDetail(id);
-  if (state.db.settings?.wialonEnabled) startWialonPolling();
 }
 
 function initTrackingSection() {
@@ -296,26 +322,26 @@ const TRACKABLE_TRUCK_STATUSES = ['available', 'on_trip', 'breakdown'];
 function renderTracking() {
   const pos = state.db.trackingPositions || {};
   const activeTrucks = state.db.trucks.filter(t => TRACKABLE_TRUCK_STATUSES.includes(t.status));
-  const liveCount = activeTrucks.filter(t => pos[t.id]).length;
+  const states = activeTrucks.map(t => truckMovingState(t.id));
+  const n = k => states.filter(s => s.kind === k).length;
+  const noSignal = n('offline') + n('stale') + n('none');
   document.getElementById('trackingMeta').textContent =
-    `${activeTrucks.length} vehicle${activeTrucks.length===1?'':'s'} tracked · ${liveCount} reporting live`;
+    `${activeTrucks.length} vehicle${activeTrucks.length===1?'':'s'} tracked · ${n('moving')} moving · ${n('stopped')} stopped · ${noSignal} no signal`;
 
   const vehicles = document.getElementById('trackingVehicles');
   if (vehicles) {
-
     vehicles.innerHTML = activeTrucks.map(t=>{
       const p = pos[t.id];
       const dr = state.db.drivers.find(d=>d.truckId===t.id);
       const hasFix = !!p;
-      const srcLabel = p?.source === 'wialon' ? 'Wialon GPS' : 'Driver Phone';
       const srcTag = hasFix
-        ? `<span style="color:var(--green,#3ecf6e)">● Live — ${srcLabel} · ${timeAgo(p.lastUpdate)}</span>`
-        : `<span style="color:var(--text-3)">${t.wialonUnitId ? 'No Wialon signal — unit may be offline' : 'No phone signal — driver may be off duty or offline'}</span>`;
+        ? `<span>${truckMovementBadge(t.id)}</span>`
+        : `<span style="color:var(--text-3)">${t.wialonUnitId ? 'No Wialon signal yet — unit may be offline or not synced' : 'No phone signal — driver may be off duty or offline'}</span>`;
       return `<div class="tv-item" ${hasFix ? `onclick="focusTruckOnMap('${t.id}')"` : ''}>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span class="tv-reg">${esc(t.reg)}</span>${sbadge(t.status)}</div>
         <div style="margin-top:2px">${dr ? esc(dr.name) : 'Unassigned'}</div>
         <div style="font-size:9px;margin-top:2px">${srcTag}</div>
-        ${hasFix ? `<div style="font-size:9px;color:var(--text-3);margin-top:2px">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div>` : ''}
+        ${hasFix ? `<div style="font-size:9px;color:var(--text-3);margin-top:2px">${esc(p.zone||'')} · ${positionSourceLabel(p)}</div>` : ''}
         <button class="tbl-btn" style="margin-top:6px;width:100%" ${hasFix?'':'disabled'} onclick="event.stopPropagation();${hasFix?`showStreetView(${p.lat},${p.lng},'${esc(t.reg)}')`:''}">🧭 Street View</button>
       </div>`;
     }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No vehicles to track</div>';
@@ -323,10 +349,13 @@ function renderTracking() {
 
   const movements = document.getElementById('trackingMovements');
   if (movements) {
-    const liveIds = Object.keys(pos);
-    movements.innerHTML = liveIds.map(id=>{
-      const p=pos[id]; const t=state.db.trucks.find(t=>t.id===id);
-      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${t?esc(t.reg):id}</div><div style="font-size:11px;color:var(--text-2)">${esc(p.zone||'')} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
+    const rows = activeTrucks.filter(t => pos[t.id]).sort((a, b) => {
+      const rank = k => (k === 'moving' ? 0 : k === 'stopped' ? 1 : 2);
+      return rank(truckMovingState(a.id).kind) - rank(truckMovingState(b.id).kind);
+    });
+    movements.innerHTML = rows.map(t=>{
+      const p = pos[t.id];
+      return `<div class="movement-row" onclick="focusTruckOnMap('${t.id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${esc(t.reg)}</div><div style="font-size:11px;color:var(--text-2)">${esc(p.zone||'')}</div><div style="font-size:10.5px">${truckMovementBadge(t.id)}</div></div>`;
     }).join('') || '<div style="padding:12px;color:var(--text-3)">No active movements</div>';
   }
 
@@ -403,15 +432,15 @@ function fitTrackingBounds() {
   state.trackingMap.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 });
 }
 
-async function refreshTracking() {
+async function refreshTracking(silent) {
   const { data, error } = await supabase.from('tracking_positions').select('*');
-  if (error) { toast('Could not refresh tracking data', 'error'); return; }
+  if (error) { if (!silent) toast('Could not refresh tracking data', 'error'); return; }
   const fresh = {};
-  (data || []).forEach(r => { fresh[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update, source:r.source||'driver_app' }; });
+  (data || []).forEach(r => { fresh[r.truck_id] = mapPositionRow(r); });
   state.db.trackingPositions = fresh;
   renderTracking();
   updateTrackingMarkers();
-  toast('Tracking positions refreshed', 'info', 1800);
+  if (!silent) toast('Tracking positions refreshed', 'info', 1800);
 }
 
 function subscribeTrackingRealtime() {
@@ -423,7 +452,7 @@ function subscribeTrackingRealtime() {
         if (id) delete state.db.trackingPositions[id];
       } else {
         const r = payload.new;
-        state.db.trackingPositions[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update, source:r.source||'driver_app' };
+        state.db.trackingPositions[r.truck_id] = mapPositionRow(r);
       }
       if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
     })
@@ -475,8 +504,7 @@ function updateTrackingMarkers() {
     seen.add(truckId);
     const truck = state.db.trucks.find(t => t.id === truckId);
     const label = truck?.reg || truckId;
-    const isMoving = p.speed > 0;
-    const dotColor = isMoving ? '#3ecf6e' : '#8b8b8b';
+    const dotColor = truckMarkerColour(truckMovingState(truckId).kind);
     const icon = L.divIcon({
       className: 'truck-marker',
       html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;box-shadow:0 0 0 1px rgba(255,255,255,.15)"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${label}</div></div>`,
@@ -490,7 +518,7 @@ function updateTrackingMarkers() {
       marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${cur.source==='wialon'?'Wialon GPS':'Driver Phone'} · ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${esc(cur.zone||'')}<br>${truckMovementBadge(truckId)}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${positionSourceLabel(cur)} · updated ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
@@ -504,7 +532,7 @@ function updateTrackingMarkers() {
   });
 }
 
-function renderWialonSettingsForm() {
+async function renderWialonSettingsForm() {
   const el = document.getElementById('wialonConfigForm');
   if (!el) return;
   const s = state.db.settings || {};
@@ -514,16 +542,24 @@ function renderWialonSettingsForm() {
       <input type="checkbox" id="st_wialonEnabled" ${s.wialonEnabled ? 'checked' : ''} style="accent-color:var(--gold)"/> Enable Wialon GPS integration
     </label>
     <div class="fg" style="margin:0"><label>Wialon Host</label><input id="st_wialonHost" value="${esc(s.wialonHost || 'https://hst-api.wialon.com')}" placeholder="https://hst-api.wialon.com"/></div>
-    <div class="fg" style="margin:0"><label>API Token</label><input id="st_wialonToken" type="password" value="${esc(s.wialonToken || '')}" placeholder="Wialon Remote API token"/></div>
+    <div class="fg" style="margin:0"><label>API Token</label><input id="st_wialonToken" type="password" autocomplete="off" value="" placeholder="Paste a token to set or replace it"/></div>
+    <div id="st_wialonTokenStatus" style="font-size:10px;color:var(--text-3)">Checking saved token…</div>
     <div style="font-size:9.5px;color:var(--text-3);line-height:1.5">
       ${trucksWithUnit.length
         ? `${trucksWithUnit.length} truck${trucksWithUnit.length===1?'':'s'} linked to a Wialon unit ID — set per-truck under Fleet → truck detail.`
-        : `No trucks are linked to a Wialon unit yet — open a truck's detail card under Fleet and set its Wialon Unit ID.`}
-      Positions refresh every ${WIALON_POLL_INTERVAL_MS/1000}s and appear on the live tracking map tagged "Wialon GPS".
+        : `No trucks are linked to a Wialon unit yet — open a truck's detail card under Fleet and set its Wialon Unit ID (Test Connection lists the IDs).`}
+      The server pulls positions every minute; they appear on the live tracking map tagged "Wialon GPS". The token is stored on the server only and can't be read back.
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="action-btn ghost" style="flex:1" onclick="testWialonConnection()">Test Connection</button>
       <button class="submit-btn" style="flex:1;margin-top:0" onclick="saveWialonSettings()">Save →</button>
     </div>
   `;
+  const { data, error } = await supabase.rpc('wialon_token_configured');
+  const status = document.getElementById('st_wialonTokenStatus');
+  if (!status) return;
+  if (error) { status.textContent = 'Could not check the saved token status'; return; }
+  status.innerHTML = data === true
+    ? `<span style="color:var(--green,#3ecf6e)">✓ A token is saved on the server</span> · <a href="#" style="color:var(--red,#e5484d)" onclick="event.preventDefault();clearWialonToken()">Remove</a>`
+    : '<span style="color:var(--amber,#d99a2b)">No token saved yet — live Wialon positions won\u2019t sync until one is saved</span>';
 }

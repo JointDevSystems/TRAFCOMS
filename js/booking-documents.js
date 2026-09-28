@@ -12,7 +12,7 @@
 
 
 
-  const CONDITION_STATUSES = ['full_grade', 'under_repair', 'damaged', 'heavily_damaged'];
+  const CONDITION_STATUSES = ['food_grade', 'under_repair', 'damaged', 'heavily_damaged'];
 
   function kmaMaxStackHeight(containerType) {
     return /reefer/i.test(containerType || '') ? 6 : 7;
@@ -449,7 +449,7 @@
         slotNumber: opts.slotNumber,
         bookingId,
         container: opts.container || null,
-        conditionStatus: opts.conditionStatus || 'full_grade',
+        conditionStatus: opts.conditionStatus || 'food_grade',
       });
     }
 
@@ -586,7 +586,7 @@
         booking_id: bookingId || null,
         trip_id: tripId || null,
         container: container || null,
-        condition_status: conditionStatus || 'full_grade',
+        condition_status: conditionStatus || 'food_grade',
         occupied_at: new Date().toISOString(),
         released_at: null,
       })
@@ -630,7 +630,7 @@
   async function recordSurvey(payload) {
     payload = payload || {};
     if (!payload.bookingId && !payload.tripId) throw new Error('bookingId or tripId is required');
-    if (CONDITION_STATUSES.indexOf(payload.conditionStatus || 'full_grade') === -1) {
+    if (CONDITION_STATUSES.indexOf(payload.conditionStatus || 'food_grade') === -1) {
       throw new Error('condition_status must be one of: ' + CONDITION_STATUSES.join(', '));
     }
 
@@ -665,7 +665,7 @@
         clerk_name: payload.clerkName || null,
         seal_number: payload.sealNumber || null,
         gate_pass_number: payload.gatePassNumber || null,
-        condition_status: payload.conditionStatus || 'full_grade',
+        condition_status: payload.conditionStatus || 'food_grade',
         remarks: payload.remarks || null,
         photos: payload.photos || [],
 

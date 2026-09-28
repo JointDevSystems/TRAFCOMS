@@ -278,7 +278,7 @@ async function depOpsAllocateBookingToSlot(bookingId) {
       blockId: blockId || null,
       slotNumber: slotNumber ? parseInt(slotNumber, 10) : null,
       container: booking ? booking.container : null,
-      conditionStatus: survey ? survey.condition_status : 'full_grade',
+      conditionStatus: survey ? survey.condition_status : 'food_grade',
     });
     addAudit(state.profile.username, 'Storage Allocated', booking ? booking.container : bookingId);
     toast(`Storage allocated${booking && booking.container ? ' for ' + booking.container : ''}`, 'success');
