@@ -73,6 +73,21 @@ async function upsertRows(table, rows, opts) {
 }
 
 
+const TRUCK_FUEL_COLS = ['fuel_baseline_litres', 'fuel_baseline_at', 'fuel_baseline_odo', 'tank_capacity', 'km_per_litre'];
+
+// Trucks gained tank/fuel-baseline columns. If the table hasn't been migrated yet, retry without them
+// so the rest of the truck save still goes through (fuel level then falls back to the legacy % value).
+async function upsertTrucks(trucks) {
+  let rows = trucks.map(truckToRow);
+  let failure = await upsertRows('trucks', rows);
+  if (failure && TRUCK_FUEL_COLS.some(col => new RegExp(`\\b${col}\\b`, 'i').test(failure.error?.message || ''))) {
+    console.warn('trucks fuel columns not found \u2014 saving without them. Run fuel_tank_columns.sql');
+    rows = rows.map(r => { const copy = { ...r }; TRUCK_FUEL_COLS.forEach(k => delete copy[k]); return copy; });
+    failure = await upsertRows('trucks', rows);
+  }
+  return failure;
+}
+
 async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
   if (!rows || !rows.length) return null;
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -114,6 +129,12 @@ async function saveDirty(table, rows, toRowFn) {
   if (failure && table === 'shutouts' && /\bimg\b/i.test(failure.error?.message || '')) {
     console.warn('shutouts.img column not found — saving without it. Run: alter table shutouts add column if not exists img text default \'\';');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.img; return row; }));
+  }
+  // Fuel logs gained a total_paid column (actual amount paid). Retry without it if the table
+  // hasn't been migrated yet so fill-ups still save (the total just falls back to litres x price).
+  if (failure && table === 'fuel_logs' && /total_paid/i.test(failure.error?.message || '')) {
+    console.warn('fuel_logs.total_paid column not found — saving without it. Run: alter table fuel_logs add column if not exists total_paid numeric;');
+    failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.total_paid; return row; }));
   }
   if (failure) return failure;
   dirty.forEach(r => { delete r._dirty; });
@@ -243,6 +264,8 @@ async function loadDB() {
       adminSections: Array.isArray(p.admin_sections) ? p.admin_sections : null,
     }));
 
+    if (typeof recomputeAllTruckFuel === 'function') recomputeAllTruckFuel(trucks, fuel);
+
     return {
       trucks, drivers, trips, maintenance, fuel, shippingLines, shutouts,
       interchange, requisitions, workshop, invoices, billingRates,
@@ -262,7 +285,7 @@ async function saveDB() {
   try {
 
     failures.push(await upsertRows('shipping_lines', db.shippingLines.map(lineToRow)));
-    failures.push(await upsertRows('trucks',         db.trucks.map(truckToRow)));
+    failures.push(await upsertTrucks(db.trucks));
     failures.push(await upsertRows('drivers',        db.drivers.map(driverToRow)));
     
     failures.push(await saveDirty('trips', db.trips, tripToRow));

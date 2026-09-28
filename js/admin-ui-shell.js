@@ -40,7 +40,7 @@ function buildAlerts() {
     alerts.push({ type:'crit', msg: `Critical breakdown — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
   });
   db.trucks.filter(t=>t.fuelPct <20).forEach(t=>{
-    alerts.push({ type:'warn', msg: `Low fuel — ${t.reg}: ${t.fuelPct}% remaining` });
+    alerts.push({ type:'warn', msg: `Low fuel — ${t.reg}: ${truckFuelLabel(t)} remaining` });
   });
   db.trips.filter(t=>t.status==='delayed').forEach(t=>{
     alerts.push({ type:'warn', msg: `Trip delayed — ${truckName(t.truckId)} → ${t.dest}` });
@@ -224,7 +224,7 @@ function renderActivityFeed(f){
 }
 
 function showAddTruckModal() {
-  openModal('Add New Truck', `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="nt_reg" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="nt_make" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="nt_type"><option>Prime Mover</option><option>Flatbed</option><option>Tipper</option><option>Tanker</option><option>Lowbed</option></select></div><div class="fg"><label>Year</label><input id="nt_year" type="number" placeholder="${new Date().getFullYear()}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="nt_colour" placeholder="White"/></div><div class="fg"><label>Fuel Level %</label><input id="nt_fuel" type="number" placeholder="100" min="0" max="100"/></div></div><div class="fg"><label>Odometer (km)</label><input id="nt_odo" type="number" placeholder="0"/></div><div class="fg"><label>Wialon Unit ID (optional)</label><input id="nt_wialon" placeholder="Leave blank if tracked via driver phone"/></div><div class="fg"><label>Notes</label><textarea id="nt_notes" rows="2" placeholder="Any notes…"></textarea></div><button class="submit-btn" onclick="saveTruck()">Add Truck →</button>`);
+  openModal('Add New Truck', `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="nt_reg" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="nt_make" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="nt_type"><option>Prime Mover</option><option>Flatbed</option><option>Tipper</option><option>Tanker</option><option>Lowbed</option></select></div><div class="fg"><label>Year</label><input id="nt_year" type="number" placeholder="${new Date().getFullYear()}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="nt_colour" placeholder="White"/></div><div class="fg"><label>Fuel On Board (L)</label><input id="nt_fuelL" type="number" step="0.1" min="0" placeholder="Blank = full tank"/></div></div><div class="form-row-2"><div class="fg"><label>Tank Capacity (L)</label><input id="nt_cap" type="number" step="1" min="0" placeholder="400"/></div><div class="fg"><label>Fuel Economy (km/L) <span class="label-optional">(optional)</span></label><input id="nt_kmpl" type="number" step="0.1" min="0" placeholder="e.g. 3"/></div></div><div class="fg"><label>Odometer (km)</label><input id="nt_odo" type="number" placeholder="0"/></div><div class="fg"><label>Wialon Unit ID (optional)</label><input id="nt_wialon" placeholder="Leave blank if tracked via driver phone"/></div><div class="fg"><label>Notes</label><textarea id="nt_notes" rows="2" placeholder="Any notes…"></textarea></div><button class="submit-btn" onclick="saveTruck()">Add Truck →</button>`);
 }
 
 function showAddDriverModal() {
@@ -838,9 +838,7 @@ function closeUserMenu() {
 ────────────────────────────────────────────────────────────────── */
 function startLivePulse() {
   setInterval(()=>{
-    state.db.trucks.filter(t=>t.status==='on_trip').forEach(t=>{
-      t.fuelPct = Math.max(0, t.fuelPct - 0.1);
-    });
+    // Fuel levels now come from the fuel logs (see computeTruckFuel), not from a simulated drain.
 
     buildAlerts();
     if (state.currentSection==='dashboard') renderDashboard();

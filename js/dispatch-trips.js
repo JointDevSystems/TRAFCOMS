@@ -464,7 +464,7 @@ function renderDispatch() {
 function populateDispatchSelects() {
   const avlTrucks  = state.db.trucks.filter(t=>t.status==='available');
   const avlDrivers = state.db.drivers.filter(d=>d.status==='available');
-  fillSelect('d_truck',  avlTrucks,  t=>[t.id, `${t.reg} — ${t.make} (Fuel: ${t.fuelPct}%)`]);
+  fillSelect('d_truck',  avlTrucks,  t=>[t.id, `${t.reg} — ${t.make} (Fuel: ${truckFuelLabel(t)})`]);
   fillSelect('d_driver', avlDrivers, d=>[d.id, d.name]);
   fillSelect('d_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
   populateSizeTypeSelects('d_size', 'd_type');

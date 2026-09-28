@@ -5,9 +5,9 @@ function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.typ
 
 function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
 
-function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt, receipt_img:f.receiptImg||null }; }
+function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt, receipt_img:f.receiptImg||null, total_paid:(Number(f.totalPaid)>0?Number(f.totalPaid):null) }; }
 
-function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt, receiptImg:r.receipt_img||'' }; }
+function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt, receiptImg:r.receipt_img||'', totalPaid:(r.total_paid!=null?Number(r.total_paid):null) }; }
 
 function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title, description:w.desc, tech:w.tech, status:w.status, reported:w.reported, diagnosed:w.diagnosed, parts:w.parts, labour:w.labour, total:w.total }; }
 
@@ -83,6 +83,240 @@ function clearPendingReceiptImg(scope, previewId) {
 /* ──────────────────────────────────────────────────────────────────
    § 14c  STANDING FUEL PRICE / LITRE (set once, editable over time)
 ────────────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────────
+   § 14d  FUEL: TOTAL PAID + EDITING
+   A fill-up stores litres, price/litre AND the total actually paid.
+   Older rows have no total, so fuelLogTotal() falls back to litres x price.
+────────────────────────────────────────────────────────────────── */
+function fuelLogTotal(f) {
+  const paid = Number(f.totalPaid);
+  return paid > 0 ? paid : (Number(f.litres) || 0) * (Number(f.pricePerLitre) || 0);
+}
+
+const _r2 = n => Math.round(n * 100) / 100;
+
+// Which of price/total the person typed last decides what is recalculated when litres change.
+const _fuelAnchor = {};
+
+// prefix: 'f' (admin form), 'dp_f' (driver form), 'fe' (edit modal). Fields: <prefix>_litres/_price/_total
+function fuelSync(prefix, changed) {
+  const g = s => document.getElementById(`${prefix}_${s}`);
+  const L = g('litres'), P = g('price'), T = g('total');
+  if (!L || !P || !T) return;
+  const litres = parseFloat(L.value) || 0, price = parseFloat(P.value) || 0, total = parseFloat(T.value) || 0;
+  if (changed === 'price') _fuelAnchor[prefix] = 'price';
+  if (changed === 'total') _fuelAnchor[prefix] = total > 0 ? 'total' : 'price';
+  if ((_fuelAnchor[prefix] || 'price') === 'total') {
+    if (litres > 0 && total > 0) P.value = _r2(total / litres);
+  } else {
+    T.value = (litres > 0 && price > 0) ? _r2(litres * price) : '';
+  }
+}
+
+// Validates the three fields and fills in whichever of price/total was left blank.
+function fuelResolveAmounts(prefix) {
+  const g = s => parseFloat(document.getElementById(`${prefix}_${s}`)?.value) || 0;
+  const litres = g('litres');
+  let price = g('price'), total = g('total');
+  if (litres <= 0) return { error: 'Litres are required' };
+  if (litres > 1000) return { error: 'Litres exceed reasonable limit (1000L)' };
+  if (price <= 0 && total <= 0) return { error: 'Enter the price per litre or the total amount paid' };
+  if (price <= 0) price = _r2(total / litres);
+  if (total <= 0) total = _r2(litres * price);
+  return { litres, price, total };
+}
+
+function canEditFuel() { return isAdmin() || canSeeSection('fuel'); }
+
+function showEditFuelModal(id) {
+  if (!canEditFuel()) { toast('You don\u2019t have permission to edit fuel logs', 'error'); return; }
+  const f = state.db.fuel.find(x => x.id === id);
+  if (!f) return;
+  _fuelAnchor.fe = 'total'; // the saved total is what was actually paid, so keep it fixed when litres change
+  const localDate = d => new Date(d).toLocaleDateString('en-CA');
+  const truckOpts = state.db.trucks.map(t => `<option value="${esc(t.id)}" ${t.id === f.truckId ? 'selected' : ''}>${esc(t.reg)} \u2014 ${esc(t.make)}</option>`).join('');
+  const driverOpts = `<option value="">\u2014 None \u2014</option>` + state.db.drivers.map(d => `<option value="${esc(d.id)}" ${d.id === f.driverId ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+  openModal('Edit Fuel Log', `
+    <div class="form-row-2">
+      <div class="fg"><label>Truck</label><select id="fe_truck">${truckOpts}</select></div>
+      <div class="fg"><label>Driver</label><select id="fe_driver">${driverOpts}</select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Litres</label><input id="fe_litres" type="number" step="0.01" value="${esc(f.litres)}" oninput="fuelSync('fe','litres')"/></div>
+      <div class="fg"><label>Price / Litre (KSh)</label><input id="fe_price" type="number" step="0.01" value="${esc(f.pricePerLitre)}" oninput="fuelSync('fe','price')"/></div>
+    </div>
+    <div class="fg"><label>Total Paid (KSh)</label><input id="fe_total" type="number" step="0.01" value="${esc(_r2(fuelLogTotal(f)))}" oninput="fuelSync('fe','total')"/></div>
+    <div class="form-row-2">
+      <div class="fg"><label>Date</label><input id="fe_date" type="date" value="${esc(localDate(f.date))}"/></div>
+      <div class="fg"><label>Odometer (km)</label><input id="fe_odo" type="number" value="${esc(f.odometer || 0)}"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Station</label><input id="fe_station" value="${esc(f.station)}"/></div>
+      <div class="fg"><label>Receipt No.</label><input id="fe_receipt" value="${esc(f.receipt)}"/></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="submit-btn" style="margin-top:0;flex:1" onclick="saveFuelEdit('${esc(f.id)}')">Save Changes \u2192</button>
+      <button class="modal-btn ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+function saveFuelEdit(id) {
+  if (!canEditFuel()) { toast('You don\u2019t have permission to edit fuel logs', 'error'); return; }
+  const f = state.db.fuel.find(x => x.id === id);
+  if (!f) return;
+  const truck = document.getElementById('fe_truck').value;
+  if (!truck) { toast('Truck is required', 'error'); return; }
+  const amt = fuelResolveAmounts('fe');
+  if (amt.error) { toast(amt.error, 'error'); return; }
+
+  const localDate = d => new Date(d).toLocaleDateString('en-CA');
+  const dateVal = document.getElementById('fe_date').value;
+  const date = (dateVal && dateVal !== localDate(f.date)) ? new Date(dateVal + 'T12:00:00').toISOString() : f.date;
+  const next = {
+    truckId: truck,
+    driverId: document.getElementById('fe_driver').value || null,
+    litres: amt.litres, pricePerLitre: amt.price, totalPaid: amt.total, date,
+    odometer: Math.max(0, parseInt(document.getElementById('fe_odo').value) || 0),
+    station: sanitize(document.getElementById('fe_station').value.trim()) || 'Unknown',
+    receipt: sanitize(document.getElementById('fe_receipt').value.trim()) || f.receipt,
+  };
+
+  const changes = [];
+  const note = (label, a, b) => { if (String(a) !== String(b)) changes.push(`${label} ${a} \u2192 ${b}`); };
+  note('litres', f.litres, next.litres);
+  note('price/L', f.pricePerLitre, next.pricePerLitre);
+  note('total', _r2(fuelLogTotal(f)), next.totalPaid);
+  note('truck', truckName(f.truckId), truckName(next.truckId));
+  note('driver', driverName(f.driverId), driverName(next.driverId));
+  note('date', localDate(f.date), localDate(next.date));
+  note('odometer', f.odometer || 0, next.odometer);
+  note('station', f.station, next.station);
+  note('receipt', f.receipt, next.receipt);
+  if (!changes.length) { closeModal(); toast('No changes to save', 'info', 1800); return; }
+
+  const prevTruckId = f.truckId;
+  Object.assign(f, next);
+  f._dirty = true;
+  new Set([prevTruckId, next.truckId]).forEach(tid => { const tk = state.db.trucks.find(x => x.id === tid); if (tk) applyTruckFuel(tk); });
+  scheduleSave();
+  addAudit(state.profile.username, 'Fuel Log Edited', `${truckName(next.truckId)} \u2014 ${changes.join('; ')}`);
+  closeModal();
+  renderFuelTable(); renderFuelSummary(); renderTruckFuelLevels(); updateFuelTruckHint();
+  toast('Fuel log updated', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 14e  FUEL ON BOARD PER TRUCK
+   Level = last known level (baseline) replayed through every fuel log after it:
+     - if the truck has a km/L figure and the fill has an odometer reading, the litres burned since
+       the previous reading (km / kmPerLitre) are deducted first,
+     - then the litres filled are added, capped at the tank capacity.
+   It is derived from the fuel logs, so editing a log corrects the level automatically.
+   Only the baseline (and capacity / km/L) is stored on the truck.
+────────────────────────────────────────────────────────────────── */
+const DEFAULT_TANK_L = 400;
+
+function truckCapacity(t) { const c = Number(t.tankCapacity); return c > 0 ? c : DEFAULT_TANK_L; }
+
+function truckFuelLitres(t) {
+  if (typeof t.fuelLitres === 'number' && isFinite(t.fuelLitres)) return t.fuelLitres;
+  return _r2((Number(t.fuelPct) || 0) / 100 * truckCapacity(t));
+}
+
+function truckFuelLabel(t) { return `${fmt(Math.round(truckFuelLitres(t)))} L \u00b7 ${Math.round(Number(t.fuelPct) || 0)}%`; }
+
+function computeTruckFuel(t, fuelLogs) {
+  const cap = truckCapacity(t);
+  const kmpl = Number(t.kmPerLitre) > 0 ? Number(t.kmPerLitre) : 0;
+  if (!t.fuelBaselineAt) { // legacy truck: only a % is known, so nothing can be replayed yet
+    const pct = Math.min(100, Math.max(0, Number(t.fuelPct) || 0));
+    return { litres: _r2(pct / 100 * cap), capacity: cap, pct, overflow: false, asOf: null, modelled: !!kmpl };
+  }
+  const baseAt = new Date(t.fuelBaselineAt).getTime();
+  let level = Math.min(cap, Math.max(0, Number(t.fuelBaselineLitres) || 0));
+  let lastOdo = Number(t.fuelBaselineOdo) || 0;
+  let overflow = false, asOf = t.fuelBaselineAt;
+  const fills = (fuelLogs || []).filter(f => f.truckId === t.id && new Date(f.date).getTime() > baseAt)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  for (const f of fills) {
+    const odo = Number(f.odometer) || 0;
+    if (kmpl && odo > 0 && lastOdo > 0 && odo > lastOdo) level = Math.max(0, level - (odo - lastOdo) / kmpl);
+    if (odo > lastOdo) lastOdo = odo;
+    const raw = level + (Number(f.litres) || 0);
+    overflow = raw > cap + 0.5;
+    level = Math.min(cap, raw);
+    asOf = f.date;
+  }
+  return { litres: _r2(level), capacity: cap, pct: Math.min(100, Math.round(level / cap * 100)), overflow, asOf, modelled: !!kmpl };
+}
+
+function applyTruckFuel(t, fuelLogs) {
+  const st = computeTruckFuel(t, fuelLogs || state.db.fuel);
+  t.fuelLitres = st.litres;
+  t.fuelPct = st.pct;
+  return st;
+}
+
+function recomputeAllTruckFuel(trucks, fuelLogs) { (trucks || []).forEach(t => applyTruckFuel(t, fuelLogs)); }
+
+// First fill for a truck that only has a legacy % level: freeze that level as the baseline just before the fill.
+function ensureFuelBaseline(t, atIso) {
+  if (t.fuelBaselineAt) return;
+  const st = computeTruckFuel(t, state.db.fuel);
+  t.fuelBaselineLitres = st.litres;
+  t.fuelBaselineAt = new Date(new Date(atIso).getTime() - 1).toISOString();
+  t.fuelBaselineOdo = Number(t.mileage) || 0;
+}
+
+// Used by the Add/Edit Truck forms. o = { litres, capacity, kmpl, defaultFull, forceBaseline }. Returns true if a manual reading was recorded.
+function applyTruckFuelInputs(t, o) {
+  t.tankCapacity = o.capacity > 0 ? o.capacity : null;
+  t.kmPerLitre = o.kmpl > 0 ? o.kmpl : null;
+  const cap = truckCapacity(t);
+  let adjusted = false;
+  const setBaseline = litres => {
+    t.fuelBaselineLitres = _r2(litres);
+    t.fuelBaselineAt = new Date().toISOString();
+    t.fuelBaselineOdo = Number(t.mileage) || 0;
+    adjusted = true;
+  };
+  if (isFinite(o.litres) && o.litres >= 0) {
+    const want = Math.min(cap, o.litres);
+    if (o.forceBaseline || Math.abs(want - computeTruckFuel(t, state.db.fuel).litres) > 0.5) setBaseline(want);
+  } else if (o.defaultFull && !t.fuelBaselineAt) {
+    setBaseline(cap);
+  }
+  applyTruckFuel(t);
+  return adjusted;
+}
+
+function updateFuelTruckHint() {
+  const sel = document.getElementById('f_truck'), el = document.getElementById('f_truck_fuel');
+  if (!sel || !el) return;
+  const t = state.db.trucks.find(x => x.id === sel.value);
+  el.innerHTML = t
+    ? `Estimated on board: <b style="color:${fuelColour(t.fuelPct)}">${fmt(Math.round(truckFuelLitres(t)))} L</b> of ${fmt(truckCapacity(t))} L (${Math.round(t.fuelPct)}%)${t.kmPerLitre ? '' : ' \u00b7 set km/L on the truck to deduct usage'}`
+    : '';
+}
+
+function renderTruckFuelLevels() {
+  const el = document.getElementById('truckFuelLevels');
+  if (!el) return;
+  const trucks = [...state.db.trucks].sort((a, b) => (Number(a.fuelPct) || 0) - (Number(b.fuelPct) || 0));
+  const rows = trucks.map(t => {
+    const pct = Math.round(Number(t.fuelPct) || 0);
+    return `<div class="fuel-summary-row"><span class="fsr-label">${esc(t.reg)}</span><span class="fsr-val" style="color:${fuelColour(pct)}">${fmt(Math.round(truckFuelLitres(t)))} L <span style="color:var(--text-3);font-weight:400">/ ${fmt(truckCapacity(t))} L</span></span></div><div class="fuel-bar" style="margin:0 0 8px"><div class="fuel-fill" style="width:${pct}%;background:${fuelColour(pct)}"></div></div>`;
+  }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No trucks</div>';
+  const needsKmpl = trucks.some(t => !(Number(t.kmPerLitre) > 0));
+  el.innerHTML = rows + (needsKmpl ? '<div style="font-size:9.5px;color:var(--text-3);line-height:1.5;margin-top:4px">Some trucks have no fuel economy (km/L) set, so their level only rises when fuel is logged. Set it under Fleet \u2192 Edit Truck and usage between fills is deducted from odometer readings.</div>' : '');
+}
+
+function fuelSavedToast(total, st, t) {
+  toast(`Fuel log saved \u2014 ${fmtKsh(total)}${t && st ? ` \u00b7 ${t.reg} now ~${fmt(Math.round(st.litres))} L` : ''}`, 'success');
+  if (t && st && st.overflow) toast(`That fill is more than ${t.reg}'s ${fmt(st.capacity)} L tank \u2014 check the litres or the tank capacity`, 'warning', 6000);
+}
+
 function fuelPriceHistory() {
   state.db.settings = state.db.settings || {};
   if (!Array.isArray(state.db.settings.fuelPriceHistory)) state.db.settings.fuelPriceHistory = [];
@@ -157,14 +391,18 @@ function showFuelPriceHistoryModal() {
 function dpRenderFuelTab(el, driver) {
   const logs = state.db.fuel.filter(f=>f.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const defaultPrice = currentFuelPrice();
+  _fuelAnchor.dp_f = 'price';
+  const myTruck = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
   el.innerHTML = `
     <div class="form-card" style="margin-bottom:14px">
       <div class="form-card-head">Log Fuel Fill-up</div>
       <div class="form-card-body">
+        ${myTruck ? `<div class="ops-notice" style="margin-bottom:10px">${esc(myTruck.reg)} \u2014 estimated fuel on board: <b>${fmt(Math.round(truckFuelLitres(myTruck)))} L</b> of ${fmt(truckCapacity(myTruck))} L</div>` : ''}
         <div class="form-row-2">
-          <div class="fg"><label>Litres</label><input id="dp_f_litres" type="number" placeholder="180"/></div>
-          <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" placeholder="155" value="${defaultPrice||''}"/></div>
+          <div class="fg"><label>Litres</label><input id="dp_f_litres" type="number" step="0.01" placeholder="180" oninput="fuelSync('dp_f','litres')"/></div>
+          <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" step="0.01" placeholder="155" value="${defaultPrice||''}" oninput="fuelSync('dp_f','price')"/></div>
         </div>
+        <div class="fg"><label>Total Paid (KSh)</label><input id="dp_f_total" type="number" step="0.01" placeholder="Auto from litres \u00d7 price, or enter what you paid" oninput="fuelSync('dp_f','total')"/></div>
         <div class="form-row-2">
           <div class="fg"><label>Station</label><input id="dp_f_station" placeholder="Kobil Shimanzi"/></div>
           <div class="fg"><label>Odometer (km)</label><input id="dp_f_odo" type="number" placeholder="142300"/></div>
@@ -185,7 +423,7 @@ function dpRenderFuelTab(el, driver) {
       <div class="panel-head"><span class="panel-title">My Fuel History</span><span class="panel-meta">${logs.length} entries</span></div>
       <div class="table-wrap"><table class="data-table">
         <thead><tr><th>Date</th><th>Litres</th><th>Price/L</th><th>Total</th><th>Station</th><th>Receipt</th></tr></thead>
-        <tbody>${logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td class="mono">${fmt(f.litres)} L</td><td class="mono">${fmt(f.pricePerLitre)}</td><td class="mono" style="color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="font-size:11px;color:var(--text-3)">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderDriverPortal())">Attach</button>`}</td></tr>`).join('')||`<tr><td colspan="6" class="empty-td">No fuel logs yet</td></tr>`}</tbody>
+        <tbody>${logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td class="mono">${fmt(f.litres)} L</td><td class="mono">${fmt(f.pricePerLitre)}</td><td class="mono" style="color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="font-size:11px;color:var(--text-3)">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderDriverPortal())">Attach</button>`}</td></tr>`).join('')||`<tr><td colspan="6" class="empty-td">No fuel logs yet</td></tr>`}</tbody>
       </table></div>
     </div>
   `;
@@ -194,26 +432,27 @@ function dpRenderFuelTab(el, driver) {
 function dpAddFuelLog() {
   const driver = myDriverRecord();
   if (!driver) return;
-  const litres = parseFloat(document.getElementById('dp_f_litres').value)||0;
-  const price  = parseFloat(document.getElementById('dp_f_price').value)||0;
-  if (litres<=0 || price<=0) { toast('Litres and price are required', 'error'); return; }
-  if (litres > 1000) { toast('Litres exceed reasonable limit (1000L)', 'error'); return; }
+  const amt = fuelResolveAmounts('dp_f');
+  if (amt.error) { toast(amt.error, 'error'); return; }
+  const { litres, price, total } = amt;
   const log = {
     id: uid('FUEL'), truckId: driver.truckId||null, driverId: driver.id,
-    date: new Date().toISOString(), litres, pricePerLitre: price,
+    date: new Date().toISOString(), litres, pricePerLitre: price, totalPaid: total,
     station: sanitize(document.getElementById('dp_f_station').value.trim())||'Unknown',
     odometer: Math.max(0, parseInt(document.getElementById('dp_f_odo').value)||0),
     receipt: document.getElementById('dp_f_receipt').value.trim()||uid('RCP'),
     receiptImg: _pendingReceiptImg.dp || '',
   };
+  const t = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
+  if (t) ensureFuelBaseline(t, log.date);
   state.db.fuel.push(log);
   log._dirty = true;
   _pendingReceiptImg.dp = null;
-  const t = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
-  if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
+  let fuelState = null;
+  if (t) { t.mileage = log.odometer||t.mileage; fuelState = applyTruckFuel(t); }
   scheduleSave();
-  addAudit(state.profile.username, 'Fuel Log (Driver)', `${truckName(driver.truckId)} — ${litres}L at KSh ${price}/L`);
-  toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
+  addAudit(state.profile.username, 'Fuel Log (Driver)', `${truckName(driver.truckId)} — ${litres}L at KSh ${price}/L (total KSh ${total})`);
+  fuelSavedToast(total, fuelState, t);
   renderDriverPortal();
 }
 
@@ -324,19 +563,21 @@ function renderFuel() {
   if (priceInput && !priceInput.value) priceInput.value = currentFuelPrice() || '';
   renderFuelTable();
   renderFuelSummary();
+  renderTruckFuelLevels();
+  updateFuelTruckHint();
 }
 
 function renderFuelTable() {
   const logs = [...state.db.fuel].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const tbody = document.getElementById('fuelTableBody');
   if (!tbody) return;
-  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td></tr>`).join('') || `<tr><td colspan="8" class="empty-td">No fuel logs</td></tr>`;
+  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td><td>${canEditFuel()?`<button class="tbl-btn" onclick="showEditFuelModal('${esc(f.id)}')">Edit</button>`:''}</td></tr>`).join('') || `<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>`;
 }
 
 function renderFuelSummary() {
   const logs = state.db.fuel;
   const totalL   = logs.reduce((s,f)=>s+f.litres, 0);
-  const totalKsh = logs.reduce((s,f)=>s+f.litres*f.pricePerLitre, 0);
+  const totalKsh = logs.reduce((s,f)=>s+fuelLogTotal(f), 0);
   const avgPpl   = logs.length ? totalKsh/totalL : 0;
   const el = document.getElementById('fuelSummary');
   if (!el) return;
@@ -346,31 +587,34 @@ function renderFuelSummary() {
 function addFuelLog() {
   const truck  = document.getElementById('f_truck').value;
   const driver = document.getElementById('f_driver').value;
-  const litres = parseFloat(document.getElementById('f_litres').value)||0;
-  const price  = parseFloat(document.getElementById('f_price').value)||0;
-  if (!truck || litres <=0 || price <=0) { toast('Truck, litres and price required', 'error'); return; }
-  if (litres > 1000) { toast('Litres exceed reasonable limit (1000L)', 'error'); return; }
+  if (!truck) { toast('Truck is required', 'error'); return; }
+  const amt = fuelResolveAmounts('f');
+  if (amt.error) { toast(amt.error, 'error'); return; }
+  const { litres, price, total } = amt;
   const log = {
     id: uid('FUEL'), truckId: truck, driverId: driver,
-    date: new Date().toISOString(), litres, pricePerLitre: price,
+    date: new Date().toISOString(), litres, pricePerLitre: price, totalPaid: total,
     station: sanitize(document.getElementById('f_station').value.trim())||'Unknown',
     odometer: Math.max(0, parseInt(document.getElementById('f_odo').value)||0),
     receipt: document.getElementById('f_receipt').value.trim()||uid('RCP'),
     receiptImg: _pendingReceiptImg.f || '',
   };
+  const t = state.db.trucks.find(t=>t.id===truck);
+  if (t) ensureFuelBaseline(t, log.date);
   state.db.fuel.push(log);
   log._dirty = true;
   _pendingReceiptImg.f = null;
-  const t = state.db.trucks.find(t=>t.id===truck);
-  if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
+  let fuelState = null;
+  if (t) { t.mileage = log.odometer||t.mileage; fuelState = applyTruckFuel(t); }
   scheduleSave();
-  addAudit(state.profile.username, 'Fuel Log', `${truckName(truck)} — ${litres}L at KSh ${price}/L`);
-  ['f_litres','f_price','f_station','f_odo','f_receipt'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=''; });
+  addAudit(state.profile.username, 'Fuel Log', `${truckName(truck)} — ${litres}L at KSh ${price}/L (total KSh ${total})`);
+  ['f_litres','f_price','f_total','f_station','f_odo','f_receipt'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=''; });
   clearPendingReceiptImg('f','f_receipt_img_preview');
   const priceInput = document.getElementById('f_price');
   if (priceInput) priceInput.value = currentFuelPrice() || '';
-  renderFuelTable(); renderFuelSummary();
-  toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
+  _fuelAnchor.f = 'price';
+  renderFuelTable(); renderFuelSummary(); renderTruckFuelLevels(); updateFuelTruckHint();
+  fuelSavedToast(total, fuelState, t);
 }
 
 /* ──────────────────────────────────────────────────────────────────

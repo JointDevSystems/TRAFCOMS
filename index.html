@@ -847,12 +847,13 @@
                             <div class="form-card">
                                 <div class="form-card-head">Log Fuel Fill</div>
                                 <div class="form-card-body">
-                                    <div class="fg"><label>Truck</label><select id="f_truck"></select></div>
+                                    <div class="fg"><label>Truck</label><select id="f_truck" onchange="updateFuelTruckHint()"></select><div id="f_truck_fuel" style="font-size:10.5px;color:var(--text-3);margin-top:4px"></div></div>
                                     <div class="fg"><label>Driver</label><select id="f_driver"></select></div>
                                     <div class="form-row-2">
-                                        <div class="fg"><label>Litres</label><input id="f_litres" type="number" placeholder="0" /></div>
-                                        <div class="fg"><label>Price/Litre (KSh)</label><input id="f_price" type="number" placeholder="0" /></div>
+                                        <div class="fg"><label>Litres</label><input id="f_litres" type="number" step="0.01" placeholder="0" oninput="fuelSync('f','litres')" /></div>
+                                        <div class="fg"><label>Price/Litre (KSh)</label><input id="f_price" type="number" step="0.01" placeholder="0" oninput="fuelSync('f','price')" /></div>
                                     </div>
+                                    <div class="fg"><label>Total Paid (KSh)</label><input id="f_total" type="number" step="0.01" placeholder="Auto from litres × price, or enter the amount paid" oninput="fuelSync('f','total')" /></div>
                                     <div class="fg"><label>Station</label><input id="f_station" placeholder="Kobil Mombasa" /></div>
                                     <div class="fg"><label>Odometer</label><input id="f_odo" type="number" placeholder="0" /></div>
                                     <div class="fg"><label>Receipt No.</label><input id="f_receipt" placeholder="RCPT-001" /></div>
@@ -873,11 +874,15 @@
                                     <div class="panel-head"><span class="panel-title">Fuel Summary</span></div>
                                     <div id="fuelSummary"></div>
                                 </div>
+                                <div class="panel" id="truckFuelPanel" style="margin-top:14px">
+                                    <div class="panel-head"><span class="panel-title">Fuel On Board</span><span class="panel-meta">estimated, per truck</span></div>
+                                    <div id="truckFuelLevels" style="padding:4px 14px 12px"></div>
+                                </div>
                                 <div class="panel" style="margin-top:14px">
                                     <div class="panel-head"><span class="panel-title">Recent Fills</span></div>
                                     <div class="table-wrap">
                                         <table class="data-table">
-                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th><th>Receipt</th></tr></thead>
+                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th><th>Receipt</th><th></th></tr></thead>
                                             <tbody id="fuelTableBody"></tbody>
                                         </table>
                                     </div>
