@@ -141,7 +141,7 @@ function adminOverrideStatus(type, id, status) {
 }
 
 function runAllocation() {
-  const avail   = state.db.trucks.filter(t=>t.status==='available' && t.fuelPct >=40);
+  const avail   = state.db.trucks.filter(t=>t.status==='available' && (t.fuelPct == null || t.fuelPct >= 40));
   const drivers = state.db.drivers.filter(d=>d.status==='available');
   if (!avail.length || !drivers.length) { toast('No available trucks/drivers for allocation','warning'); return; }
   const recs = avail.slice(0,3).map((t,i)=>({ truck:t, driver:drivers[i%drivers.length], score:Math.round(70+Math.random()*30) }));

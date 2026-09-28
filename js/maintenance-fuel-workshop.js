@@ -207,36 +207,56 @@ function saveFuelEdit(id) {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 14e  FUEL ON BOARD PER TRUCK
-   Level = last known level (baseline) replayed through every fuel log after it:
-     - if the truck has a km/L figure and the fill has an odometer reading, the litres burned since
-       the previous reading (km / kmPerLitre) are deducted first,
-     - then the litres filled are added, capped at the tank capacity.
-   It is derived from the fuel logs, so editing a log corrects the level automatically.
-   Only the baseline (and capacity / km/L) is stored on the truck.
+   § 14e  FUEL LEVEL PER TRUCK
+   The level comes ONLY from the fuel logs: every log for the truck adds the litres that were logged.
+     - if the truck has a km/L figure and the log has an odometer reading, the litres burned since the
+       previous reading (km / kmPerLitre) are deducted first,
+     - if a tank capacity has been entered for the truck, the level is capped at it and a % is shown.
+   Nothing is assumed: there is no default tank size and no "full tank" starting level. A truck with no
+   fuel logs shows "No fuel logged". The level is derived, so editing or deleting a log corrects it.
 ────────────────────────────────────────────────────────────────── */
-const DEFAULT_TANK_L = 400;
 
-function truckCapacity(t) { const c = Number(t.tankCapacity); return c > 0 ? c : DEFAULT_TANK_L; }
+// Capacity is only known if someone entered it for the truck. 0 = unknown (no % / bar, no cap).
+function truckCapacity(t) { const c = Number(t.tankCapacity); return c > 0 ? c : 0; }
 
 function truckFuelLitres(t) {
-  if (typeof t.fuelLitres === 'number' && isFinite(t.fuelLitres)) return t.fuelLitres;
-  return _r2((Number(t.fuelPct) || 0) / 100 * truckCapacity(t));
+  return (typeof t.fuelLitres === 'number' && isFinite(t.fuelLitres)) ? t.fuelLitres : 0;
 }
 
-function truckFuelLabel(t) { return `${fmt(Math.round(truckFuelLitres(t)))} L \u00b7 ${Math.round(Number(t.fuelPct) || 0)}%`; }
+// % of tank, or null when it can't be known (no capacity entered, or nothing logged)
+function truckFuelPct(t) {
+  if (!t.fuelLogged || t.fuelPct == null || t.fuelPct === '' || !isFinite(Number(t.fuelPct))) return null;
+  return Number(t.fuelPct);
+}
+
+function truckFuelColour(t) {
+  const p = truckFuelPct(t);
+  return p == null ? (t.fuelLogged ? 'var(--text-2)' : 'var(--text-3)') : fuelColour(p);
+}
+
+function truckFuelLabel(t) {
+  if (!t.fuelLogged) return 'No fuel logged';
+  const p = truckFuelPct(t);
+  return `${fmt(Math.round(truckFuelLitres(t)))} L` + (p == null ? '' : ` \u00b7 ${Math.round(p)}%`);
+}
+
+// Level bar. Empty string when there is no % to draw (nothing logged or no capacity set).
+function truckFuelBar(t, style) {
+  const p = truckFuelPct(t);
+  if (p == null) return '';
+  return `<div class="fuel-bar"${style ? ` style="${style}"` : ''}><div class="fuel-fill" style="width:${p}%;background:${fuelColour(p)}"></div></div>`;
+}
 
 function computeTruckFuel(t, fuelLogs) {
   const cap = truckCapacity(t);
   const kmpl = Number(t.kmPerLitre) > 0 ? Number(t.kmPerLitre) : 0;
-  if (!t.fuelBaselineAt) { // legacy truck: only a % is known, so nothing can be replayed yet
-    const pct = Math.min(100, Math.max(0, Number(t.fuelPct) || 0));
-    return { litres: _r2(pct / 100 * cap), capacity: cap, pct, overflow: false, asOf: null, modelled: !!kmpl };
-  }
-  const baseAt = new Date(t.fuelBaselineAt).getTime();
-  let level = Math.min(cap, Math.max(0, Number(t.fuelBaselineLitres) || 0));
-  let lastOdo = Number(t.fuelBaselineOdo) || 0;
-  let overflow = false, asOf = t.fuelBaselineAt;
+  // Older trucks may carry a stored baseline reading; if present it is honoured, otherwise start from zero.
+  const hasBaseline = !!t.fuelBaselineAt;
+  const baseAt = hasBaseline ? new Date(t.fuelBaselineAt).getTime() : -Infinity;
+  let level = hasBaseline ? Math.max(0, Number(t.fuelBaselineLitres) || 0) : 0;
+  if (cap) level = Math.min(cap, level);
+  let lastOdo = hasBaseline ? (Number(t.fuelBaselineOdo) || 0) : 0;
+  let overflow = false, asOf = hasBaseline ? t.fuelBaselineAt : null;
   const fills = (fuelLogs || []).filter(f => f.truckId === t.id && new Date(f.date).getTime() > baseAt)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   for (const f of fills) {
@@ -244,72 +264,56 @@ function computeTruckFuel(t, fuelLogs) {
     if (kmpl && odo > 0 && lastOdo > 0 && odo > lastOdo) level = Math.max(0, level - (odo - lastOdo) / kmpl);
     if (odo > lastOdo) lastOdo = odo;
     const raw = level + (Number(f.litres) || 0);
-    overflow = raw > cap + 0.5;
-    level = Math.min(cap, raw);
+    overflow = cap > 0 && raw > cap + 0.5;
+    level = cap > 0 ? Math.min(cap, raw) : raw;
     asOf = f.date;
   }
-  return { litres: _r2(level), capacity: cap, pct: Math.min(100, Math.round(level / cap * 100)), overflow, asOf, modelled: !!kmpl };
+  const logged = hasBaseline || fills.length > 0;
+  return { litres: _r2(level), capacity: cap, pct: (logged && cap > 0) ? Math.min(100, Math.round(level / cap * 100)) : null, overflow, asOf, modelled: !!kmpl, logged };
 }
 
 function applyTruckFuel(t, fuelLogs) {
   const st = computeTruckFuel(t, fuelLogs || state.db.fuel);
   t.fuelLitres = st.litres;
   t.fuelPct = st.pct;
+  t.fuelLogged = st.logged;
   return st;
 }
 
 function recomputeAllTruckFuel(trucks, fuelLogs) { (trucks || []).forEach(t => applyTruckFuel(t, fuelLogs)); }
 
-// First fill for a truck that only has a legacy % level: freeze that level as the baseline just before the fill.
-function ensureFuelBaseline(t, atIso) {
-  if (t.fuelBaselineAt) return;
-  const st = computeTruckFuel(t, state.db.fuel);
-  t.fuelBaselineLitres = st.litres;
-  t.fuelBaselineAt = new Date(new Date(atIso).getTime() - 1).toISOString();
-  t.fuelBaselineOdo = Number(t.mileage) || 0;
-}
-
-// Used by the Add/Edit Truck forms. o = { litres, capacity, kmpl, defaultFull, forceBaseline }. Returns true if a manual reading was recorded.
+// Used by the Add/Edit Truck forms. o = { capacity, kmpl }. Only the optional capacity and km/L are stored on the truck;
+// the fuel level itself is never typed in, it comes from the fuel logs.
 function applyTruckFuelInputs(t, o) {
   t.tankCapacity = o.capacity > 0 ? o.capacity : null;
   t.kmPerLitre = o.kmpl > 0 ? o.kmpl : null;
-  const cap = truckCapacity(t);
-  let adjusted = false;
-  const setBaseline = litres => {
-    t.fuelBaselineLitres = _r2(litres);
-    t.fuelBaselineAt = new Date().toISOString();
-    t.fuelBaselineOdo = Number(t.mileage) || 0;
-    adjusted = true;
-  };
-  if (isFinite(o.litres) && o.litres >= 0) {
-    const want = Math.min(cap, o.litres);
-    if (o.forceBaseline || Math.abs(want - computeTruckFuel(t, state.db.fuel).litres) > 0.5) setBaseline(want);
-  } else if (o.defaultFull && !t.fuelBaselineAt) {
-    setBaseline(cap);
-  }
   applyTruckFuel(t);
-  return adjusted;
 }
 
 function updateFuelTruckHint() {
   const sel = document.getElementById('f_truck'), el = document.getElementById('f_truck_fuel');
   if (!sel || !el) return;
   const t = state.db.trucks.find(x => x.id === sel.value);
-  el.innerHTML = t
-    ? `Estimated on board: <b style="color:${fuelColour(t.fuelPct)}">${fmt(Math.round(truckFuelLitres(t)))} L</b> of ${fmt(truckCapacity(t))} L (${Math.round(t.fuelPct)}%)${t.kmPerLitre ? '' : ' \u00b7 set km/L on the truck to deduct usage'}`
-    : '';
+  if (!t) { el.innerHTML = ''; return; }
+  if (!t.fuelLogged) { el.innerHTML = 'No fuel logged for this truck yet'; return; }
+  const cap = truckCapacity(t), p = truckFuelPct(t);
+  el.innerHTML = `Logged on board: <b style="color:${truckFuelColour(t)}">${fmt(Math.round(truckFuelLitres(t)))} L</b>${cap ? ` of ${fmt(cap)} L${p == null ? '' : ` (${Math.round(p)}%)`}` : ''}${t.kmPerLitre ? '' : ' \u00b7 set km/L on the truck to deduct usage'}`;
 }
 
 function renderTruckFuelLevels() {
   const el = document.getElementById('truckFuelLevels');
   if (!el) return;
-  const trucks = [...state.db.trucks].sort((a, b) => (Number(a.fuelPct) || 0) - (Number(b.fuelPct) || 0));
+  // trucks with fuel logged first (lowest litres first), trucks with nothing logged last
+  const trucks = [...state.db.trucks].sort((a, b) => (b.fuelLogged ? 1 : 0) - (a.fuelLogged ? 1 : 0) || truckFuelLitres(a) - truckFuelLitres(b));
   const rows = trucks.map(t => {
-    const pct = Math.round(Number(t.fuelPct) || 0);
-    return `<div class="fuel-summary-row"><span class="fsr-label">${esc(t.reg)}</span><span class="fsr-val" style="color:${fuelColour(pct)}">${fmt(Math.round(truckFuelLitres(t)))} L <span style="color:var(--text-3);font-weight:400">/ ${fmt(truckCapacity(t))} L</span></span></div><div class="fuel-bar" style="margin:0 0 8px"><div class="fuel-fill" style="width:${pct}%;background:${fuelColour(pct)}"></div></div>`;
+    const cap = truckCapacity(t);
+    const val = t.fuelLogged
+      ? `${fmt(Math.round(truckFuelLitres(t)))} L${cap ? ` <span style="color:var(--text-3);font-weight:400">/ ${fmt(cap)} L</span>` : ''}`
+      : '<span style="color:var(--text-3);font-weight:400">No fuel logged</span>';
+    return `<div class="fuel-summary-row"><span class="fsr-label">${esc(t.reg)}</span><span class="fsr-val" style="color:${truckFuelColour(t)}">${val}</span></div>${truckFuelBar(t, 'margin:0 0 8px')}`;
   }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No trucks</div>';
-  const needsKmpl = trucks.some(t => !(Number(t.kmPerLitre) > 0));
-  el.innerHTML = rows + (needsKmpl ? '<div style="font-size:9.5px;color:var(--text-3);line-height:1.5;margin-top:4px">Some trucks have no fuel economy (km/L) set, so their level only rises when fuel is logged. Set it under Fleet \u2192 Edit Truck and usage between fills is deducted from odometer readings.</div>' : '');
+  const needsKmpl = trucks.some(t => t.fuelLogged && !(Number(t.kmPerLitre) > 0));
+  el.innerHTML = rows + (needsKmpl ? '<div style="font-size:9.5px;color:var(--text-3);line-height:1.5;margin-top:4px">Levels come only from the fuel logs. Trucks with no fuel economy (km/L) set only go up when fuel is logged. Set it under Fleet \u2192 Edit Truck and usage between fills is deducted from odometer readings.</div>' : '');
 }
 
 function fuelSavedToast(total, st, t) {
@@ -397,7 +401,7 @@ function dpRenderFuelTab(el, driver) {
     <div class="form-card" style="margin-bottom:14px">
       <div class="form-card-head">Log Fuel Fill-up</div>
       <div class="form-card-body">
-        ${myTruck ? `<div class="ops-notice" style="margin-bottom:10px">${esc(myTruck.reg)} \u2014 estimated fuel on board: <b>${fmt(Math.round(truckFuelLitres(myTruck)))} L</b> of ${fmt(truckCapacity(myTruck))} L</div>` : ''}
+        ${myTruck ? `<div class="ops-notice" style="margin-bottom:10px">${esc(myTruck.reg)} \u2014 ${myTruck.fuelLogged ? `fuel logged: <b>${fmt(Math.round(truckFuelLitres(myTruck)))} L</b>${truckCapacity(myTruck) ? ` of ${fmt(truckCapacity(myTruck))} L` : ''}` : 'no fuel logged yet'}</div>` : ''}
         <div class="form-row-2">
           <div class="fg"><label>Litres</label><input id="dp_f_litres" type="number" step="0.01" placeholder="180" oninput="fuelSync('dp_f','litres')"/></div>
           <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" step="0.01" placeholder="155" value="${defaultPrice||''}" oninput="fuelSync('dp_f','price')"/></div>
@@ -444,7 +448,6 @@ function dpAddFuelLog() {
     receiptImg: _pendingReceiptImg.dp || '',
   };
   const t = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
-  if (t) ensureFuelBaseline(t, log.date);
   state.db.fuel.push(log);
   log._dirty = true;
   _pendingReceiptImg.dp = null;
@@ -600,7 +603,6 @@ function addFuelLog() {
     receiptImg: _pendingReceiptImg.f || '',
   };
   const t = state.db.trucks.find(t=>t.id===truck);
-  if (t) ensureFuelBaseline(t, log.date);
   state.db.fuel.push(log);
   log._dirty = true;
   _pendingReceiptImg.f = null;
