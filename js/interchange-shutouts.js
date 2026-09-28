@@ -793,8 +793,14 @@ function lineServiceDef(key) { return (window.SERVICE_RATE_SCHEDULE?.services ||
 function officialServiceRates(code, key) {
   const sched = window.SERVICE_RATE_SCHEDULE || {};
   const ov = code ? sched.lineOverrides?.[String(code).trim().toUpperCase()] : null;
-  const def = ov?.services?.[key] || sched.services?.[key] || {};
-  return { '20ft': def.rates?.['20ft'] ?? null, '40ft': def.rates?.['40ft'] ?? null, freeDays: def.freeDays ?? sched.services?.[key]?.freeDays ?? null };
+  const base = sched.services?.[key] || {};
+  const ovDef = ov?.services?.[key];
+  const freeDays = ovDef?.freeDays ?? base.freeDays ?? null;
+  // A line billed in another currency (e.g. PIL in KES) only inherits the schedule figures for services it
+  // explicitly overrides. The base figures are USD and are never converted, so the rest start blank.
+  if (!ovDef && ov?.currency && ov.currency !== sched.currency) return { '20ft': null, '40ft': null, freeDays };
+  const def = ovDef || base;
+  return { '20ft': def.rates?.['20ft'] ?? null, '40ft': def.rates?.['40ft'] ?? null, freeDays };
 }
 
 // What this line is charged for a service: its saved rates if it has them, else the official schedule.
@@ -857,6 +863,63 @@ function readLineRatesForm(prefix, existing, currency, currencyChanged) {
 function lineLegacyRates(rates) {
   const r20 = Math.round(Number(rates?.lolo?.['20ft']) || 0), r40 = Math.round(Number(rates?.lolo?.['40ft']) || 0);
   return { rate20: r20, rate40: r40 };
+}
+
+// Add / Edit modals. Field ids sl_* (add) and sle_* (edit) are read by saveShippingLine / saveShippingLineEdit.
+function lineCurrencyHint(extra) {
+  return `<div style="font-size:11px;color:var(--text-3);margin-top:4px">${extra}Rates are never auto-converted \u2014 pick the currency this line actually invoices in (e.g. PIL bills in KES cash).</div>`;
+}
+
+function showEditLineModal(id) {
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
+  const l = state.db.shippingLines.find(x => x.id === id);
+  if (!l) { toast('Shipping line not found', 'error'); return; }
+  const cur = l.currency || (l.code === 'PIL' ? 'KES' : 'USD');
+  openModal(`Edit ${l.code} \u2014 ${l.name}`, `
+    <div class="form-row-2">
+      <div class="fg"><label>Code</label><input id="sle_code" value="${esc(l.code)}" maxlength="30"/></div>
+      <div class="fg"><label>Full Name</label><input id="sle_name" value="${esc(l.name)}"/></div>
+    </div>
+    <div class="fg"><label>Contact Email</label><input id="sle_email" type="email" value="${esc(l.contact || '')}"/></div>
+    <div class="fg"><label>Billing Currency</label>
+      <select id="sle_currency"><option value="USD" ${cur === 'USD' ? 'selected' : ''}>USD (per official schedule)</option><option value="KES" ${cur === 'KES' ? 'selected' : ''}>KES \u2014 cash</option></select>
+      ${lineCurrencyHint('')}
+    </div>
+    ${lineRatesFormHTML('sle', l)}
+    <div class="fg" style="margin-top:14px"><label>Status</label><select id="sle_active"><option value="true" ${l.active ? 'selected' : ''}>Active</option><option value="false" ${!l.active ? 'selected' : ''}>Inactive</option></select></div>
+    <button class="submit-btn" onclick="saveShippingLineEdit('${esc(l.id)}')">Save Changes \u2192</button>
+    ${isAdmin() ? `<button class="modal-btn danger" style="width:100%;margin-top:8px" onclick="deleteShippingLine('${esc(l.id)}')">\ud83d\uddd1 Delete ${esc(l.code)}\u2026</button>` : ''}`);
+}
+
+function showAddLineModal() {
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
+  openModal('Add Shipping Line', `
+    <div class="form-row-2">
+      <div class="fg"><label>Code</label><input id="sl_code" placeholder="MSC" maxlength="30" oninput="applyOfficialLineDefaults(this.value)"/></div>
+      <div class="fg"><label>Full Name</label><input id="sl_name" placeholder="Mediterranean Shipping Co."/></div>
+    </div>
+    <div class="fg"><label>Contact Email</label><input id="sl_email" type="email" placeholder="office@line.com"/></div>
+    <div class="fg"><label>Billing Currency</label>
+      <select id="sl_currency" onchange="this.dataset.touched='1'"><option value="USD" selected>USD (per official schedule)</option><option value="KES">KES \u2014 cash</option></select>
+      ${lineCurrencyHint('Rates below start from the official schedule and update as you type the code (e.g. PIL \u2192 KES). Edit any of them. ')}
+    </div>
+    ${lineRatesFormHTML('sl', null, '')}
+    <button class="submit-btn" onclick="saveShippingLine()">Add Line \u2192</button>`);
+}
+
+// Live-fills the Add form from the official schedule as the code is typed. Only fields the user hasn't
+// touched are replaced, so typing a code never overwrites rates that were entered by hand.
+function applyOfficialLineDefaults(codeRaw) {
+  const code = (codeRaw || '').trim().toUpperCase();
+  const cur = document.getElementById('sl_currency');
+  if (cur && !cur.dataset.touched && typeof getOfficialLineRates === 'function') cur.value = getOfficialLineRates(code).currency;
+  const fill = (id, v) => { const el = document.getElementById(id); if (el && !el.dataset.touched) el.value = v == null ? '' : v; };
+  LINE_RATE_KEYS.forEach(key => {
+    const r = officialServiceRates(code, key);
+    fill(`sl_r_${key}_20`, r['20ft']);
+    fill(`sl_r_${key}_40`, r['40ft']);
+    if (key === 'storage') fill('sl_r_storage_free', r.freeDays);
+  });
 }
 
 function renderLines(f){
@@ -980,6 +1043,7 @@ async function deleteShippingLine(id) {
   try {
     results = await Promise.all([...usedBy, ...removedToo].map(async ([label, table, col]) => {
       const { count: n, error } = await count(table, col);
+      if (error && (error.code === 'PGRST205' || error.code === '42P01' || /does not exist|schema cache/i.test(error.message || ''))) return { label, n: 0 };
       if (error) throw new Error(`${table}: ${error.message}`);
       return { label, n: n || 0 };
     }));

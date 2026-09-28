@@ -231,35 +231,9 @@ function showAddDriverModal() {
   openModal('Add New Driver', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="nd_name" placeholder="John Doe"/></div><div class="fg"><label>Phone</label><input id="nd_phone" placeholder="+254 7XX XXX XXX"/></div></div><div class="form-row-2"><div class="fg"><label>Licence No.</label><input id="nd_lic" placeholder="DL-A0000"/></div><div class="fg"><label>Licence Expiry</label><input id="nd_licexp" type="date"/></div></div><div class="form-row-2"><div class="fg"><label>ID Number</label><input id="nd_idno" placeholder="ID number"/></div><div class="fg"><label>Rating</label><input id="nd_rating" type="number" placeholder="4.0" min="0" max="5" step="0.1"/></div></div><button class="submit-btn" onclick="saveDriver()">Add Driver →</button>`);
 }
 
-function showEditLineModal(id) {
-  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
-  const l = state.db.shippingLines.find(x => x.id === id);
-  if (!l) { toast('Shipping line not found', 'error'); return; }
-  const curE = l.currency || (l.code === 'PIL' ? 'KES' : 'USD');
-  openModal(`Edit ${esc(l.code)} — ${esc(l.name)}`, `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sle_code" value="${esc(l.code)}" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sle_name" value="${esc(l.name)}"/></div></div><div class="fg"><label>Contact Email</label><input id="sle_email" type="email" value="${esc(l.contact||'')}"/></div><div class="fg"><label>Billing Currency</label><select id="sle_currency"><option value="USD" ${curE==='USD'?'selected':''}>USD (per official schedule)</option><option value="KES" ${curE==='KES'?'selected':''}>KES — cash</option></select><div style="font-size:11px;color:var(--text-3);margin-top:4px">Rates are never auto-converted — pick the currency this line actually invoices in (e.g. PIL bills in KES cash).</div></div><div class="form-row-2"><div class="fg"><label>20ft Rate</label><input id="sle_r20" type="number" min="0" value="${l.rate20}"/></div><div class="fg"><label>40ft Rate</label><input id="sle_r40" type="number" min="0" value="${l.rate40}"/></div></div><div class="fg"><label>40ft HC Rate</label><input id="sle_rhc" type="number" min="0" value="${l.rateHC}"/></div><div class="fg"><label>Status</label><select id="sle_active"><option value="true" ${l.active?'selected':''}>Active</option><option value="false" ${!l.active?'selected':''}>Inactive</option></select></div><button class="submit-btn" onclick="saveShippingLineEdit('${l.id}')">Save Changes →</button>`);
-}
-
-function showAddLineModal() {
-  const dflt = getOfficialLineRates('');
-  openModal('Add Shipping Line', `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sl_code" placeholder="MSC" maxlength="6" oninput="applyOfficialLineDefaults(this.value)"/></div><div class="fg"><label>Full Name</label><input id="sl_name" placeholder="Mediterranean Shipping Co."/></div></div><div class="fg"><label>Contact Email</label><input id="sl_email" type="email" placeholder="office@line.com"/></div><div class="fg"><label>Billing Currency</label><select id="sl_currency"><option value="USD" selected>USD (per official schedule)</option><option value="KES">KES — cash</option></select><div id="sl_currency_hint" style="font-size:11px;color:var(--text-3);margin-top:4px">Auto-fills from the official schedule as you type the code (e.g. PIL → KES cash rates). Rates are never converted between currencies.</div></div><div class="form-row-2"><div class="fg"><label>20ft Rate</label><input id="sl_r20" type="number" placeholder="${dflt.rate20}"/></div><div class="fg"><label>40ft Rate</label><input id="sl_r40" type="number" placeholder="${dflt.rate40}"/></div></div><div class="fg"><label>40ft HC Rate</label><input id="sl_rhc" type="number" placeholder="${dflt.rateHC}"/></div><button class="submit-btn" onclick="saveShippingLine()">Add Line →</button>`);
-}
-
-// Live-fills the Add Shipping Line rate fields from the official service
-// rate schedule as the user types a code — e.g. typing "PIL" switches the
-// currency to KES cash and fills in PIL's own rates. Never converts currency;
-// it only swaps in whichever official figures apply to that code.
-function applyOfficialLineDefaults(codeRaw) {
-  const code = (codeRaw || '').trim().toUpperCase();
-  const official = getOfficialLineRates(code);
-  const r20 = document.getElementById('sl_r20');
-  const r40 = document.getElementById('sl_r40');
-  const rhc = document.getElementById('sl_rhc');
-  const cur = document.getElementById('sl_currency');
-  if (r20) r20.placeholder = official.rate20;
-  if (r40) r40.placeholder = official.rate40;
-  if (rhc) rhc.placeholder = official.rateHC;
-  if (cur) cur.value = official.currency;
-}
+// Shipping-line Add / Edit modals live in interchange-shutouts.js (showAddLineModal, showEditLineModal,
+// applyOfficialLineDefaults) next to the rate-card code that reads their fields. They used to be duplicated
+// here with an old 3-rate form; because this file loads later it silently overrode the real ones.
 
 function openUnmappedVesselsModal() {
   const groups = _unmappedVesselGroups();
