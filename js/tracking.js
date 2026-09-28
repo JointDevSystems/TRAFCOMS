@@ -300,14 +300,21 @@ async function clearWialonToken() {
 }
 
 // Inline "Wialon Unit ID" editor on the truck detail modal (admin only).
-function saveTruckWialonId(id) {
+// The unit ID is written through an admin-only database function, NOT through the normal save path:
+// saveDB() upserts every truck from this browser's in-memory copy, and a tab that loaded before the
+// link was made would otherwise overwrite it with an empty value. The database ignores ID changes
+// from normal table writes and only accepts them via set_truck_wialon_unit().
+async function saveTruckWialonId(id) {
+  if (!isAdmin()) { toast('Only administrators can link Wialon units', 'error'); return; }
   const t = state.db.trucks.find(t => t.id === id);
   if (!t) return;
   const val = (document.getElementById('tw_wialonId')?.value || '').trim();
+  if (val && !/^\d+$/.test(val)) { toast('A Wialon unit ID is a number, e.g. 601620738 (not the tracker IMEI)', 'error', 5000); return; }
+  const { error } = await supabase.rpc('set_truck_wialon_unit', { p_truck_id: id, p_unit: val });
+  if (error) { toast('Could not save the Wialon unit ID \u2014 ' + error.message, 'error', 5000); return; }
   t.wialonUnitId = val;
-  scheduleSave();
-  addAudit(state.profile.username, 'Wialon Unit Linked', `${t.reg} → ${val || '(cleared)'}`);
-  toast(val ? `${t.reg} linked to Wialon unit ${val} — first position arrives within a minute` : `${t.reg} unlinked from Wialon`, 'success');
+  addAudit(state.profile.username, 'Wialon Unit Linked', `${t.reg} \u2192 ${val || '(cleared)'}`);
+  toast(val ? `${t.reg} linked to Wialon unit ${val} \u2014 first position arrives within a minute` : `${t.reg} unlinked from Wialon`, 'success');
   showTruckDetail(id);
 }
 
