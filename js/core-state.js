@@ -368,7 +368,9 @@ function normalizeRowKeys(rows) {
     const norm = {};
     Object.entries(r || {}).forEach(([k, v]) => {
       const key = String(k).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (key) norm[key] = typeof v === 'string' ? v.trim() : (v == null ? '' : v);
+      // Strip stray wrapping double-quotes (straight or curly) left over from CSV exports,
+      // so "PIL" matches the line PIL and "MSCU1234567" is a valid container number.
+      if (key) norm[key] = typeof v === 'string' ? v.trim().replace(/^["\u201C\u201D]+|["\u201C\u201D]+$/g, '').trim() : (v == null ? '' : v);
     });
     return norm;
   });
@@ -391,6 +393,63 @@ function sniffBulkDirectionFromRows(normalizedRows) {
 function updateBulkDirectionLabel() {
   const isOut = document.getElementById('iw_bulk_direction').value === 'out';
   document.getElementById('iw_bulk_direction_label').textContent = isOut ? 'Gate-Out' : 'Gate-In';
+}
+
+// ── CSV parsing ──────────────────────────────────────────────────────────
+// RFC-4180 style parser. The old importers used line.split(','), which (a) kept
+// the literal quote characters around every value ("PIL" never equals PIL, so no
+// shipping line ever matched) and (b) shifted every column after a comma inside
+// a quoted field. Handles quotes, escaped "" quotes, commas/newlines inside
+// quotes, CRLF and a UTF-8 BOM.
+function parseCsvText(text) {
+  text = String(text || '').replace(/^\uFEFF/, '');
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"' && field.trim() === '') { inQ = true; field = ''; }
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\r') { /* ignore — \n ends the row */ }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ''));
+}
+
+function csvTextToRows(text) {
+  const grid = parseCsvText(text);
+  if (grid.length < 2) return [];
+  const headers = grid[0].map(h => String(h).trim());
+  return grid.slice(1).map(cells => {
+    const o = {};
+    headers.forEach((h, i) => { if (h) o[h] = cells[i] != null ? String(cells[i]).trim() : ''; });
+    return o;
+  });
+}
+
+// Matches free text from an import file to a shipping line by code, name or id,
+// ignoring case, spaces, hyphens and quotes ("A-S" = "A S" = "as").
+function findShippingLineByText(text) {
+  const raw = String(text == null ? '' : text).trim();
+  if (!raw) return null;
+  const ALIASES = { 'TERMCO': 'TMT' };
+  const resolved = ALIASES[raw.toUpperCase()] || raw;
+  const n = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const target = n(resolved);
+  if (!target) return null;
+  return (state.db.shippingLines || []).find(l => l.id === resolved || n(l.code) === target || n(l.name) === target) || null;
+}
+
+// A 10,000-row import can flag thousands of rows; rendering all of them in a
+// modal freezes the page. Show the first `max` and summarise the rest.
+function flaggedPreview(list, max = 200) {
+  return list.length > max
+    ? [...list.slice(0, max), `…and ${list.length - max} more — open the Depot Report and look for rows marked ⚠`]
+    : list;
 }
 
 function pickField(r, keys) {

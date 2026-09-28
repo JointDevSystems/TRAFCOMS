@@ -815,9 +815,7 @@ function processBulkFile(file) {
       } else if (name.endsWith('.json')) {
         rows = JSON.parse(e.target.result);
       } else {
-        const lines = e.target.result.split('\n').filter(l=>l.trim());
-        const headers = lines[0].split(',').map(h=>h.trim());
-        rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
+        rows = csvTextToRows(e.target.result);
       }
 
       const looksInward = /inward|inwrd|_in\b|-in\b/i.test(name) && !/outward/i.test(name);
@@ -942,11 +940,16 @@ async function processBulkDispatch() {
     if (driver) usedDriversInBatch.add(driver.id);
 
     const lineRaw = pickField(r, ['line','shippingline','linecode','shippinglines']);
-    const LINE_TEXT_ALIASES = { 'TERMCO': 'TMT' };
-    const lineResolved = lineRaw ? (LINE_TEXT_ALIASES[lineRaw.toUpperCase()] || lineRaw) : '';
-    const line = lineResolved
-      ? state.db.shippingLines.find(l => l.code.toLowerCase()===lineResolved.toLowerCase() || l.name.toLowerCase()===lineResolved.toLowerCase() || l.id===lineResolved)
-      : null;
+    let line = findShippingLineByText(lineRaw);
+    const vesselForLine = pickField(r, ['vessel','exvessel']);
+    if (!line && vesselForLine) {
+      const guessedLineId = resolveLineIdFromVessel(vesselForLine);
+      if (guessedLineId) line = state.db.shippingLines.find(l => l.id === guessedLineId) || null;
+    }
+    if (!line) {
+      const lineIssue = lineRaw ? `shipping line "${lineRaw}" not found in Shipping Lines` : 'no shipping line in file';
+      issueTags.push(lineIssue); flagged.push(`${cont}: ${lineIssue}`);
+    }
 
     const sizeRaw = pickField(r, ['size']);
     const typeRaw = pickField(r, ['containertype','type']);
@@ -1001,6 +1004,7 @@ async function processBulkDispatch() {
     };
     state.db.trips.push(trip);
     newTrips.push(trip);
+    created++;
 
     });
 
@@ -1024,7 +1028,7 @@ async function processBulkDispatch() {
     toast(`Import saved with errors — check console and retry if rows are missing (${(saveResult.error && saveResult.error.message) || 'see console'})`, 'error', 7000);
   } else if (flagged.length) {
     toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
-    openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flagged.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
+    openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flaggedPreview(flagged).map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
   } else {
     toast(`${created} dispatches created`, 'success');
   }

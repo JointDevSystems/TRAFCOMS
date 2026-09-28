@@ -397,9 +397,7 @@ function processInwardBulkFile(file) {
       } else if (name.endsWith('.json')) {
         rows = JSON.parse(e.target.result);
       } else {
-        const lines = e.target.result.split('\n').filter(l=>l.trim());
-        const headers = lines[0].split(',').map(h=>h.trim());
-        rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
+        rows = csvTextToRows(e.target.result);
       }
       rows = normalizeRowKeys(rows);
       const looksOutward = /outward|outwrd|_out\b|-out\b/i.test(name) && !/inward/i.test(name);
@@ -479,16 +477,15 @@ function processBulkInward() {
     const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase() || t.id===truckVal) : null;
     const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase() || d.id===driverVal) : null;
 
-    const LINE_TEXT_ALIASES = { 'TERMCO': 'TMT' };
-    const lineValResolved = LINE_TEXT_ALIASES[lineVal.toUpperCase()] || lineVal;
-
-    let line = lineValResolved
-      ? state.db.shippingLines.find(l => normVessel(l.code).toLowerCase()===normVessel(lineValResolved).toLowerCase() || normVessel(l.name).toLowerCase()===normVessel(lineValResolved).toLowerCase() || l.id===lineValResolved)
-      : null;
+    let line = findShippingLineByText(lineVal);
 
     if (!line && vesselVal) {
       const guessedId = resolveLineIdFromVessel(vesselVal);
       if (guessedId) line = state.db.shippingLines.find(l => l.id === guessedId);
+    }
+    if (!line) {
+      const lineIssue = lineVal ? `shipping line "${lineVal}" not found in Shipping Lines` : 'no shipping line in file';
+      issueTags.push(lineIssue); flagged.push(`${cont}: ${lineIssue}`);
     }
 
     const ctypeExplicit    = pickField(r, ['ctype']);
@@ -546,7 +543,7 @@ function processBulkInward() {
   addAudit(state.profile.username, 'Bulk Inward Entry', `${created} entries imported${flagged.length?`, ${flagged.length} flagged for review`:''} (batch ${importBatchId})`);
   if (flagged.length) {
     toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
-    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flagged.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
+    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flaggedPreview(flagged).map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
   } else {
     toast(`${created} inward entries created`, 'success');
   }
@@ -695,6 +692,63 @@ async function computeDepotReportDuplicates() {
   return _depotReportDupes;
 }
 
+// state.db.trips only holds open trips plus the last OPERATIONAL_WINDOW_DAYS days
+// (see loadDB). Bulk-imported history is saved as 'completed' with old dates, so
+// without this the Outward tab silently under-counted (e.g. <2,000 of 10,000+).
+// When the selected range reaches beyond the window, pull the older completed
+// trips (and reconciled interchange) from Supabase once and merge them in.
+let _depotReportLoadedFrom = null;   // null | ISO cutoff already covered | 'all'
+let _depotReportLoadedDb   = null;   // guards against state.db being replaced by a reload
+
+async function ensureDepotReportRangeLoaded() {
+  if (_depotReportLoadedDb !== state.db) { _depotReportLoadedDb = state.db; _depotReportLoadedFrom = null; }
+  if (_depotReportLoadedFrom === 'all') return;
+  const windowCut = operationalCutoffISO();
+  let wantFrom = null;
+  if (_depotReportRange !== 'all') {
+    const c = new Date(); c.setDate(c.getDate() - Number(_depotReportRange));
+    wantFrom = c.toISOString();
+    if (wantFrom >= windowCut) return;                                   // inside the normal window
+    if (_depotReportLoadedFrom && _depotReportLoadedFrom <= wantFrom) return; // already fetched
+  }
+  const tripQ = (from, to) => {
+    let q = supabase.from('trips').select('*').eq('status', 'completed').lt('start_time', windowCut);
+    if (wantFrom) q = q.or(`start_time.gte.${wantFrom},date_out.gte.${wantFrom}`);
+    return q.order('start_time', { ascending: false }).range(from, to);
+  };
+  const icQ = (from, to) => {
+    let q = supabase.from('interchange').select('*').eq('status', 'reconciled').lt('date', windowCut);
+    if (wantFrom) q = q.gte('date', wantFrom);
+    return q.order('date', { ascending: false }).range(from, to);
+  };
+  const [tRes, iRes] = await Promise.all([fetchAllPaginated(tripQ), fetchAllPaginated(icQ)]);
+  if (tRes.error || iRes.error) {
+    console.error('Depot report history load failed:', (tRes.error || iRes.error).message);
+    toast('Could not load older records — report may be incomplete', 'error');
+    return;
+  }
+  const haveT = new Set(state.db.trips.map(t => t.id));
+  tRes.data.forEach(r => { if (!haveT.has(r.id)) state.db.trips.push(tripFromRow(r)); });
+  const haveI = new Set(state.db.interchange.map(i => i.id));
+  iRes.data.forEach(r => { if (!haveI.has(r.id)) state.db.interchange.push(icFromRow(r)); });
+  _depotReportLoadedFrom = wantFrom || 'all';
+}
+
+// Whole-register count of records with no line, straight from the database
+// (state.db only holds a window of the data).
+async function fetchUnmappedLineTotal() {
+  try {
+    const [a, b] = await Promise.all([
+      supabase.from('interchange').select('id', { count: 'exact', head: true }).is('line_id', null),
+      supabase.from('trips').select('id', { count: 'exact', head: true }).is('shipping_line_id', null),
+    ]);
+    if (a.error || b.error) throw (a.error || b.error);
+    return (a.count || 0) + (b.count || 0);
+  } catch (e) {
+    return state.db.interchange.filter(ic => !ic.line).length + state.db.trips.filter(t => !t.shippingLine).length;
+  }
+}
+
 async function renderDepotReport() {
   populateDepotReportLineFilter();
 
@@ -706,11 +760,11 @@ async function renderDepotReport() {
   }
 
   await computeDepotReportDuplicates();
+  await ensureDepotReportRangeLoaded();
 
   const inward  = _depotReportInwardEntries();
   const outward = _depotReportOutwardEntries();
-  const unmappedTotal = state.db.interchange.filter(ic => !ic.line).length
-    + state.db.trips.filter(t => !t.shippingLine).length;
+  const unmappedTotal = await fetchUnmappedLineTotal();
 
   const kpi = document.getElementById('depotReportKpis');
   if (kpi) {
