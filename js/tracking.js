@@ -485,11 +485,25 @@ function initTrackingMap() {
       zoom: 12,
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    // Free, key-less basemaps. (CARTO's public dark basemap now demands an API key and paints an
+    // "API KEY REQUIRED" watermark over every tile, so it must not be used here.)
+    //   Street    OpenStreetMap standard tiles, shown in their normal colours in both themes
+    //   Satellite Esri World Imagery, handy for seeing yards, depots and the port
+    const streetLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(state.trackingMap);
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    });
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    });
+    let savedLayer = 'street';
+    try { savedLayer = localStorage.getItem('gargo-map-layer') === 'satellite' ? 'satellite' : 'street'; } catch (e) { /* storage unavailable */ }
+    (savedLayer === 'satellite' ? satelliteLayer : streetLayer).addTo(state.trackingMap);
+    L.control.layers({ 'Street': streetLayer, 'Satellite': satelliteLayer }, null, { position: 'topright', collapsed: true }).addTo(state.trackingMap);
+    state.trackingMap.on('baselayerchange', (e) => {
+      try { localStorage.setItem('gargo-map-layer', e.layer === satelliteLayer ? 'satellite' : 'street'); } catch (err) { /* ignore */ }
+    });
     state.truckMarkers = {};
     updateTrackingMarkers();
     fitTrackingBounds();
@@ -503,7 +517,7 @@ function updateTrackingMarkers() {
   Object.entries(pos).forEach(([truckId, p]) => {
     seen.add(truckId);
     const truck = state.db.trucks.find(t => t.id === truckId);
-    const label = truck?.reg || truckId;
+    const label = esc(truck?.reg || truckId);
     const dotColor = truckMarkerColour(truckMovingState(truckId).kind);
     const icon = L.divIcon({
       className: 'truck-marker',
@@ -518,7 +532,7 @@ function updateTrackingMarkers() {
       marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${esc(cur.zone||'')}<br>${truckMovementBadge(truckId)}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${positionSourceLabel(cur)} · updated ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${esc(label)}')">🧭 Street View</button></div>`);
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${esc(cur.zone||'')}<br>${truckMovementBadge(truckId)}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${positionSourceLabel(cur)} · updated ${timeAgo(cur.lastUpdate)}</span><br><button class="tbl-btn" style="margin-top:6px" onclick="showStreetView(${cur.lat},${cur.lng},'${label}')">🧭 Street View</button></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
