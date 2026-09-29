@@ -1,4 +1,4 @@
-const CACHE_VERSION = '3.1';
+const CACHE_VERSION = '3.2';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
@@ -9,6 +9,7 @@ const SHELL_FILES = [
   './',
   './index.html',
   './styles.css',
+  './js/branding.js',
   './js/core-state.js',
   './js/core-db.js',
   './js/client-auth.js',

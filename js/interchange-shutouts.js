@@ -204,7 +204,7 @@ function renderInterchange(f){
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
     const canQuickDispatch = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.dateOut && !exitedContainers.has(ic.container);
     const canSendToSurvey = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.surveyStatus;
-    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
+    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
@@ -284,7 +284,7 @@ function printInterchangeList() {
     th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
-  </style></head><body><h2>Gargo Haven Depot — Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
+  </style></head><body>${ghPrintHeaderHtml()}<h2>Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
   <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`);
   w.document.close();
@@ -367,10 +367,10 @@ function saveInterchange() {
   toast('Interchange recorded', 'success');
 }
 
-function downloadInterchangeSlip(icId) {
+function buildInterchangeSlip(icId) {
   const ic = state.db.interchange.find(i => i.id === icId);
-  if (!ic) { toast('Interchange record not found', 'error'); return; }
-  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
+  if (!ic) { toast('Interchange record not found', 'error'); return null; }
+  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return null; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const GOLD = [201, 162, 39];
@@ -393,12 +393,11 @@ function downloadInterchangeSlip(icId) {
   }
 
   // ---- header ----------------------------------------------------------
-  doc.setFont(undefined, 'bold'); doc.setFontSize(15); doc.setTextColor(20);
-  doc.text('GARGO HAVEN DEPOT LIMITED', MARGIN, 20);
+  ghPdfLetterhead(doc, MARGIN, 8, 122);
   doc.setFont(undefined, 'italic'); doc.setFontSize(9.5); doc.setTextColor(...GOLD);
-  doc.text('Container Interchange Report', MARGIN, 26.5);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(120);
-  doc.text('Mombasa, Kenya  ·  Generated automatically for reference only', MARGIN, 31.5);
+  doc.text('Container Interchange Report', MARGIN, 33);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(120);
+  doc.text('Generated automatically for reference only', RIGHT, 33, { align: 'right' });
 
   // Top-right stacked boxes, mirroring the "Inward Date / Inward IER" boxes
   // on the Dodwell form.
@@ -557,19 +556,29 @@ function downloadInterchangeSlip(icId) {
   doc.setFontSize(7.5); doc.setTextColor(150);
   doc.text('This document confirms container delivery/receipt at Gargo Haven Depot and supports transporter payment processing.', MARGIN, 289);
 
-  doc.save(`interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf`);
+  return { doc, filename: `interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
 }
 
-async function downloadInspectionReport(surveyId) {
-  if (!surveyId) { toast('No survey on file for this record', 'error'); return; }
+function downloadInterchangeSlip(icId) {
+  const r = buildInterchangeSlip(icId);
+  if (r) r.doc.save(r.filename);
+}
+
+function printInterchangeSlip(icId) {
+  const r = buildInterchangeSlip(icId);
+  if (r) ghPrintPdf(r.doc);
+}
+
+async function buildInspectionReport(surveyId) {
+  if (!surveyId) { toast('No survey on file for this record', 'error'); return null; }
   let s = (_surveyRegisterData.find(x => x.id === surveyId)) || _surveyLookupCache[surveyId];
   if (!s) {
 
     s = await window.bookingDocs.surveyById(surveyId);
     if (s) _surveyLookupCache[s.id] = s;
   }
-  if (!s) { toast('Survey record not found', 'error'); return; }
-  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
+  if (!s) { toast('Survey record not found', 'error'); return null; }
+  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return null; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const GREEN = [46, 125, 50], BLUE = [30, 64, 175], GOLD = [201, 162, 39];
@@ -602,11 +611,9 @@ async function downloadInspectionReport(surveyId) {
   const reportId = `REP-INS-${String(s.id).replace(/-/g,'').slice(0,8).toUpperCase()}`;
 
   // ---- header ----------------------------------------------------------
-  doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(20);
-  doc.text('GARGO HAVEN DEPOT Ltd', MARGIN, 18);
+  ghPdfLetterhead(doc, MARGIN, 6, 118);
   doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(110);
-  doc.text('Refinery Road, Changamwe, Mombasa. P.O. Box 3291 - 80100 GPO, MSA', MARGIN, 23.5);
-  doc.text('Email: info@gargohavendepot.co.ke', MARGIN, 27.5);
+  doc.text('Email: info@gargohavendepot.co.ke', MARGIN, 29);
 
   doc.setFont(undefined, 'bold'); doc.setFontSize(20); doc.setTextColor(20);
   doc.text('INSPECTION', RIGHT, 17, { align: 'right' });
@@ -766,7 +773,17 @@ async function downloadInspectionReport(surveyId) {
   doc.setFontSize(7.5); doc.setTextColor(150);
   doc.text(`GARGO HAVEN DEPOT Ltd — Generated by ${s.clerk_name || 'system'} on ${now.toLocaleDateString('en-KE')}`, RIGHT, y + 5, { align: 'right' });
 
-  doc.save(`inspection-report-${(s.container || s.id).replace(/\s+/g, '')}.pdf`);
+  return { doc, filename: `inspection-report-${(s.container || s.id).replace(/\s+/g, '')}.pdf` };
+}
+
+async function downloadInspectionReport(surveyId) {
+  const r = await buildInspectionReport(surveyId);
+  if (r) r.doc.save(r.filename);
+}
+
+async function printInspectionReport(surveyId) {
+  const r = await buildInspectionReport(surveyId);
+  if (r) ghPrintPdf(r.doc);
 }
 
 let _linesFilter='all';
@@ -1179,7 +1196,7 @@ function showContainerDetail(contRaw) {
       const meta = [i.eirNumber ? `EIR ${i.eirNumber}` : null, (i.vessel || i.voyage) ? `${i.vessel||'—'} / ${i.voyage||'—'}` : null].filter(Boolean).join(' · ');
       const repairBadge = (i.repairs && i.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${i.repairs.length} damage item${i.repairs.length>1?'s':''} · KSh ${Number(i.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
       const thumb = i.img ? `<img src="${i.img}" style="width:44px;height:44px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="showContainerPhotos('${i.id}')" />` : `<div style="width:44px;height:44px;border-radius:5px;border:1px dashed var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:16px">📦</div>`;
-      return `<div class="activity-row" style="align-items:flex-start;gap:10px">${thumb}<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div>${sbadge(i.status)}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)} · ${fmtDate(i.date)}</div>${meta?`<div style="font-size:10px;color:var(--text-3);margin-top:2px">${meta}</div>`:''}${repairBadge}${i.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:3px">${i.notes}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${(i.surveyId || i.img)?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="showContainerPhotos('${i.id}')">📷 Photos</button>`:''}${i.surveyId?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInspectionReport('${i.surveyId}')">⬇ Inspection Report</button>`:''}<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInterchangeSlip('${i.id}')">⬇ Slip</button></div></div></div>`;
+      return `<div class="activity-row" style="align-items:flex-start;gap:10px">${thumb}<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div>${sbadge(i.status)}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)} · ${fmtDate(i.date)}</div>${meta?`<div style="font-size:10px;color:var(--text-3);margin-top:2px">${meta}</div>`:''}${repairBadge}${i.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:3px">${i.notes}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${(i.surveyId || i.img)?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="showContainerPhotos('${i.id}')">📷 Photos</button>`:''}${i.surveyId?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInspectionReport('${i.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInspectionReport('${i.surveyId}')" title="Print">🖨 Print Report</button>`:''}<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInterchangeSlip('${i.id}')">⬇ Slip</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInterchangeSlip('${i.id}')" title="Print">🖨 Print</button></div></div></div>`;
     }).join('') : '';
 
 

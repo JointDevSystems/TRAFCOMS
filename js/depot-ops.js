@@ -862,7 +862,7 @@ function printDepotReport() {
     th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
-  </style></head><body><h2>Gargo Haven Depot — ${_depotReportTab === 'outward' ? 'Outward' : 'Inward'} Register</h2>
+  </style></head><body>${ghPrintHeaderHtml()}<h2>${_depotReportTab === 'outward' ? 'Outward' : 'Inward'} Register</h2>
   <div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Range: ${_depotReportRange === 'all' ? 'All time' : `Last ${_depotReportRange} days`} · ${items.length} record(s)</div>
   <table><thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Line</th><th>EIR No.</th><th>Truck</th><th>Driver</th><th>Status</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`);
@@ -1004,7 +1004,7 @@ async function renderDepOpsStorageList() {
         const icCell = !survey
           ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>'
           : survey.interchange_generated_at
-            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>${survey.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇</button>` : ''}`
+            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>${survey.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${survey.interchange_id}')" title="Print">🖨</button>` : ''}`
             : `<button class="modal-btn primary" onclick="generateInterchangeFromSurvey('${b.id}','${survey.id}')">Generate →</button>`;
         return `<tr style="border-top:1px solid var(--border)">
           <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
@@ -1564,8 +1564,8 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
         <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'food_grade' ? 'approved' : 'pending'))} ${sanitize(conditionStatusLabel(s.condition_status))}</td>
-        <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
-        <td style="padding:6px 8px"><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button></td>
+        <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
+        <td style="padding:6px 8px"><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button><button class="tbl-btn" onclick="printInspectionReport('${s.id}')" title="Print">🖨</button></td>
         <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>
       </tr>`).join('')}</tbody></table></div>`;
   } catch (e) {
@@ -1593,7 +1593,7 @@ function printSurveyRegister() {
     th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
-  </style></head><body><h2>Gargo Haven Depot — Surveyed Containers</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')}</div>${table.outerHTML}</body></html>`);
+  </style></head><body>${ghPrintHeaderHtml()}<h2>Surveyed Containers</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')}</div>${table.outerHTML}</body></html>`);
   w.document.close();
   w.focus();
   w.print();
@@ -1654,7 +1654,7 @@ async function renderDepOpsMasterList() {
           <td style="padding:6px 8px">${sbadge(b.storage_status==='escalated'?'rejected':b.storage_status==='surveyed'||b.storage_status==='allocated'?'approved':'pending')} ${MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status||'—')}</td>
           <td style="padding:6px 8px">${s ? sanitize(conditionStatusLabel(s.condition_status)) : '—'}</td>
           <td style="padding:6px 8px">${loc}</td>
-          <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button>` : ''}` : '—'}</td>
+          <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   } catch (e) {

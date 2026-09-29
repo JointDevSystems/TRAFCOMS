@@ -199,13 +199,7 @@ async function showInvoiceDetail(id) {
 
   openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc">
     <div class="inv-doc-head">
-      <div style="display:flex;gap:12px;align-items:flex-start">
-        <div class="inv-doc-logo">GH</div>
-        <div>
-          <div class="inv-doc-company-name">${ic.companyName}</div>
-          <div class="inv-doc-company-details">${ic.companyLocation}<br>${ic.poBox}</div>
-        </div>
-      </div>
+      <div>${ghModalHeaderHtml(380)}</div>
       <div style="text-align:right">
         <div class="inv-doc-type">Invoice</div>
         <div class="inv-doc-status">${sbadge(inv.status)}</div>
@@ -245,7 +239,7 @@ async function showInvoiceDetail(id) {
     </div>
     ${inv.notes?`<div class="inv-notes">${esc(inv.notes)}</div>`:''}
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
+  <div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button><button class="modal-btn ghost" onclick="printInvoicePDF('${id}')">🖨 Print</button></div>`);
 }
 
 function markInvoicePaid(id) {
@@ -270,10 +264,10 @@ function markInvoiceSent(id) {
   toast(`${inv.ref} marked as sent`, 'success');
 }
 
-async function downloadInvoicePDF(id) {
+async function buildInvoicePDF(id) {
   const inv = state.db.invoices.find(i=>i.id===id);
-  if (!inv) { toast('Invoice not found', 'error'); return; }
-  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return; }
+  if (!inv) { toast('Invoice not found', 'error'); return null; }
+  if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return null; }
 
   await ensureTripsLoaded(inv.trips);
   const trips = state.db.trips.filter(t=>inv.trips.includes(t.id));
@@ -304,15 +298,7 @@ async function downloadInvoicePDF(id) {
   }
 
   // ---- header --------------------------------------------------------
-  doc.setDrawColor(...GOLD); doc.setLineWidth(0.5); doc.roundedRect(MARGIN, 10, 14, 14, 2, 2);
-  doc.setFont(undefined, 'bold'); doc.setFontSize(11); doc.setTextColor(...GOLD);
-  doc.text('GH', MARGIN + 7, 19, { align: 'center' });
-
-  doc.setFont(undefined, 'bold'); doc.setFontSize(15); doc.setTextColor(20);
-  doc.text(ic.companyName.toUpperCase(), MARGIN + 18, 16);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-  doc.text(ic.companyLocation, MARGIN + 18, 21.5);
-  doc.text(ic.poBox, MARGIN + 18, 26);
+  ghPdfLetterhead(doc, MARGIN, 8, 130);
 
   doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(20);
   doc.text('INVOICE', RIGHT, 16, { align: 'right' });
@@ -431,8 +417,21 @@ async function downloadInvoicePDF(id) {
   doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(160);
   doc.text('This is a computer-generated invoice.', MARGIN, 289);
 
-  doc.save(`${inv.ref}.pdf`);
-  addAudit(state.profile.username, 'Invoice PDF Downloaded', inv.ref);
+  return { doc, filename: `${inv.ref}.pdf`, inv };
+}
+
+async function downloadInvoicePDF(id) {
+  const r = await buildInvoicePDF(id);
+  if (!r) return;
+  r.doc.save(r.filename);
+  addAudit(state.profile.username, 'Invoice PDF Downloaded', r.inv.ref);
+}
+
+async function printInvoicePDF(id) {
+  const r = await buildInvoicePDF(id);
+  if (!r) return;
+  ghPrintPdf(r.doc);
+  addAudit(state.profile.username, 'Invoice Printed', r.inv.ref);
 }
 
 let _ciLastLineItems = [];
