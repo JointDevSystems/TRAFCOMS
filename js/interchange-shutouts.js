@@ -285,7 +285,7 @@ function printInterchangeList() {
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
   </style></head><body>${ghPrintHeaderHtml()}<h2>Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
-  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}${customBlock}</tbody></table>
   </body></html>`);
   w.document.close();
   w.focus();
@@ -829,6 +829,36 @@ function lineServiceRates(l, key) {
   return officialServiceRates(l?.code, key);
 }
 
+
+// ── Custom billing items: any extra charge you invent per line (stored in shipping_lines.rates with custom:true) ──
+function customRowHTML(prefix, key, it) {
+  const v = x => (x == null ? '' : esc(x));
+  return `<div class="${prefix}-crow" data-key="${esc(key)}" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+    <div class="form-row-2" style="margin-bottom:8px">
+      <div class="fg" style="margin:0"><label>Item name</label><input class="crow-label" value="${v(it.label)}" placeholder="e.g. Gate pass fee"/></div>
+      <div class="fg" style="margin:0"><label>Unit</label><input class="crow-unit" value="${v(it.unit)}" placeholder="per container"/></div>
+    </div>
+    <div class="form-row-2" style="margin-bottom:0">
+      <div class="fg" style="margin:0"><label>20 ft</label><input class="crow-20" type="number" min="0" step="0.01" value="${v(it['20ft'])}"/></div>
+      <div class="fg" style="margin:0"><label>40 ft</label><input class="crow-40" type="number" min="0" step="0.01" value="${v(it['40ft'])}"/></div>
+    </div>
+    <button type="button" class="tbl-btn" style="margin-top:8px" onclick="this.closest('.${prefix}-crow').remove()">Remove item</button>
+  </div>`;
+}
+
+function customItemsHTML(prefix, l) {
+  const items = Object.entries(l?.rates || {}).filter(([k, v]) => v && v.custom);
+  return `<div style="margin:14px 0 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">Custom Billing Items</div>
+    <div id="${prefix}_customList">${items.map(([k, v]) => customRowHTML(prefix, k, v)).join('')}</div>
+    <button type="button" class="tbl-btn" style="margin-bottom:8px" onclick="addCustomLineItem('${prefix}')">+ Add billing item</button>`;
+}
+
+function addCustomLineItem(prefix) {
+  const key = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const list = document.getElementById(prefix + '_customList');
+  if (list) list.insertAdjacentHTML('beforeend', customRowHTML(prefix, key, {}));
+}
+
 function lineRatesFormHTML(prefix, l, code) {
   const val = v => (v == null ? '' : esc(v));
   const touch = 'oninput="this.dataset.touched=\'1\'"';
@@ -848,6 +878,7 @@ function lineRatesFormHTML(prefix, l, code) {
         ${def.note ? `<div style="font-size:10.5px;color:var(--text-3);margin-top:6px">${esc(def.note)}</div>` : ''}
       </div>`;
     }).join('')}`).join('') +
+    customItemsHTML(prefix, l) +
     `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;margin-top:2px">Leave a rate blank if that service is not charged for this line. Amounts are in the billing currency chosen above and are never converted.</div>`;
 }
 
@@ -874,6 +905,16 @@ function readLineRatesForm(prefix, existing, currency, currencyChanged) {
     entry.currency = (!currencyChanged && prev) ? prev : currency;
     out[key] = entry;
   }
+  document.querySelectorAll('.' + prefix + '-crow').forEach(row => {
+    const label = row.querySelector('.crow-label').value.trim();
+    if (!label) return; // rows with no name are ignored
+    const rd = sel => { const raw = row.querySelector(sel).value.trim(); if (raw === '') return null; const n = parseFloat(raw); return (isFinite(n) && n >= 0) ? Math.round(n * 100) / 100 : NaN; };
+    const a = rd('.crow-20'), b = rd('.crow-40');
+    if (Number.isNaN(a) || Number.isNaN(b)) { bad = bad || label; return; }
+    const key = row.dataset.key;
+    const prev = existing?.[key]?.currency;
+    out[key] = { label, unit: row.querySelector('.crow-unit').value.trim(), '20ft': a, '40ft': b, currency: (!currencyChanged && prev) ? prev : currency, custom: true };
+  });
   return { rates: out, error: bad ? `Invalid rate for "${bad}" \u2014 use a number of 0 or more` : null };
 }
 
@@ -905,7 +946,7 @@ function showEditLineModal(id) {
     ${lineRatesFormHTML('sle', l)}
     <div class="fg" style="margin-top:14px"><label>Status</label><select id="sle_active"><option value="true" ${l.active ? 'selected' : ''}>Active</option><option value="false" ${!l.active ? 'selected' : ''}>Inactive</option></select></div>
     <button class="submit-btn" onclick="saveShippingLineEdit('${esc(l.id)}')">Save Changes \u2192</button>
-    ${isAdmin() ? `<button class="modal-btn danger" style="width:100%;margin-top:8px" onclick="deleteShippingLine('${esc(l.id)}')">\ud83d\uddd1 Delete ${esc(l.code)}\u2026</button>` : ''}`);
+    ${canFinance() ? `<button class="modal-btn danger" style="width:100%;margin-top:8px" onclick="deleteShippingLine('${esc(l.id)}')">\ud83d\uddd1 Delete ${esc(l.code)}\u2026</button>` : ''}`);
 }
 
 function showAddLineModal() {
@@ -969,6 +1010,9 @@ function showLineRateCard(id) {
       const extra = key === 'storage' && r.freeDays != null ? `<div style="font-size:10px;color:var(--text-3)">Free for ${esc(r.freeDays)} days, then per day</div>` : (def.uponRequestOnly ? '<div style="font-size:10px;color:var(--text-3)">Upon request only</div>' : `<div style="font-size:10px;color:var(--text-3)">${esc(def.unit || '')}</div>`);
       return `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 8px;font-size:12px">${esc(def.label)}${extra}</td><td class="mono" style="padding:7px 8px;text-align:right">${cell(r['20ft'])}</td><td class="mono" style="padding:7px 8px;text-align:right">${cell(r['40ft'])}</td></tr>`;
     }).join('')).join('');
+  const customRows = Object.entries(l.rates || {}).filter(([k, v]) => v && v.custom).map(([k, v]) =>
+    `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 8px;font-size:12px">${esc(v.label)}<div style="font-size:10px;color:var(--text-3)">${esc(v.unit || '')}</div></td><td class="mono" style="padding:7px 8px;text-align:right">${cell(v['20ft'])}</td><td class="mono" style="padding:7px 8px;text-align:right">${cell(v['40ft'])}</td></tr>`).join('');
+  const customBlock = customRows ? `<tr><td colspan="3" style="padding:12px 8px 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">Custom Billing Items</td></tr>` + customRows : '';
   openModal(`${esc(l.code)} \u2014 Rate Card`, `
     <div style="font-size:11.5px;color:var(--text-2);margin-bottom:8px">${esc(l.name)} \u00b7 billed in <b>${esc(l.currency || 'USD')}</b></div>
     <table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:1px"><th style="padding:6px 8px">Service</th><th style="padding:6px 8px;text-align:right">20 ft</th><th style="padding:6px 8px;text-align:right">40 ft</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1037,61 +1081,47 @@ async function setShippingLineActive(id, active) {
   toast(`${l.code} marked ${active ? 'active' : 'inactive'}`, 'success');
 }
 
-// Admin-only. A line that trips, bookings, interchange etc. still point at can't be deleted without
-// orphaning that history, so the server is asked first and the delete is blocked with a reason.
-async function deleteShippingLine(id) {
-  if (!isAdmin()) { toast('Admin rights required to delete shipping lines', 'error'); return; }
+// Simple delete: one confirmation, no blocking. Anything that pointed at the line is detached
+// (left with no shipping line) and the line's own portal links / vessel mappings / overrides are removed.
+function deleteShippingLine(id) {
+  if (!canFinance()) { toast('Admin or Finance rights required to delete shipping lines', 'error'); return; }
   const l = state.db.shippingLines.find(x => x.id === id);
   if (!l) { toast('Shipping line not found', 'error'); return; }
-  openModal(`Delete ${esc(l.code)}`, '<div style="font-size:12.5px;color:var(--text-2)">Checking where this line is used\u2026</div>');
-
-  const count = (table, col) => supabase.from(table).select('id', { count: 'exact', head: true }).eq(col, id);
-  const usedBy = [
-    ['trip(s)', 'trips', 'shipping_line_id'], ['booking(s)', 'public_bookings', 'shipping_line_id'],
-    ['interchange record(s)', 'interchange', 'line_id'], ['shutout record(s)', 'shutouts', 'line_id'],
-    ['vessel prestaking record(s)', 'vessel_prestaking', 'line_id'], ['container repair job(s)', 'container_repairs', 'line_id'],
-    ['depot storage zone(s)', 'depot_storage_zones', 'shipping_line_id'], ['depot survey(s)', 'depot_surveys', 'shipping_line_id'],
-  ];
-  const removedToo = [
-    ['portal user link(s)', 'shipping_line_users', 'shipping_line_id'], ['vessel mapping(s)', 'vessel_line_map', 'line_id'],
-    ['rate override(s)', 'shipping_line_rate_overrides', 'line_id'],
-  ];
-  let results;
-  try {
-    results = await Promise.all([...usedBy, ...removedToo].map(async ([label, table, col]) => {
-      const { count: n, error } = await count(table, col);
-      if (error && (error.code === 'PGRST205' || error.code === '42P01' || /does not exist|schema cache/i.test(error.message || ''))) return { label, n: 0 };
-      if (error) throw new Error(`${table}: ${error.message}`);
-      return { label, n: n || 0 };
-    }));
-  } catch (e) {
-    document.getElementById('modalBody').innerHTML = `<div class="ops-notice">Could not check usage, so nothing was deleted \u2014 ${esc(e.message)}</div>`;
-    return;
-  }
-  const blockers = results.slice(0, usedBy.length).filter(r => r.n > 0);
-  const cascades = results.slice(usedBy.length).filter(r => r.n > 0);
-  const body = document.getElementById('modalBody');
-  if (blockers.length) {
-    body.innerHTML = `
-      <div class="ops-notice" style="margin-bottom:12px"><b>${esc(l.code)} can\u2019t be deleted</b> \u2014 deleting it would orphan its history:</div>
-      <ul style="margin:0 0 14px 18px;padding:0;font-size:12.5px;color:var(--text-2);line-height:1.7">${blockers.map(b => `<li><b>${fmt(b.n)}</b> ${esc(b.label)}</li>`).join('')}</ul>
-      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Mark it inactive instead: it disappears from dropdowns and new work, but past records and invoices stay intact.</div>
-      <div style="display:flex;gap:8px">${l.active ? `<button class="submit-btn" style="margin-top:0;flex:1" onclick="setShippingLineActive('${esc(l.id)}', false)">Mark ${esc(l.code)} inactive</button>` : ''}<button class="modal-btn ghost" onclick="closeModal()">Close</button></div>`;
-    return;
-  }
-  body.innerHTML = `
-    <div class="vault-banner"><div class="vault-banner-label">\u26a0 IRREVERSIBLE ACTION</div><div class="vault-banner-desc">Permanently delete <b>${esc(l.code)} \u2014 ${esc(l.name)}</b> and its rate card. Nothing else in the system uses it.${cascades.length ? ` This also removes ${cascades.map(c => `${fmt(c.n)} ${esc(c.label)}`).join(', ')}.` : ''}</div></div>
-    <div style="display:flex;gap:8px;margin-top:12px"><button class="modal-btn danger" onclick="executeDeleteShippingLine('${esc(l.id)}')">Delete ${esc(l.code)}</button><button class="modal-btn ghost" onclick="closeModal()">Cancel</button></div>`;
+  openModal(`Delete ${esc(l.code)}`, `
+    <div class="vault-banner"><div class="vault-banner-label">\u26a0 IRREVERSIBLE ACTION</div><div class="vault-banner-desc">Permanently delete <b>${esc(l.code)} \u2014 ${esc(l.name)}</b> and its rate card. Trips, bookings, interchange and other records that used it are kept, but will show no shipping line.</div></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="modal-btn danger" onclick="executeDeleteShippingLine('${esc(l.id)}')">Delete ${esc(l.code)}</button><button class="modal-btn ghost" onclick="closeModal()">Cancel</button></div>`);
 }
 
 async function executeDeleteShippingLine(id) {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  if (!canFinance()) { toast('Admin or Finance rights required', 'error'); return; }
   const idx = state.db.shippingLines.findIndex(x => x.id === id);
   if (idx === -1) return;
   const l = state.db.shippingLines[idx];
+  const missing = e => e && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(e.message || ''));
+
+  const detach = [
+    ['trips', 'shipping_line_id'], ['public_bookings', 'shipping_line_id'], ['interchange', 'line_id'],
+    ['shutouts', 'line_id'], ['vessel_prestaking', 'line_id'], ['container_repairs', 'line_id'],
+    ['depot_storage_zones', 'shipping_line_id'], ['depot_surveys', 'shipping_line_id'],
+  ];
+  const remove = [['shipping_line_users', 'shipping_line_id'], ['vessel_line_map', 'line_id'], ['shipping_line_rate_overrides', 'line_id']];
+
+  for (const [table, col] of detach) {
+    const { error } = await supabase.from(table).update({ [col]: null }).eq(col, id);
+    if (error && !missing(error)) { toast(`Could not detach ${table} \u2014 ${error.message}`, 'error', 8000); return; }
+  }
+  for (const [table, col] of remove) {
+    const { error } = await supabase.from(table).delete().eq(col, id);
+    if (error && !missing(error)) { toast(`Could not clear ${table} \u2014 ${error.message}`, 'error', 8000); return; }
+  }
   const { data, error } = await supabase.from('shipping_lines').delete().eq('id', id).select('id');
-  if (error) { toast(`Could not delete \u2014 ${error.message}`, 'error', 6000); return; }
-  if (!data || !data.length) { toast('Nothing was deleted \u2014 you may not have permission, or it is already gone', 'error', 6000); return; }
+  if (error) { toast(`Could not delete \u2014 ${error.message}`, 'error', 8000); return; }
+  if (!data || !data.length) { toast('Nothing was deleted \u2014 you may not have permission (Supabase RLS), or it is already gone', 'error', 8000); return; }
+
+  // keep local state consistent so the next auto-save doesn't re-send the deleted id
+  const clear = (arr, k) => (arr || []).forEach(r => { if (r[k] === id) { r[k] = ''; r._dirty = true; } });
+  clear(state.db.trips, 'shippingLine'); clear(state.db.shutouts, 'line'); clear(state.db.interchange, 'line');
+  clear(state.db.vesselPrestaking, 'line'); clear(state.db.containerRepairs, 'line');
   state.db.shippingLines.splice(idx, 1);
   state.db.vesselLineMap = (state.db.vesselLineMap || []).filter(m => (m.line || m.lineId || m.line_id) !== id);
   addAudit(state.profile.username, 'Shipping Line Deleted', `${l.code} \u2014 ${l.name}`);

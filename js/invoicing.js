@@ -30,7 +30,7 @@ function serviceRateFor(lineCode, serviceKey, sizeKey, line) {
   if (stored && typeof stored === 'object' && ('20ft' in stored || '40ft' in stored)) {
     const amt = stored[sizeKey];
     if (amt == null || amt === '') return null; // blank = not charged for this line
-    return { amount: Number(amt), currency: line.currency || override?.currency || sched.currency, label: def?.label || serviceKey, unit: def?.unit, freeDays: stored.freeDays ?? def?.freeDays };
+    return { amount: Number(amt), currency: line.currency || override?.currency || sched.currency, label: stored.label || def?.label || serviceKey, unit: stored.unit || def?.unit, freeDays: stored.freeDays ?? def?.freeDays };
   }
   const amount = def?.rates?.[sizeKey];
   if (def == null || amount == null) return null;
