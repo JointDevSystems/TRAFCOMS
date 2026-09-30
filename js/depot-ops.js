@@ -163,7 +163,9 @@ function switchInwardTab(tab, btn) {
   if (btn) btn.classList.add('active');
 }
 
+let _inwardSaving = false;
 async function createInwardEntry() {
+  if (_inwardSaving) return;
   const cont = document.getElementById('iw_container').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
   const contIssue = containerFormatIssue(cont);
@@ -176,6 +178,11 @@ async function createInwardEntry() {
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
   if (dupIc) { toast(`${cont} already has a ${type} record logged on ${fmtDate(dateVal)}`, 'warning'); return; }
 
+  const domVal = normalizeManufactureDate(document.getElementById('iw_dom').value);
+  if (domVal === null) { toast('Date of manufacture must look like 05/2011', 'error'); return; }
+  const grossRaw = document.getElementById('iw_gross').value.trim();
+  const grossVal = grossRaw ? Number(grossRaw) : '';
+  if (grossRaw && (!isFinite(grossVal) || grossVal <= 0)) { toast('Gross weight must be a positive number', 'error'); return; }
 
   const truckVal  = document.getElementById('iw_truck').value.trim();
   const driverVal = document.getElementById('iw_driver').value.trim();
@@ -189,6 +196,17 @@ async function createInwardEntry() {
   const cargoStatusEl = document.getElementById('iw_cargo_status');
   const photos = _inwardImages.slice();
 
+  // Guarantee No. and B/L No. are one number on the paperwork — one field, stored in both.
+  const guaranteeBl = sanitize(document.getElementById('iw_guarantee_no').value.trim());
+
+  _inwardSaving = true;
+  let eirNumber;
+  try {
+    eirNumber = await nextEirNumber(type);
+  } finally {
+    _inwardSaving = false;
+  }
+
   const icRecord = {
     id: icId, container: cont, type,
     ctype,
@@ -200,12 +218,16 @@ async function createInwardEntry() {
     driverNameText: driver ? '' : sanitize(driverVal),
     transporter: sanitize(document.getElementById('iw_transporter').value.trim()),
     driverIdNumber: sanitize(document.getElementById('iw_driver_id').value.trim()),
-    eirNumber: sanitize(document.getElementById('iw_eir').value.trim()),
-    blNumber: sanitize(document.getElementById('iw_bl').value.trim()),
+    eirNumber,
+    blNumber: guaranteeBl,
+    guaranteeNo: guaranteeBl,
     vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
     voyage: sanitize(document.getElementById('iw_voyage').value.trim()),
-    deliveringParty: sanitize(document.getElementById('iw_delivering').value.trim()),
-    guaranteeNo: sanitize(document.getElementById('iw_guarantee_no').value.trim()),
+    deliveringParty: sanitize(document.getElementById('iw_delivering').value.trim()),   // consignee / C&F
+    isoCode: sanitize(document.getElementById('iw_iso').value.trim()).toUpperCase(),
+    trailerNo: sanitize(document.getElementById('iw_trailer').value.trim()),
+    grossWeight: grossVal,
+    manufactureDate: domVal,
     cargoStatus: cargoStatusEl ? cargoStatusEl.value : '',
     repairs: [], repairTotal: 0,
     notes: sanitize(document.getElementById('iw_notes').value.trim()),
@@ -217,9 +239,9 @@ async function createInwardEntry() {
   };
   state.db.interchange.push(icRecord);
   buildBadges();
-  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type})${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
+  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type}) · ${eirNumber}${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
   refreshContainerHistory();
-  toast(`Inward entry recorded — ${cont}`, 'success');
+  toast(`Inward entry recorded — ${cont} · ${eirNumber}`, 'success');
   clearInwardForm();
   renderInterchange('all');
   renderInwardRecent();
@@ -272,6 +294,7 @@ async function createDepotBookingFromInterchange(ic) {
     service_type: 'Depot Storage',
     storage_status: 'awaiting_survey',
     full_name: driver ? driver.name : (ic.driverNameText || 'Gate Entry'),
+    company: ic.deliveringParty || '',
     email: '',
     phone: '',
     container: ic.container || '',
@@ -292,7 +315,7 @@ async function createDepotBookingFromInterchange(ic) {
 }
 
 function clearInwardForm(skipRepopulate) {
-  ['iw_container','iw_truck','iw_driver','iw_eir','iw_bl','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no','iw_transporter','iw_driver_id'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['iw_container','iw_truck','iw_driver','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no','iw_transporter','iw_driver_id','iw_iso','iw_trailer','iw_gross','iw_dom'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
   const typeEl = document.getElementById('iw_type_movement'); if (typeEl) typeEl.value = 'Gate-In';
   const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
@@ -507,6 +530,8 @@ function processBulkInward() {
     const cargoStatusRaw = pickField(r, ['cargostatus']);
     const cargoStatus = CARGO_STATUS_OPTIONS.find(c => c.toLowerCase() === cargoStatusRaw.toLowerCase()) || sanitize(cargoStatusRaw);
 
+    // Guarantee No. and B/L No. are the same number — take whichever column the file has.
+    const guaranteeBlVal = sanitize(pickField(r, ['guaranteeno','guaranteenumber','guranteeformno','guaranteeformno','bl','blnumber','blno']));
     state.db.interchange.push({
       id: uid('IC'), container: cont, type, ctype,
       line: line ? line.id : '',
@@ -515,12 +540,12 @@ function processBulkInward() {
       truckRegText: truck ? '' : sanitize(truckVal),
       driverNameText: driver ? '' : sanitize(driverVal),
       eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno','ineirno','outeirno','outeir','refinno','refoutno','inwardno'])),
-      blNumber:  sanitize(pickField(r, ['bl','blnumber','blno'])),
+      blNumber:  guaranteeBlVal,
       vessel:    sanitize(vesselVal),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),
       deliveringParty: sanitize(pickField(r, ['deliveringparty','delivering','shipper'])),
 
-      guaranteeNo:     sanitize(pickField(r, ['guaranteeno','guaranteenumber','guranteeformno','guaranteeformno'])),
+      guaranteeNo:     guaranteeBlVal,
       cargoStatus,
       repairs: [], repairTotal: 0,
       notes: [sanitize(pickField(r, ['notes','remarks'])) || 'Bulk import', ...issueTags.map(t=>`⚠ ${t}`)].filter(Boolean).join(' — '),
@@ -1139,15 +1164,15 @@ async function openSurveyModal(bookingId) {
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="${sanitize(booking.bl_number || '')}"></div>
-      <div class="fg"><label>EIR / Reference No.</label><input id="sv_eir" value="${sanitize(booking.eir_number || '')}" placeholder="Transporter's own EIR no."></div>
+      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="${sanitize(booking.transporter || '')}"></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Vessel</label><input id="sv_vessel" value="${sanitize(booking.vessel || '')}"></div>
       <div class="fg"><label>Voyage</label><input id="sv_voyage" value="${sanitize(booking.voyage || '')}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="${sanitize(booking.transporter || '')}"></div>
       <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1"></div>
+      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number"></div>
@@ -1165,7 +1190,6 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Surveyed By</label><input id="sv_clerk" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
       <div class="fg"><label>Seal Number</label><input id="sv_seal"></div>
     </div>
-    <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
 
     <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
       <option value="food_grade">Food Grade</option>
@@ -1245,7 +1269,7 @@ async function saveSurvey(bookingId) {
       shippingLineId: val('sv_line') || null,
       consignee: val('sv_consignee'),
       blNumber: val('sv_bl'),
-      eirNumber: val('sv_eir'),
+      eirNumber: sourceIc ? (sourceIc.eirNumber || '') : '',   // EIR is system-generated; never typed in
       isoCode: val('sv_iso'),
       mgwt: val('sv_mgwt') ? parseFloat(val('sv_mgwt')) : null,
       tareWeight: val('sv_tare') ? parseFloat(val('sv_tare')) : null,
@@ -1301,10 +1325,12 @@ function syncSurveyBackToInterchange(ic, survey, heavy) {
   ic.surveyedBy = (state.profile && state.profile.username) || ic.surveyedBy;
   if (survey.vessel) ic.vessel = survey.vessel;
   if (survey.voyage) ic.voyage = survey.voyage;
-  if (survey.bl_number) ic.blNumber = survey.bl_number;
-  if (survey.eir_number) ic.eirNumber = survey.eir_number;
+  if (survey.bl_number) { ic.blNumber = survey.bl_number; ic.guaranteeNo = survey.bl_number; }
   if (survey.transporter) ic.transporter = survey.transporter;
   if (survey.driver_id_number) ic.driverIdNumber = survey.driver_id_number;
+  if (survey.iso_code) ic.isoCode = survey.iso_code;
+  if (survey.trailer_number) ic.trailerNo = survey.trailer_number;
+  if (survey.mgwt) ic.grossWeight = survey.mgwt;
   if (survey.photos && survey.photos.length) {
     ic.photos = survey.photos.slice();
     ic.img = survey.photos[0];
@@ -1343,6 +1369,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
     }
 
+    const eirNumber = await nextEirNumber('Depot-In');
     const icRecord = {
       id: uid('IC'),
       container: (survey.container || (booking && booking.container) || '').toUpperCase(),
@@ -1355,7 +1382,14 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       vessel: survey.vessel || '',
       voyage: survey.voyage || '',
       blNumber: survey.bl_number || '',
-      eirNumber: survey.eir_number || '',
+      guaranteeNo: survey.bl_number || '',
+      eirNumber,
+      deliveringParty: survey.consignee || '',
+      transporter: survey.transporter || '',
+      driverIdNumber: survey.driver_id_number || '',
+      isoCode: survey.iso_code || '',
+      trailerNo: survey.trailer_number || '',
+      grossWeight: survey.mgwt || '',
       repairs: survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ category: survey.tariff_category, code: survey.tariff_code, side: survey.tariff_side, item: survey.tariff_item, hours: survey.tariff_hours, material: survey.tariff_material }] : []),
       repairTotal: repairItemsTotal(survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ hours: survey.tariff_hours, material: survey.tariff_material }] : [])),
       notes: sanitize(`Auto-generated from survey · Clerk: ${survey.clerk_name || '—'} · Transporter: ${survey.transporter || '—'}${!matchedTruck && survey.truck_reg ? ' · Truck: ' + survey.truck_reg : ''}${!matchedDriver && survey.driver_name ? ' · Driver: ' + survey.driver_name : ''} · Storage: ${storageLocation}`),

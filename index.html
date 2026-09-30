@@ -661,37 +661,44 @@
                                         <span>New Inward Entry</span>
                                     </div>
                                     <div class="form-card-body">
+                                        <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px">The <strong>EIR No.</strong> is generated automatically when the entry is recorded.</div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="iw_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
                                             <div class="fg"><label>Size</label><select id="iw_size" onchange="refreshTypeSelectForSize('iw_size','iw_type')"></select></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Type</label><select id="iw_type"></select></div>
-                                            <div class="fg"><label>EIR No.</label><input id="iw_eir" placeholder="Transporter's own EIR no." /></div>
+                                            <div class="fg"><label>ISO Code <span class="label-optional">(optional)</span></label><input id="iw_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Date IN <span class="label-optional">(optional, defaults to now)</span></label><input id="iw_date" type="datetime-local" /></div>
-                                            <div class="fg"><label>Delivering Party</label><input id="iw_delivering" placeholder="Shipper / delivering party" /></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Guarantee No.</label><input id="iw_guarantee_no" placeholder="Guarantee form no." /></div>
-                                            <div class="fg"><label>Ex Vessel</label><input id="iw_vessel" /></div>
-                                        </div>
-                                        <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
-                                        <div class="form-row-2">
                                             <div class="fg"><label>Movement</label>
                                                 <select id="iw_type_movement"><option>Gate-In</option><option>Depot-In</option></select>
                                             </div>
-                                            <div class="fg"><label>Shipping Line</label><select id="iw_line"></select></div>
                                         </div>
-                                        <div class="fg"><label>B/L Number</label><input id="iw_bl" /></div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Truck</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" /></div>
-                                            <div class="fg"><label>Driver</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
+                                            <div class="fg"><label>Consignee / C&amp;F</label><input id="iw_delivering" placeholder="Consignee / clearing &amp; forwarding agent" /></div>
+                                            <div class="fg"><label>Shipping Line / Agent</label><select id="iw_line"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Ex Vessel</label><input id="iw_vessel" /></div>
+                                            <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Guarantee / B/L No.</label><input id="iw_guarantee_no" placeholder="Guarantee form / B/L no." /></div>
+                                            <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="iw_gross" type="number" min="0" step="1" placeholder="e.g. 30480" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Lorry No.</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" /></div>
+                                            <div class="fg"><label>Trailer No. <span class="label-optional">(optional)</span></label><input id="iw_trailer" placeholder="e.g. ZD502" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Driver Name</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
+                                            <div class="fg"><label>ID / Driving No. <span class="label-optional">(optional)</span></label><input id="iw_driver_id" placeholder="National ID / driving licence no." /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="iw_transporter" placeholder="Transporting company" /></div>
-                                            <div class="fg"><label>Driver ID Number <span class="label-optional">(optional)</span></label><input id="iw_driver_id" placeholder="National ID no." /></div>
+                                            <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="iw_dom" placeholder="MM/YYYY" maxlength="7" /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>

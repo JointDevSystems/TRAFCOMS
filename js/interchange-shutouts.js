@@ -15,9 +15,9 @@ function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.ve
 
 function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes, img:r.img||'' }; }
 
-function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null, flagged_for_review:!!i.flaggedForReview, flag_reasons:JSON.stringify(i.flagReasons||[]), duplicate_of_id:i.duplicateOfId||null, import_batch_id:i.importBatchId||null, transporter:i.transporter||null, driver_id_number:i.driverIdNumber||null, photos:JSON.stringify(i.photos||[]) }; }
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null, flagged_for_review:!!i.flaggedForReview, flag_reasons:JSON.stringify(i.flagReasons||[]), duplicate_of_id:i.duplicateOfId||null, import_batch_id:i.importBatchId||null, transporter:i.transporter||null, driver_id_number:i.driverIdNumber||null, photos:JSON.stringify(i.photos||[]), iso_code:i.isoCode||null, trailer_no:i.trailerNo||null, gross_weight:(i.grossWeight===''||i.grossWeight==null)?null:Number(i.grossWeight), manufacture_date:i.manufactureDate||null }; }
 
-function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'' }; }
 
 
 function normVessel(v) { return (v || '').trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -295,9 +295,9 @@ function printInterchangeList() {
 function downloadInterchangeCSV() {
   const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to download yet', 'error'); return; }
-  const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Delivering Party', 'Guarantee No.', 'Cargo Status', 'Condition', 'Truck', 'Driver', 'Date Out', 'Receiving Party', 'Release Order No.', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
+  const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Consignee / C&F', 'Guarantee / B/L No.', 'ISO Code', 'Trailer No.', 'Gross Weight (kg)', 'Date of Manufacture', 'Transporter', 'Driver ID / Driving No.', 'Cargo Status', 'Condition', 'Truck', 'Driver', 'Date Out', 'Receiving Party', 'Release Order No.', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
   const rows = items.map(ic => [
-    ic.date, ic.container, ic.eirNumber, ic.type, ic.ctype, lineName(ic.line), ic.vessel, ic.voyage, ic.deliveringParty, ic.guaranteeNo, ic.cargoStatus, ic.condition, truckName(ic.truck), driverName(ic.driver),
+    ic.date, ic.container, ic.eirNumber, ic.type, ic.ctype, lineName(ic.line), ic.vessel, ic.voyage, ic.deliveringParty, ic.guaranteeNo || ic.blNumber, ic.isoCode, ic.trailerNo, ic.grossWeight, ic.manufactureDate, ic.transporter, ic.driverIdNumber, ic.cargoStatus, ic.condition, truckName(ic.truck), driverName(ic.driver),
     ic.dateOut, ic.receivingParty, ic.releaseOrderNo,
     (ic.repairs || []).map(r => `${r.code} (${r.item})`).join('; '), ic.repairTotal || 0, ic.status, ic.notes,
   ]);
@@ -328,43 +328,148 @@ function approveInterchange(id) {
   toast('Interchange approved', 'success');
 }
 
+/* ── EIR numbering + shared interchange helpers ────────────────────────
+   EIR numbers are never typed in. Each new interchange gets the next number
+   in its own series — EIR-IN-000001 for inward movements, EIR-OUT-000001 for
+   outward. If the next_eir_number() database function is installed (see
+   supabase_interchange_eir_migration.sql) the number comes from a Postgres
+   sequence, so two clerks recording at once can never get the same one.
+   Until then it falls back to "highest existing + 1", checking the database
+   as well as the rows loaded in the browser (only part of the interchange
+   table is loaded at any time). */
+function isInwardMovement(type) { return type === 'Gate-In' || type === 'Depot-In'; }
+
+async function nextEirNumber(movementType) {
+  const kind = isInwardMovement(movementType) ? 'IN' : 'OUT';
+  const prefix = `EIR-${kind}-`;
+  try {
+    const { data, error } = await supabase.rpc('next_eir_number', { p_kind: kind });
+    if (!error && typeof data === 'string' && data.indexOf(prefix) === 0) return data;
+  } catch (e) { /* function not installed yet — fall through to the max+1 fallback */ }
+  const re = new RegExp('^' + prefix + '(\\d+)$');
+  let max = 0;
+  (state.db.interchange || []).forEach(i => {
+    const m = re.exec(i.eirNumber || '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  try {
+    const { data } = await supabase.from('interchange').select('eir_number')
+      .like('eir_number', prefix + '%').order('eir_number', { ascending: false }).limit(1);
+    const m = data && data[0] && re.exec(data[0].eir_number || '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  } catch (e) { /* offline / RLS — local max is the best we have */ }
+  return prefix + String(max + 1).padStart(6, '0');
+}
+
+// "5/2011", "05-2011", "2011-05" -> "05/2011". '' when blank, null when unreadable.
+function normalizeManufactureDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  let mm, yyyy, m;
+  if ((m = s.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{4})$/))) { mm = +m[1]; yyyy = +m[2]; }
+  else if ((m = s.match(/^(\d{4})\s*[\/\-.]\s*(\d{1,2})$/))) { yyyy = +m[1]; mm = +m[2]; }
+  else return null;
+  if (mm < 1 || mm > 12 || yyyy < 1970 || yyyy > new Date().getFullYear() + 1) return null;
+  return String(mm).padStart(2, '0') + '/' + yyyy;
+}
+
 function showAddInterchangeModal() {
   window._repairItems.ic = [];
   const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option>${t}</option>`).join('');
-  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div><div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Container Type/Size</label><select id="ic_ctype">${typeOptions}</select></div><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>EIR / Reference No.</label><input id="ic_eir" placeholder="Transporter's own EIR no."/></div><div class="fg"><label>B/L Number</label><input id="ic_bl"/></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="ic_vessel"/></div><div class="fg"><label>Voyage</label><input id="ic_voyage"/></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Overall Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>${tariffPickerHtml('ic')}<div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+  openModal('Record Interchange', `
+    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px">The <strong>EIR No.</strong> is generated automatically when the interchange is recorded.</div>
+    <div class="form-row-2">
+      <div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div>
+      <div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Container Type/Size</label><select id="ic_ctype">${typeOptions}</select></div>
+      <div class="fg"><label>ISO Code <span class="label-optional">(optional)</span></label><input id="ic_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Consignee / C&amp;F</label><input id="ic_consignee" placeholder="Consignee / clearing &amp; forwarding agent"/></div>
+      <div class="fg"><label>Shipping Line / Agent</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Vessel</label><input id="ic_vessel"/></div>
+      <div class="fg"><label>Voyage</label><input id="ic_voyage"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Guarantee / B/L No.</label><input id="ic_bl" placeholder="Guarantee form / B/L no."/></div>
+      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="ic_gross" type="number" min="0" step="1" placeholder="e.g. 30480"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Lorry No.</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div>
+      <div class="fg"><label>Trailer No. <span class="label-optional">(optional)</span></label><input id="ic_trailer" placeholder="e.g. ZD502"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Driver Name</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div>
+      <div class="fg"><label>ID / Driving No. <span class="label-optional">(optional)</span></label><input id="ic_driver_id" placeholder="National ID / driving licence no."/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="ic_transporter" placeholder="Transporting company"/></div>
+      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="ic_dom" placeholder="MM/YYYY" maxlength="7"/></div>
+    </div>
+    <div class="fg"><label>Overall Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
+    ${tariffPickerHtml('ic')}
+    <div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div>
+    <button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
   renderRepairItemsList('ic');
 }
 
-function saveInterchange() {
-  const cont = document.getElementById('ic_cont').value.trim().toUpperCase();
+let _icSaving = false;
+async function saveInterchange() {
+  if (_icSaving) return;
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const cont = val('ic_cont').toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
   const contIssue = containerFormatIssue(cont);
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
-  const dupIc = findDuplicateInterchange(cont, document.getElementById('ic_type').value, new Date().toISOString());
-  if (dupIc) { toast(`${cont} already has a ${document.getElementById('ic_type').value} interchange record logged today`, 'warning'); return; }
-  const repairs = window._repairItems.ic || [];
-  state.db.interchange.push({
-    id: uid('IC'), container: cont,
-    type: document.getElementById('ic_type').value,
-    ctype: document.getElementById('ic_ctype').value,
-    line: document.getElementById('ic_line').value,
-    condition: document.getElementById('ic_cond').value,
-    truck:  document.getElementById('ic_truck').value,
-    driver: document.getElementById('ic_driver').value,
-    eirNumber: sanitize(document.getElementById('ic_eir').value.trim()),
-    blNumber: sanitize(document.getElementById('ic_bl').value.trim()),
-    vessel: sanitize(document.getElementById('ic_vessel').value.trim()),
-    voyage: sanitize(document.getElementById('ic_voyage').value.trim()),
-    repairs, repairTotal: repairItemsTotal(repairs),
-    notes:  sanitize(document.getElementById('ic_notes').value.trim()),
-    date: new Date().toISOString(), status:'pending', img:'',
-    _dirty: true,
-  });
-  scheduleSave(); buildBadges();
-  addAudit(state.profile.username, 'Interchange Recorded', cont);
-  closeModal(); renderInterchange('all');
-  refreshContainerHistory();
-  toast('Interchange recorded', 'success');
+  const type = val('ic_type');
+  const dupIc = findDuplicateInterchange(cont, type, new Date().toISOString());
+  if (dupIc) { toast(`${cont} already has a ${type} interchange record logged today`, 'warning'); return; }
+  const dom = normalizeManufactureDate(val('ic_dom'));
+  if (dom === null) { toast('Date of manufacture must look like 05/2011', 'error'); return; }
+  const grossRaw = val('ic_gross');
+  const gross = grossRaw ? Number(grossRaw) : '';
+  if (grossRaw && (!isFinite(gross) || gross <= 0)) { toast('Gross weight must be a positive number', 'error'); return; }
+
+  _icSaving = true;
+  try {
+    const eirNumber = await nextEirNumber(type);
+    const repairs = window._repairItems.ic || [];
+    const ref = sanitize(val('ic_bl'));   // Guarantee No. and B/L No. are the same number
+    state.db.interchange.push({
+      id: uid('IC'), container: cont, type,
+      ctype: val('ic_ctype'),
+      line: val('ic_line'),
+      condition: val('ic_cond'),
+      truck:  val('ic_truck'),
+      driver: val('ic_driver'),
+      driverIdNumber: sanitize(val('ic_driver_id')),
+      transporter: sanitize(val('ic_transporter')),
+      trailerNo: sanitize(val('ic_trailer')),
+      isoCode: sanitize(val('ic_iso')).toUpperCase(),
+      grossWeight: gross,
+      manufactureDate: dom,
+      deliveringParty: sanitize(val('ic_consignee')),   // consignee / C&F
+      eirNumber,
+      blNumber: ref, guaranteeNo: ref,
+      vessel: sanitize(val('ic_vessel')),
+      voyage: sanitize(val('ic_voyage')),
+      repairs, repairTotal: repairItemsTotal(repairs),
+      notes:  sanitize(val('ic_notes')),
+      date: new Date().toISOString(), status:'pending', img:'',
+      _dirty: true,
+    });
+    scheduleSave(); buildBadges();
+    addAudit(state.profile.username, 'Interchange Recorded', `${cont} · ${eirNumber}`);
+    closeModal(); renderInterchange('all');
+    refreshContainerHistory();
+    toast(`Interchange recorded — ${eirNumber}`, 'success');
+  } finally {
+    _icSaving = false;
+  }
 }
 
 function buildInterchangeSlip(icId) {
@@ -373,188 +478,156 @@ function buildInterchangeSlip(icId) {
   if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return null; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const GOLD = [201, 162, 39];
   const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
+  const inward = isInwardMovement(ic.type);
+  const money = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-
-  function fieldBox(x, y, w, h, label, value) {
-    doc.setDrawColor(150); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
-    doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
-    doc.text(String(label).toUpperCase(), x + 2, y + 4.5);
-    doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(20);
-    const val = doc.splitTextToSize(String(value || '—'), w - 4);
-    doc.text(val.slice(0, 2), x + 2, y + (h > 10 ? 10 : 9));
-  }
-  function sectionLabel(text, y) {
-    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GOLD);
-    doc.text(text.toUpperCase(), MARGIN, y);
-    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.line(MARGIN, y + 1.5, RIGHT, y + 1.5);
+  // One bordered cell: small caption on top, value centred beneath — the same
+  // grid the paper interchange uses.
+  function cell(x, y, w, h, label, value) {
+    doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(x, y, w, h);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(6.8); doc.setTextColor(90);
+    doc.text(String(label).toUpperCase(), x + w / 2, y + 4.2, { align: 'center' });
     doc.setTextColor(20);
+    const text = String(value == null || value === '' ? '' : value);
+    doc.setFontSize(9.5);
+    let lines = doc.splitTextToSize(text, w - 4);
+    if (lines.length > 1) {
+      doc.setFontSize(7.5);
+      lines = doc.splitTextToSize(text, w - 4).slice(0, 2);
+      doc.text(lines, x + w / 2, y + 8, { align: 'center', lineHeightFactor: 1.05 });
+    } else {
+      doc.text(lines, x + w / 2, y + 9.4, { align: 'center' });
+    }
   }
 
-  // ---- header ----------------------------------------------------------
+  // ---- letterhead + title block ---------------------------------------------
   ghPdfLetterhead(doc, MARGIN, 8, 122);
-  doc.setFont(undefined, 'italic'); doc.setFontSize(9.5); doc.setTextColor(...GOLD);
-  doc.text('Container Interchange Report', MARGIN, 33);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(120);
-  doc.text('Generated automatically for reference only', RIGHT, 33, { align: 'right' });
-
-  // Top-right stacked boxes, mirroring the "Inward Date / Inward IER" boxes
-  // on the Dodwell form.
-  fieldBox(140, 12, 28, 10, ic.type ? `${ic.type} Date` : 'Date', fmtDate(ic.date));
-  fieldBox(168, 12, 28, 10, 'EIR / IER No.', ic.eirNumber || ic.id.slice(0, 8).toUpperCase());
   doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(MARGIN, 36, RIGHT, 36);
 
-  // ---- field grid --------------------------------------------------------
-  let y = 41;
-  fieldBox(MARGIN, y, CONTENT_W, 11, 'Shipping Line', lineName(ic.line));
-  y += 14;
-  fieldBox(MARGIN, y, 62, 11, 'Container No.', ic.container);
-  fieldBox(MARGIN + 65, y, 42, 11, 'Type / Size', ic.ctype);
-  fieldBox(MARGIN + 110, y, 33, 11, 'Movement', ic.type);
-  fieldBox(MARGIN + 146, y, 36, 11, 'Condition', (ic.condition || '—').toUpperCase());
-  y += 14;
-  fieldBox(MARGIN, y, 60, 11, 'Vessel Name', ic.vessel);
-  fieldBox(MARGIN + 63, y, 40, 11, 'Voyage No.', ic.voyage);
-  fieldBox(MARGIN + 106, y, 76, 11, 'B/L Number', ic.blNumber);
-  y += 14;
-  fieldBox(MARGIN, y, 92, 11, 'Party Delivering / Receiving', ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'));
-  fieldBox(MARGIN + 95, y, 42, 11, 'Vehicle No.', ic.truck ? truckName(ic.truck).split(' · ')[0] : (ic.truckRegText || '—'));
-  fieldBox(MARGIN + 140, y, 42, 11, 'Driver', ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'));
-  y += 18;
+  let y = 40;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.setTextColor(20);
+  doc.text(`EIR NO. ${ic.eirNumber || '—'}`, MARGIN, y + 6);
+  doc.setFontSize(14);
+  doc.text(inward ? 'INWARD INTERCHANGE' : 'OUTWARD INTERCHANGE', 112, y + 6, { align: 'center' });
+  const when = new Date(ic.date);
+  const timeStr = isNaN(when) ? '—' : when.toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase();
+  doc.setFontSize(9);
+  doc.text(`Date ${inward ? 'in' : 'out'} :  ${fmtDate(ic.date)}`, RIGHT, y + 3.5, { align: 'right' });
+  doc.text(`Time ${inward ? 'in' : 'out'} :  ${timeStr}`, RIGHT, y + 8.5, { align: 'right' });
+  y += 13;
 
-  // ---- container diagram + damage legend --------------------------------
-  sectionLabel('Container Inspection', y); y += 6;
-  const diagX = MARGIN, diagY = y, diagW = 62, diagH = 38;
-  const sideDefs = [
-    { code: 'T', label: 'Top / Roof' }, { code: 'L', label: 'Left Side' },
-    { code: 'R', label: 'Right Side' }, { code: 'F', label: 'Front' },
-    { code: 'D', label: 'Rear / Door' }, { code: 'B', label: 'Floor / Bottom' },
-  ];
-  const repairs = ic.repairs || [];
-  function sideMatches(sideText, code) {
-    if (!sideText) return false;
-    const s = String(sideText).toLowerCase();
-    const map = { T: 'top|roof', L: 'left', R: 'right', F: 'front', D: 'rear|door', B: 'floor|bottom' };
-    return new RegExp(map[code]).test(s);
-  }
-  const flagged = new Set(sideDefs.filter(sd => repairs.some(r => sideMatches(r.side, sd.code))).map(sd => sd.code));
+  // ---- field grid --------------------------------------------------------------
+  const ROW = 12;
+  const truckReg = ic.truck ? String(truckName(ic.truck)).split(' · ')[0] : (ic.truckRegText || '');
+  const lorry = [truckReg, ic.trailerNo].filter(Boolean).join(' / ');
+  const drv = ic.driver ? state.db.drivers.find(d => d.id === ic.driver) : null;
+  const driverNm = ic.driver ? driverName(ic.driver) : (ic.driverNameText || '');
+  const driverIdNo = ic.driverIdNumber || (drv && (drv.idNo || drv.id_no)) || '';
+  const sz = decomposeCtype(ic.ctype);
+  const guaranteeBl = ic.guaranteeNo || ic.blNumber || '';
 
-  doc.setDrawColor(150); doc.setLineWidth(0.3); doc.rect(diagX, diagY, diagW, diagH);
-  doc.setDrawColor(190); doc.line(diagX, diagY + diagH * 0.22, diagX + diagW, diagY + diagH * 0.22);
-  doc.line(diagX, diagY + diagH * 0.78, diagX + diagW, diagY + diagH * 0.78);
-  doc.line(diagX + diagW * 0.5, diagY, diagX + diagW * 0.5, diagY + diagH);
-  const marks = [
-    { code: 'T', x: diagX + diagW * 0.5, y: diagY + diagH * 0.11 },
-    { code: 'F', x: diagX + diagW * 0.25, y: diagY + diagH * 0.5 },
-    { code: 'D', x: diagX + diagW * 0.75, y: diagY + diagH * 0.5 },
-    { code: 'B', x: diagX + diagW * 0.5, y: diagY + diagH * 0.89 },
-  ];
-  marks.forEach(m => {
-    const isFlagged = flagged.has(m.code);
-    doc.setDrawColor(isFlagged ? 200 : 160, isFlagged ? 40 : 160, isFlagged ? 40 : 160);
-    doc.setFillColor(isFlagged ? 220 : 245, isFlagged ? 60 : 245, isFlagged ? 60 : 245);
-    doc.circle(m.x, m.y, 3.4, 'FD');
-    doc.setFont(undefined, 'bold'); doc.setFontSize(7);
-    doc.setTextColor(isFlagged ? 255 : 90, isFlagged ? 255 : 90, isFlagged ? 255 : 90);
-    doc.text(m.code, m.x, m.y + 1.3, { align: 'center' });
-  });
-  ['L', 'R'].forEach(code => {
-    const isFlagged = flagged.has(code);
-    const mx = code === 'L' ? diagX - 4.5 : diagX + diagW + 4.5;
-    doc.setDrawColor(isFlagged ? 200 : 160, isFlagged ? 40 : 160, isFlagged ? 40 : 160);
-    doc.setFillColor(isFlagged ? 220 : 245, isFlagged ? 60 : 245, isFlagged ? 60 : 245);
-    doc.circle(mx, diagY + diagH * 0.5, 3.4, 'FD');
-    doc.setFont(undefined, 'bold'); doc.setFontSize(7);
-    doc.setTextColor(isFlagged ? 255 : 90, isFlagged ? 255 : 90, isFlagged ? 255 : 90);
-    doc.text(code, mx, diagY + diagH * 0.5 + 1.3, { align: 'center' });
-  });
+  cell(MARGIN,      y, 91, ROW, 'Consignee / C and F', ic.deliveringParty);
+  cell(MARGIN + 91, y, 91, ROW, 'Shipping Line / Agent', ic.line ? lineName(ic.line) : '');
+  y += ROW;
+  cell(MARGIN,       y, 52, ROW, 'Container No.', ic.container);
+  cell(MARGIN + 52,  y, 22, ROW, 'ISO', ic.isoCode);
+  cell(MARGIN + 74,  y, 18, ROW, 'Size', String(sz.size || '').replace(/ft$/i, ''));
+  cell(MARGIN + 92,  y, 22, ROW, 'Type', sz.type);
+  cell(MARGIN + 114, y, 40, ROW, 'Vessel', ic.vessel);
+  cell(MARGIN + 154, y, 28, ROW, 'Voyage', ic.voyage);
+  y += ROW;
+  cell(MARGIN,       y, 56, ROW, 'Lorry No. / Trailer No.', lorry);
+  cell(MARGIN + 56,  y, 50, ROW, 'Driver Name', driverNm);
+  cell(MARGIN + 106, y, 40, ROW, 'ID / Driving No.', driverIdNo);
+  cell(MARGIN + 146, y, 36, ROW * 2, 'Signature', '');
+  y += ROW;
+  cell(MARGIN,      y, 73, ROW, 'Transporter', ic.transporter);
+  cell(MARGIN + 73, y, 73, ROW, 'Guarantee / BL No.', guaranteeBl);
+  y += ROW;
+  cell(MARGIN,      y, 91, ROW, 'Gross Weight (kg)', ic.grossWeight !== '' && ic.grossWeight != null ? Number(ic.grossWeight).toLocaleString() : '');
+  cell(MARGIN + 91, y, 91, ROW, 'Date of Manufacture', ic.manufactureDate);
+  y += ROW + 6;
 
-  // legend beside the diagram
-  doc.setTextColor(20);
-  let lx = diagX + diagW + 14, ly = diagY + 3;
-  doc.setFont(undefined, 'bold'); doc.setFontSize(7); doc.setTextColor(120);
-  doc.text('LOCATION LEGEND', lx, ly); ly += 5;
-  sideDefs.forEach(sd => {
-    const isFlagged = flagged.has(sd.code);
-    doc.setDrawColor(isFlagged ? 200 : 170, isFlagged ? 40 : 170, isFlagged ? 40 : 170);
-    doc.setFillColor(isFlagged ? 220 : 255, isFlagged ? 60 : 255, isFlagged ? 60 : 255);
-    doc.circle(lx + 1.6, ly - 1, 1.8, 'FD');
-    doc.setFont(undefined, isFlagged ? 'bold' : 'normal'); doc.setFontSize(7.5);
-    doc.setTextColor(isFlagged ? 160 : 60, isFlagged ? 30 : 60, isFlagged ? 30 : 60);
-    doc.text(`${sd.code} — ${sd.label}${isFlagged ? '  (damage noted)' : ''}`, lx + 6, ly);
-    ly += 5;
-  });
-  doc.setTextColor(20);
-  y = diagY + diagH + 10;
-
-  // ---- repair estimate table --------------------------------------------
-  sectionLabel('Repair Estimate', y); y += 5;
+  // ---- repair table ----------------------------------------------------------------
   const cols = [
-    { key: 'code', label: 'Code', x: MARGIN, w: 18 },
-    { key: 'item', label: 'Description of Damage / Repair', x: MARGIN + 18, w: 92 },
-    { key: 'side', label: 'Side', x: MARGIN + 110, w: 18 },
-    { key: 'labour', label: 'Labour Cost', x: MARGIN + 128, w: 27 },
-    { key: 'material', label: 'Material Cost', x: MARGIN + 155, w: 27 },
+    { label: 'Repair Code',        x: MARGIN,       w: 26, align: 'left'  },
+    { label: 'Damage Description', x: MARGIN + 26,  w: 70, align: 'left'  },
+    { label: 'Qty',                x: MARGIN + 96,  w: 12, align: 'right' },
+    { label: 'Hrs',                x: MARGIN + 108, w: 14, align: 'right' },
+    { label: 'Labour Cost',        x: MARGIN + 122, w: 20, align: 'right' },
+    { label: 'Material Cost',      x: MARGIN + 142, w: 22, align: 'right' },
+    { label: 'Total Cost',         x: MARGIN + 164, w: 18, align: 'right' },
   ];
-  doc.setDrawColor(150); doc.setLineWidth(0.25);
-  doc.setFillColor(235, 235, 235);
+  const put = (i, txt, yy) => {
+    const c = cols[i];
+    if (c.align === 'right') doc.text(String(txt), c.x + c.w - 1.5, yy, { align: 'right' });
+    else doc.text(String(txt), c.x + 1.5, yy);
+  };
+  doc.setDrawColor(90); doc.setLineWidth(0.3); doc.setFillColor(235, 235, 235);
   doc.rect(MARGIN, y, CONTENT_W, 7, 'FD');
   cols.forEach(c => doc.rect(c.x, y, c.w, 7));
   doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
-  cols.forEach(c => doc.text(c.label, c.x + 1.5, y + 4.7));
+  cols.forEach((c, i) => {
+    if (c.align === 'right') doc.text(c.label, c.x + c.w - 1.5, y + 4.7, { align: 'right' });
+    else doc.text(c.label, c.x + 1.5, y + 4.7);
+  });
   y += 7;
 
+  const repairs = ic.repairs || [];
+  let totHrs = 0, totLabour = 0, totMaterial = 0;
   doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-  let repairTotal = 0;
   if (repairs.length) {
     repairs.forEach(r => {
-      const hours = Number(r.hours || 0);
-      const labour = hours * REPAIR_LABOUR_RATE_PER_HOUR;
+      const hrs = Number(r.hours || 0);
+      const labour = hrs * REPAIR_LABOUR_RATE_PER_HOUR;
       const material = Number(r.material || 0);
-      repairTotal += labour + material;
-      const lines = doc.splitTextToSize(r.item || '—', cols[1].w - 3);
+      totHrs += hrs; totLabour += labour; totMaterial += material;
+      const lines = doc.splitTextToSize(String(r.item || '—'), cols[1].w - 3);
       const rowH = Math.max(7, lines.length * 3.6 + 3);
+      if (y + rowH > 262) { doc.addPage(); y = 20; }
       cols.forEach(c => doc.rect(c.x, y, c.w, rowH));
-      doc.text(String(r.code || '—'), cols[0].x + 1.5, y + 4.6);
+      put(0, r.code || '—', y + 4.6);
       doc.text(lines, cols[1].x + 1.5, y + 4.6);
-      doc.text(String(r.side || '—'), cols[2].x + 1.5, y + 4.6);
-      doc.text(labour.toLocaleString(undefined, { minimumFractionDigits: 2 }), cols[3].x + cols[3].w - 1.5, y + 4.6, { align: 'right' });
-      doc.text(material.toLocaleString(undefined, { minimumFractionDigits: 2 }), cols[4].x + cols[4].w - 1.5, y + 4.6, { align: 'right' });
+      put(2, r.qty || 1, y + 4.6);
+      put(3, hrs.toFixed(2), y + 4.6);
+      put(4, money(labour), y + 4.6);
+      put(5, money(material), y + 4.6);
+      put(6, money(labour + material), y + 4.6);
       y += rowH;
     });
   } else {
     doc.rect(MARGIN, y, CONTENT_W, 8);
     doc.setFont(undefined, 'italic'); doc.setTextColor(100);
-    doc.text('Container received in good condition — no damage items recorded.', MARGIN + 2, y + 5.3);
+    doc.text('No damage items recorded.', MARGIN + 2, y + 5.3);
     doc.setFont(undefined, 'normal'); doc.setTextColor(20);
     y += 8;
   }
-  const total = Number(ic.repairTotal || repairTotal || repairItemsTotal(repairs) || 0);
-  doc.setDrawColor(150); doc.rect(MARGIN, y, CONTENT_W - 34, 8);
-  doc.rect(RIGHT - 34, y, 34, 8, 'S');
+  // totals row
   doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
-  doc.text('TOTAL (LABOUR + MATERIAL)', MARGIN + 2, y + 5.3);
-  doc.text(`KSh ${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, RIGHT - 2, y + 5.3, { align: 'right' });
-  y += 14;
+  cols.forEach(c => doc.rect(c.x, y, c.w, 7.5));
+  doc.text('Totals :   KSh', cols[1].x + cols[1].w - 1.5, y + 5, { align: 'right' });
+  put(3, totHrs.toFixed(2), y + 5);
+  put(4, money(totLabour), y + 5);
+  put(5, money(totMaterial), y + 5);
+  put(6, money(totLabour + totMaterial), y + 5);
+  y += 7.5 + 9;
 
-  // ---- inspection / remarks / signatures ---------------------------------
-  if (y > 250) { doc.addPage(); y = 20; }
-  fieldBox(MARGIN, y, 60, 11, 'Place of Inspection', 'Gargo Haven Depot, Mombasa');
-  fieldBox(MARGIN + 63, y, 55, 11, 'Inspector Name', '');
-  fieldBox(MARGIN + 121, y, 61, 11, 'Approval Date', '');
-  y += 14;
-  fieldBox(MARGIN, y, CONTENT_W, 16, 'Remarks', ic.notes || '');
-  y += 24;
-
-  doc.setDrawColor(180); doc.setLineWidth(0.3);
-  doc.line(MARGIN, y, MARGIN + 76, y); doc.line(RIGHT - 76, y, RIGHT, y);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(110);
-  doc.text('Depot Officer Signature', MARGIN, y + 5);
-  doc.text('Driver / Transporter Signature', RIGHT - 76, y + 5);
-
-  doc.setFontSize(7.5); doc.setTextColor(150);
-  doc.text('This document confirms container delivery/receipt at Gargo Haven Depot and supports transporter payment processing.', MARGIN, 289);
+  // ---- statement + remarks --------------------------------------------------------
+  if (y > 262) { doc.addPage(); y = 20; }
+  doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(20);
+  doc.text(`THIS CONTAINER WAS ${inward ? 'RECEIVED' : 'RELEASED'} IN GOOD CONDITION EXCEPT AS NOTED ABOVE.`, MARGIN, y);
+  y += 7;
+  if (ic.notes) {
+    const noteLines = doc.splitTextToSize(String(ic.notes), CONTENT_W - 4).slice(0, 5);
+    const boxH = 9 + noteLines.length * 4;
+    if (y + boxH > 285) { doc.addPage(); y = 20; }
+    doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(MARGIN, y, CONTENT_W, boxH);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(6.8); doc.setTextColor(90);
+    doc.text('REMARKS', MARGIN + 2, y + 4.2);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
+    doc.text(noteLines, MARGIN + 2, y + 8.6);
+  }
 
   return { doc, filename: `interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
 }

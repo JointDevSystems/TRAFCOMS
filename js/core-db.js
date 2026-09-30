@@ -136,6 +136,22 @@ async function saveDirty(table, rows, toRowFn) {
     console.warn('fuel_logs.total_paid column not found — saving without it. Run: alter table fuel_logs add column if not exists total_paid numeric;');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.total_paid; return row; }));
   }
+  // Interchange gained iso_code / trailer_no / gross_weight / manufacture_date
+  // (full EIR slip). If any of them isn't migrated yet, drop just those columns
+  // and retry so the rest of the record still saves. Run
+  // supabase_interchange_eir_migration.sql to persist the new fields.
+  if (failure && table === 'interchange') {
+    const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date'];
+    const dropped = [];
+    while (failure) {
+      const msg = failure.error?.message || '';
+      const col = optionalCols.find(cn => dropped.indexOf(cn) === -1 && new RegExp(`\\b${cn}\\b`, 'i').test(msg));
+      if (!col) break;
+      dropped.push(col);
+      console.warn(`interchange.${col} column not found — saving without it. Run supabase_interchange_eir_migration.sql.`);
+      failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); dropped.forEach(d => delete row[d]); return row; }));
+    }
+  }
   if (failure) return failure;
   dirty.forEach(r => { delete r._dirty; });
   return null;
