@@ -700,13 +700,7 @@ function populateDepotReportLineFilter() {
 }
 
 
-// Duplicate detection has to compare EVERY interchange record against every
-// other one — that's inherently a full-register operation. Doing it in the
-// browser meant the whole 11,000+ row table had to be loaded just for this
-// one feature. It now runs as a set-based query in Postgres
-// (find_interchange_duplicates()) and returns only the rows that are
-// actually part of a duplicate group — typically a couple hundred rows, not
-// the whole register — which we then group client-side exactly as before.
+
 async function computeDepotReportDuplicates() {
   try {
     const { data, error } = await supabase.rpc('find_interchange_duplicates');
@@ -728,11 +722,7 @@ async function computeDepotReportDuplicates() {
   return _depotReportDupes;
 }
 
-// state.db.trips only holds open trips plus the last OPERATIONAL_WINDOW_DAYS days
-// (see loadDB). Bulk-imported history is saved as 'completed' with old dates, so
-// without this the Outward tab silently under-counted (e.g. <2,000 of 10,000+).
-// When the selected range reaches beyond the window, pull the older completed
-// trips (and reconciled interchange) from Supabase once and merge them in.
+
 let _depotReportLoadedFrom = null;   // null | ISO cutoff already covered | 'all'
 let _depotReportLoadedDb   = null;   // guards against state.db being replaced by a reload
 
@@ -2356,8 +2346,7 @@ async function depOpsConfirmReject(docId, kind) {
   } catch (e) { toast(e.message || 'Could not reject document', 'error'); }
 }
 
-/* After a container is allocated to a zone / block / slot, copy that location onto
-   its interchange record so the printed EIR shows it in its own boxes. */
+
 async function syncStorageToInterchange(bookingId, zoneId, blockId, slotNumber) {
   try {
     let zoneName = '', blockCode = '';

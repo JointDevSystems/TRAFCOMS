@@ -1,5 +1,8 @@
 'use strict';
 
+
+
+/* ───────────── shared helpers ───────────── */
 function _ctTitleCase(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
 }
@@ -522,7 +525,7 @@ function _frRenderSummary() {
   el.innerHTML = `
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:8px">
       <span><strong>${s.total}</strong> rows read</span>
-      <span style="color:var(--green,#2e7d32)"><strong>${s.ready}</strong> ready · KSh ${s.amount.toLocaleString()}</span>
+      <span style="color:var(--green,#2e7d32)"><strong>${s.ready}</strong> ready</span>
       ${s.fixed ? `<span style="color:var(--gold)"><strong>${s.fixed}</strong> auto-corrected</span>` : ''}
       ${s.errors ? `<span style="color:var(--red,#c62828)"><strong>${s.errors}</strong> need a fix</span>` : ''}
       ${s.dups ? `<span style="color:var(--text-3)"><strong>${s.dups}</strong> duplicates skipped</span>` : ''}
@@ -613,10 +616,122 @@ async function fiRun() {
   if (saved) {
     addAudit(state.profile.username, 'Fuel Report Imported', `${saved} trip payments · KSh ${total.toLocaleString()} · ${_fuelImport.fileName}`);
     renderFuelTable(); renderFuelSummary();
-    toast(`Imported ${saved} trip payment${saved === 1 ? '' : 's'} (KSh ${total.toLocaleString()})`, 'success', 5000);
+    toast(`Imported ${saved} trip payment${saved === 1 ? '' : 's'}`, 'success', 5000);
     closeModal();
     _fuelImport = null;
   } else if (btn) { btn.disabled = false; _frRenderSummary(); }
+}
+
+/* ═════════════════════ 4. FUEL & TRIP PAYMENTS REPORT ═════════════════════
+   Lives on the fuel page and recalculates by itself whenever a fuel entry is added,
+   edited, deleted or imported (renderFuelSummary calls it). */
+const _FREP = { range: 'all', from: '', to: '', by: 'truck' };
+const _FREP_RANGES = [['all', 'All time'], ['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30', 'Last 30 days'], ['custom', 'Custom']];
+const _FREP_GROUPS = [['truck', 'Truck'], ['driver', 'Driver'], ['route', 'Route'], ['size', 'Container size'], ['day', 'Day'], ['month', 'Month']];
+
+function _frepBounds() {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  const at = (a, b, c) => new Date(a, b, c, 0, 0, 0, 0);
+  const far = new Date(8.64e15), zero = new Date(0);
+  switch (_FREP.range) {
+    case 'today': return [at(y, m, d), at(y, m, d + 1)];
+    case 'week': { const dow = (now.getDay() + 6) % 7; return [at(y, m, d - dow), at(y, m, d - dow + 7)]; }
+    case 'month': return [at(y, m, 1), at(y, m + 1, 1)];
+    case 'lastmonth': return [at(y, m - 1, 1), at(y, m, 1)];
+    case '30': return [at(y, m, d - 29), at(y, m, d + 1)];
+    case 'custom': {
+      const f = _FREP.from ? new Date(_FREP.from + 'T00:00:00') : null, t = _FREP.to ? new Date(_FREP.to + 'T00:00:00') : null;
+      return [f || zero, t ? new Date(t.getTime() + 86400000) : far];
+    }
+    default: return [zero, far];
+  }
+}
+
+function _frepGroupKey(f) {
+  const dt = new Date(f.date);
+  const ymd = isNaN(dt) ? '—' : _frYmd({ y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() });
+  switch (_FREP.by) {
+    case 'driver': return fuelDriverLabel(f);
+    case 'route': return f.source === 'import' ? `${f.routeFrom || '?'} → ${f.routeTo || '?'}` : (f.station || '—');
+    case 'size': return f.ctype || 'Fuel fill (no container)';
+    case 'day': return ymd;
+    case 'month': return ymd.slice(0, 7);
+    default: return fuelTruckLabel(f);
+  }
+}
+
+function _frepRows() {
+  const [lo, hi] = _frepBounds();
+  const logs = (state.db.fuel || []).filter(f => { const d = new Date(f.date); return !isNaN(d) && d >= lo && d < hi; });
+  const groups = new Map();
+  logs.forEach(f => {
+    const k = _frepGroupKey(f);
+    const g = groups.get(k) || { label: k, entries: 0, amount: 0, litres: 0 };
+    g.entries++; g.amount += fuelLogTotal(f); g.litres += Number(f.litres) || 0;
+    groups.set(k, g);
+  });
+  const rows = [...groups.values()];
+  if (_FREP.by === 'day' || _FREP.by === 'month') rows.sort((a, b) => a.label.localeCompare(b.label));
+  else rows.sort((a, b) => b.amount - a.amount);
+  return { logs, rows, total: logs.reduce((s, f) => s + fuelLogTotal(f), 0), litres: logs.reduce((s, f) => s + (Number(f.litres) || 0), 0) };
+}
+
+function renderFuelReport() {
+  const host = document.getElementById('fuelReportPanel');
+  if (!host) return;
+  if (!document.getElementById('frep_results')) {
+    host.innerHTML = `
+      <div class="panel-head"><span class="panel-title">Fuel &amp; Trip Payments Report</span>
+        <span class="panel-meta"><button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport()">Export to Excel</button></span></div>
+      <div style="padding:10px 14px 4px">
+        <div id="frep_ranges" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <div id="frep_custom" style="display:none;gap:8px;align-items:center;margin-bottom:8px;font-size:11px;color:var(--text-3)">
+          From <input type="date" id="frep_from" onchange="frepSet('from', this.value)" /> to <input type="date" id="frep_to" onchange="frepSet('to', this.value)" />
+        </div>
+        <div id="frep_groups" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+      </div>
+      <div id="frep_results" style="padding:0 14px 14px"></div>`;
+  }
+  const chip = (key, cur, label, fn) => `<button type="button" class="modal-btn ${key === cur ? '' : 'ghost'}" style="padding:3px 10px;font-size:10.5px" onclick="${fn}('${key}')">${label}</button>`;
+  document.getElementById('frep_ranges').innerHTML = _FREP_RANGES.map(([k, l]) => chip(k, _FREP.range, l, 'frepRange')).join('');
+  document.getElementById('frep_groups').innerHTML = '<span style="font-size:10.5px;color:var(--text-3);align-self:center">Group by</span>' + _FREP_GROUPS.map(([k, l]) => chip(k, _FREP.by, l, 'frepBy')).join('');
+  document.getElementById('frep_custom').style.display = _FREP.range === 'custom' ? 'flex' : 'none';
+
+  const r = _frepRows();
+  const kpi = (label, val) => `<div style="flex:1;min-width:110px;background:var(--surface-2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:6px;padding:8px 10px"><div style="font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3)">${label}</div><div style="font-size:15px;font-weight:700;margin-top:2px">${val}</div></div>`;
+  const kshFmt = n => 'KSh ' + Math.round(n).toLocaleString('en-KE');
+  const out = document.getElementById('frep_results');
+  if (!r.logs.length) { out.innerHTML = '<div style="font-size:12px;color:var(--text-3);padding:10px 0">No fuel entries in this period.</div>'; return; }
+  out.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${kpi('Total paid', kshFmt(r.total))}${kpi('Entries', r.logs.length.toLocaleString())}${kpi('Average per entry', kshFmt(r.total / r.logs.length))}${r.litres ? kpi('Litres', Math.round(r.litres).toLocaleString() + ' L') : ''}
+    </div>
+    <div class="table-wrap" style="max-height:340px;overflow:auto"><table class="data-table">
+      <thead><tr><th>${esc((_FREP_GROUPS.find(g => g[0] === _FREP.by) || [])[1] || '')}</th><th style="text-align:right">Entries</th><th style="text-align:right">Total (KSh)</th><th style="text-align:right">Avg / entry</th><th style="text-align:right">Share</th></tr></thead>
+      <tbody>${r.rows.map(g => `<tr><td>${esc(g.label)}</td><td class="mono" style="text-align:right">${g.entries.toLocaleString()}</td><td class="mono" style="text-align:right">${Math.round(g.amount).toLocaleString('en-KE')}</td><td class="mono" style="text-align:right">${Math.round(g.amount / g.entries).toLocaleString('en-KE')}</td><td class="mono" style="text-align:right">${r.total ? (g.amount / r.total * 100).toFixed(1) : '0.0'}%</td></tr>`).join('')}
+      <tr style="font-weight:700;border-top:2px solid var(--border)"><td>Total</td><td class="mono" style="text-align:right">${r.logs.length.toLocaleString()}</td><td class="mono" style="text-align:right">${Math.round(r.total).toLocaleString('en-KE')}</td><td></td><td></td></tr></tbody>
+    </table></div>`;
+}
+
+function frepRange(k) { _FREP.range = k; renderFuelReport(); }
+function frepBy(k) { _FREP.by = k; renderFuelReport(); }
+function frepSet(which, v) { _FREP[which] = v; renderFuelReport(); }
+
+function exportFuelReport() {
+  if (typeof XLSX === 'undefined') { toast('Spreadsheet library still loading — try again in a moment', 'error'); return; }
+  const r = _frepRows();
+  if (!r.logs.length) { toast('Nothing to export for this period', 'warning'); return; }
+  const by = (_FREP_GROUPS.find(g => g[0] === _FREP.by) || [])[1] || 'Group';
+  const sum = [[by, 'Entries', 'Total (KSh)', 'Avg / entry (KSh)']].concat(r.rows.map(g => [g.label, g.entries, Math.round(g.amount * 100) / 100, Math.round(g.amount / g.entries)]));
+  sum.push(['TOTAL', r.logs.length, Math.round(r.total * 100) / 100, Math.round(r.total / r.logs.length)]);
+  const detail = [['Date', 'Truck', 'Driver', 'Container', 'Size/Type', 'From', 'To', 'Litres', 'KSh per litre', 'Total (KSh)', 'Station / route', 'Reference']].concat(
+    r.logs.slice().sort((a, b) => new Date(a.date) - new Date(b.date)).map(f => [
+      String(f.date).slice(0, 10), fuelTruckLabel(f), fuelDriverLabel(f), f.container || '', f.ctype || '', f.routeFrom || '', f.routeTo || '',
+      Number(f.litres) || 0, Number(f.pricePerLitre) || 0, fuelLogTotal(f), f.station || '', f.receipt || '']));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), `By ${by}`.slice(0, 31));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Entries');
+  XLSX.writeFile(wb, `fuel_report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 /* ───────────── load the catalog + directory once someone has signed in ───────────── */

@@ -584,6 +584,7 @@ function renderFuelTable() {
 
 function renderFuelSummary() {
   const logs = state.db.fuel;
+  if (typeof renderFuelReport === 'function') renderFuelReport();   // keep the money report in step with every change
   const totalL   = logs.reduce((s,f)=>s+(Number(f.litres)||0), 0);
   const totalKsh = logs.reduce((s,f)=>s+fuelLogTotal(f), 0);
   const avgPpl   = totalL > 0 ? totalKsh/totalL : 0;
