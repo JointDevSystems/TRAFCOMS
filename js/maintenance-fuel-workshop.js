@@ -80,14 +80,7 @@ function clearPendingReceiptImg(scope, previewId) {
   if (actions) actions.style.display = 'none';
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 14c  STANDING FUEL PRICE / LITRE (set once, editable over time)
-────────────────────────────────────────────────────────────────── */
-/* ──────────────────────────────────────────────────────────────────
-   § 14d  FUEL: TOTAL PAID + EDITING
-   A fill-up stores litres, price/litre AND the total actually paid.
-   Older rows have no total, so fuelLogTotal() falls back to litres x price.
-────────────────────────────────────────────────────────────────── */
+
 function fuelLogTotal(f) {
   const paid = Number(f.totalPaid);
   return paid > 0 ? paid : (Number(f.litres) || 0) * (Number(f.pricePerLitre) || 0);
@@ -95,12 +88,10 @@ function fuelLogTotal(f) {
 
 const _r2 = n => Math.round(n * 100) / 100;
 
-// Imported trip payments may belong to trucks / drivers that aren't in the fleet list,
-// so fall back to the name that came in with the report.
+
 function fuelTruckLabel(f)  { const t = state.db.trucks.find(x => x.id === f.truckId); return (t && t.reg) || f.truckRegText || f.truckId || '—'; }
 function fuelDriverLabel(f) { return (f.driverId && driverName(f.driverId)) || f.driverNameText || '—'; }
 
-// Which of price/total the person typed last decides what is recalculated when litres change.
 const _fuelAnchor = {};
 
 // prefix: 'f' (admin form), 'dp_f' (driver form), 'fe' (edit modal). Fields: <prefix>_litres/_price/_total
@@ -211,15 +202,7 @@ function saveFuelEdit(id) {
   toast('Fuel log updated', 'success');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 14e  FUEL LEVEL PER TRUCK
-   The level comes ONLY from the fuel logs: every log for the truck adds the litres that were logged.
-     - if the truck has a km/L figure and the log has an odometer reading, the litres burned since the
-       previous reading (km / kmPerLitre) are deducted first,
-     - if a tank capacity has been entered for the truck, the level is capped at it and a % is shown.
-   Nothing is assumed: there is no default tank size and no "full tank" starting level. A truck with no
-   fuel logs shows "No fuel logged". The level is derived, so editing or deleting a log corrects it.
-────────────────────────────────────────────────────────────────── */
+
 
 // Capacity is only known if someone entered it for the truck. 0 = unknown (no % / bar, no cap).
 function truckCapacity(t) { const c = Number(t.tankCapacity); return c > 0 ? c : 0; }
@@ -583,14 +566,23 @@ function renderFuelTable() {
 }
 
 function renderFuelSummary() {
-  const logs = state.db.fuel;
   if (typeof renderFuelReport === 'function') renderFuelReport();   // keep the money report in step with every change
-  const totalL   = logs.reduce((s,f)=>s+(Number(f.litres)||0), 0);
-  const totalKsh = logs.reduce((s,f)=>s+fuelLogTotal(f), 0);
+  // Pump fills (litres recorded) are summarised on their own. Imported trip payments carry
+  // no litres, so mixing them in would wreck the price-per-litre average; they are
+  // totalled in the Fuel & Trip Payments Report instead.
+  const fills = state.db.fuel.filter(f => (Number(f.litres) || 0) > 0);
+  const trips = state.db.fuel.length - fills.length;
+  const totalL   = fills.reduce((s,f)=>s+Number(f.litres), 0);
+  const totalKsh = fills.reduce((s,f)=>s+fuelLogTotal(f), 0);
   const avgPpl   = totalL > 0 ? totalKsh/totalL : 0;
   const el = document.getElementById('fuelSummary');
   if (!el) return;
-  el.innerHTML = `<div class="fuel-summary-row"><span class="fsr-label">Total Litres</span><span class="fsr-val">${fmt(totalL)} L</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Cost</span><span class="fsr-val">${fmtKsh(totalKsh)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Avg Price/Litre</span><span class="fsr-val">KSh ${avgPpl.toFixed(2)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Fill-ups Logged</span><span class="fsr-val">${logs.length}</span></div>`;
+  const row = (l, v) => `<div class="fuel-summary-row"><span class="fsr-label">${l}</span><span class="fsr-val">${v}</span></div>`;
+  el.innerHTML = row('Total Litres', `${fmt(Math.round(totalL * 100) / 100)} L`)
+    + row('Fuel Purchases', fmtKsh(Math.round(totalKsh)))
+    + row('Avg Price/Litre', totalL > 0 ? `KSh ${avgPpl.toFixed(2)}` : '—')
+    + row('Fill-ups Logged', fills.length)
+    + (trips ? row('Trip Payments Imported', trips.toLocaleString()) : '');
 }
 
 function addFuelLog() {
