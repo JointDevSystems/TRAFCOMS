@@ -1,4 +1,4 @@
-const CACHE_VERSION = '3.2';
+const CACHE_VERSION = '3.3';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
@@ -28,6 +28,7 @@ const SHELL_FILES = [
   './js/ghd-tariff-schedule.js',
   './js/service-rate-schedule.js',
   './js/booking-documents.js',
+  './js/clerk-tools.js',
   './manifest.json',
 ];
 

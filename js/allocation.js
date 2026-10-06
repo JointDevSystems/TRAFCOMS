@@ -280,6 +280,7 @@ async function depOpsAllocateBookingToSlot(bookingId) {
       container: booking ? booking.container : null,
       conditionStatus: survey ? survey.condition_status : 'food_grade',
     });
+    syncStorageToInterchange(bookingId, zoneId, blockId || null, slotNumber ? parseInt(slotNumber, 10) : null);
     addAudit(state.profile.username, 'Storage Allocated', booking ? booking.container : bookingId);
     toast(`Storage allocated${booking && booking.container ? ' for ' + booking.container : ''}`, 'success');
     renderDepOpsAllocationQueue();

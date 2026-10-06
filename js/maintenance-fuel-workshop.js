@@ -7,7 +7,7 @@ function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, des
 
 function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt, receipt_img:f.receiptImg||null, total_paid:(Number(f.totalPaid)>0?Number(f.totalPaid):null) }; }
 
-function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt, receiptImg:r.receipt_img||'', totalPaid:(r.total_paid!=null?Number(r.total_paid):null) }; }
+function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt, receiptImg:r.receipt_img||'', totalPaid:(r.total_paid!=null?Number(r.total_paid):null), truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', container:r.container||'', ctype:r.ctype||'', routeFrom:r.route_from||'', routeTo:r.route_to||'', source:r.source||'manual' }; }
 
 function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title, description:w.desc, tech:w.tech, status:w.status, reported:w.reported, diagnosed:w.diagnosed, parts:w.parts, labour:w.labour, total:w.total }; }
 
@@ -94,6 +94,11 @@ function fuelLogTotal(f) {
 }
 
 const _r2 = n => Math.round(n * 100) / 100;
+
+// Imported trip payments may belong to trucks / drivers that aren't in the fleet list,
+// so fall back to the name that came in with the report.
+function fuelTruckLabel(f)  { const t = state.db.trucks.find(x => x.id === f.truckId); return (t && t.reg) || f.truckRegText || f.truckId || '—'; }
+function fuelDriverLabel(f) { return (f.driverId && driverName(f.driverId)) || f.driverNameText || '—'; }
 
 // Which of price/total the person typed last decides what is recalculated when litres change.
 const _fuelAnchor = {};
@@ -574,14 +579,14 @@ function renderFuelTable() {
   const logs = [...state.db.fuel].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const tbody = document.getElementById('fuelTableBody');
   if (!tbody) return;
-  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td><td>${canEditFuel()?`<button class="tbl-btn" onclick="showEditFuelModal('${esc(f.id)}')">Edit</button>`:''}</td></tr>`).join('') || `<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>`;
+  tbody.innerHTML = logs.slice(0, 200).map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${esc(fuelTruckLabel(f))}</td><td>${esc(fuelDriverLabel(f))}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td><td>${canEditFuel()?`<button class="tbl-btn" onclick="showEditFuelModal('${esc(f.id)}')">Edit</button>`:''}</td></tr>`).join('') || `<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>`;
 }
 
 function renderFuelSummary() {
   const logs = state.db.fuel;
-  const totalL   = logs.reduce((s,f)=>s+f.litres, 0);
+  const totalL   = logs.reduce((s,f)=>s+(Number(f.litres)||0), 0);
   const totalKsh = logs.reduce((s,f)=>s+fuelLogTotal(f), 0);
-  const avgPpl   = logs.length ? totalKsh/totalL : 0;
+  const avgPpl   = totalL > 0 ? totalKsh/totalL : 0;
   const el = document.getElementById('fuelSummary');
   if (!el) return;
   el.innerHTML = `<div class="fuel-summary-row"><span class="fsr-label">Total Litres</span><span class="fsr-val">${fmt(totalL)} L</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Cost</span><span class="fsr-val">${fmtKsh(totalKsh)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Avg Price/Litre</span><span class="fsr-val">KSh ${avgPpl.toFixed(2)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Fill-ups Logged</span><span class="fsr-val">${logs.length}</span></div>`;

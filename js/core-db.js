@@ -141,7 +141,7 @@ async function saveDirty(table, rows, toRowFn) {
   // and retry so the rest of the record still saves. Run
   // supabase_interchange_eir_migration.sql to persist the new fields.
   if (failure && table === 'interchange') {
-    const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date'];
+    const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date', 'clerk_name', 'storage_zone', 'storage_block', 'storage_slot'];
     const dropped = [];
     while (failure) {
       const msg = failure.error?.message || '';
@@ -194,7 +194,8 @@ async function loadDB() {
           .range(from, to)
       ),
       supabase.from('maintenance').select('*'),
-      supabase.from('fuel_logs').select('*'),
+      // Paginated: the bulk trip-fuel import can take this table well past the 1,000-row API cap.
+      fetchAllPaginated((from, to) => supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to)),
       supabase.from('shipping_lines').select('*'),
       supabase.from('shutouts').select('*'),
       // Same idea for interchange: keep everything still actionable

@@ -706,6 +706,7 @@
                                                 <select id="iw_cargo_status"><option value="">—</option><option>Empty</option><option>Laden / Full</option><option>Part Load</option><option>Damaged Cargo</option></select>
                                             </div>
                                         </div>
+                                        <div class="fg"><label>Clerk</label><input id="iw_clerk" placeholder="Recorded by" /></div>
                                         <div class="fg"><label>Notes</label><textarea id="iw_notes" rows="2" placeholder="Remarks…"></textarea></div>
                                         <div class="fg">
                                             <label>Container Photos <span class="label-optional">(optional, up to 6)</span></label>
@@ -876,6 +877,17 @@
                                 </div>
                             </div>
                             <div>
+                                <div class="panel" id="fuelBulkCard" style="margin-bottom:14px">
+                                    <div class="panel-head"><span class="panel-title">Bulk Upload</span><span class="panel-meta">trip fuel report (.xlsx / .csv)</span></div>
+                                    <div style="padding:10px 14px 14px;font-size:11.5px;color:var(--text-2);line-height:1.6">
+                                        Columns: <strong>ITEM, CONTAINER NO, SIZE, TYPE, TRUCK DETAILS, DATE, PMT, driver name, ID, FROM, TO</strong>. You'll see a preview and can fix dates before anything is saved.
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                                            <button type="button" class="modal-btn" onclick="document.getElementById('fuelBulkFile').click()">Choose report…</button>
+                                            <button type="button" class="modal-btn ghost" onclick="downloadFuelReportTemplate()">Download template</button>
+                                        </div>
+                                        <input type="file" id="fuelBulkFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="onFuelReportFile(this)" />
+                                    </div>
+                                </div>
                                 <div class="panel" id="fuelPriceCard" style="margin-bottom:14px"></div>
                                 <div class="panel" id="fuelSummaryPanel">
                                     <div class="panel-head"><span class="panel-title">Fuel Summary</span></div>
@@ -1734,5 +1746,6 @@
     <script src="js/ghd-tariff-schedule.js"></script>
     <script src="js/service-rate-schedule.js"></script>
     <script src="js/booking-documents.js"></script>
+    <script src="js/clerk-tools.js"></script>
 </body>
 </html>

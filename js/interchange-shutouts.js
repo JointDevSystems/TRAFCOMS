@@ -15,9 +15,9 @@ function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.ve
 
 function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes, img:r.img||'' }; }
 
-function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null, flagged_for_review:!!i.flaggedForReview, flag_reasons:JSON.stringify(i.flagReasons||[]), duplicate_of_id:i.duplicateOfId||null, import_batch_id:i.importBatchId||null, transporter:i.transporter||null, driver_id_number:i.driverIdNumber||null, photos:JSON.stringify(i.photos||[]), iso_code:i.isoCode||null, trailer_no:i.trailerNo||null, gross_weight:(i.grossWeight===''||i.grossWeight==null)?null:Number(i.grossWeight), manufacture_date:i.manufactureDate||null }; }
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null, flagged_for_review:!!i.flaggedForReview, flag_reasons:JSON.stringify(i.flagReasons||[]), duplicate_of_id:i.duplicateOfId||null, import_batch_id:i.importBatchId||null, transporter:i.transporter||null, driver_id_number:i.driverIdNumber||null, photos:JSON.stringify(i.photos||[]), iso_code:i.isoCode||null, trailer_no:i.trailerNo||null, gross_weight:(i.grossWeight===''||i.grossWeight==null)?null:Number(i.grossWeight), manufacture_date:i.manufactureDate||null, clerk_name:i.clerkName||null, storage_zone:i.storageZone||null, storage_block:i.storageBlock||null, storage_slot:i.storageSlot||null }; }
 
-function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'' }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'', clerkName:r.clerk_name||'', storageZone:r.storage_zone||'', storageBlock:r.storage_block||'', storageSlot:r.storage_slot||'' }; }
 
 
 function normVessel(v) { return (v || '').trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -329,36 +329,61 @@ function approveInterchange(id) {
 }
 
 /* ── EIR numbering + shared interchange helpers ────────────────────────
-   EIR numbers are never typed in. Each new interchange gets the next number
-   in its own series — EIR-IN-000001 for inward movements, EIR-OUT-000001 for
-   outward. If the next_eir_number() database function is installed (see
-   supabase_interchange_eir_migration.sql) the number comes from a Postgres
-   sequence, so two clerks recording at once can never get the same one.
+   EIR numbers are never typed in. Each one starts with the initials of the
+   shipping line (first three letters of the line code) followed by that
+   line's running number: COS001, COS002 ... COS132, MSC001 ...  One series
+   per line covers both inward and outward movements, so a number is never
+   reused. Lines with no code fall back to the "EIR" prefix.
+   If the next_eir_number_for_prefix() database function is installed (see
+   supabase_clerk_tools_migration.sql) the number comes from an atomic
+   counter, so two clerks recording at once can never get the same one.
    Until then it falls back to "highest existing + 1", checking the database
    as well as the rows loaded in the browser (only part of the interchange
    table is loaded at any time). */
 function isInwardMovement(type) { return type === 'Gate-In' || type === 'Depot-In'; }
 
-async function nextEirNumber(movementType) {
-  const kind = isInwardMovement(movementType) ? 'IN' : 'OUT';
-  const prefix = `EIR-${kind}-`;
-  try {
-    const { data, error } = await supabase.rpc('next_eir_number', { p_kind: kind });
-    if (!error && typeof data === 'string' && data.indexOf(prefix) === 0) return data;
-  } catch (e) { /* function not installed yet — fall through to the max+1 fallback */ }
+function eirPrefixForLine(lineId) {
+  const l = (state.db.shippingLines || []).find(x => x.id === lineId);
+  const letters = String((l && (l.code || l.name)) || '').toUpperCase().replace(/[^A-Z]/g, '');
+  return letters.slice(0, 3) || 'EIR';
+}
+
+function eirNumberIsMissing(v) {
+  return !v || /^(n\/?a|none|null|-+|—+)$/i.test(String(v).trim());
+}
+
+async function nextEirNumber(movementType, lineId) {
+  const prefix = eirPrefixForLine(lineId);
   const re = new RegExp('^' + prefix + '(\\d+)$');
+  const fmtNo = n => prefix + String(n).padStart(3, '0');
+  try {
+    const { data, error } = await supabase.rpc('next_eir_number_for_prefix', { p_prefix: prefix });
+    if (!error && typeof data === 'string' && re.test(data)) return data;
+  } catch (e) { /* function not installed yet — fall through to the max+1 fallback */ }
   let max = 0;
   (state.db.interchange || []).forEach(i => {
     const m = re.exec(i.eirNumber || '');
     if (m) max = Math.max(max, parseInt(m[1], 10));
   });
   try {
+    // Numbers only ever go up over time, so the newest rows hold the highest one.
     const { data } = await supabase.from('interchange').select('eir_number')
-      .like('eir_number', prefix + '%').order('eir_number', { ascending: false }).limit(1);
-    const m = data && data[0] && re.exec(data[0].eir_number || '');
-    if (m) max = Math.max(max, parseInt(m[1], 10));
+      .like('eir_number', prefix + '%').order('created_at', { ascending: false }).limit(300);
+    (data || []).forEach(r => {
+      const m = re.exec(r.eir_number || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
   } catch (e) { /* offline / RLS — local max is the best we have */ }
-  return prefix + String(max + 1).padStart(6, '0');
+  return fmtNo(max + 1);
+}
+
+// Older records can have a blank or "N/A" EIR. Give them a proper one the first
+// time a slip is produced, so the printed form always carries a number.
+async function ensureEirNumber(ic) {
+  if (!ic || !eirNumberIsMissing(ic.eirNumber)) return;
+  ic.eirNumber = await nextEirNumber(ic.type, ic.line);
+  ic._dirty = true;
+  scheduleSave();
 }
 
 // "5/2011", "05-2011", "2011-05" -> "05/2011". '' when blank, null when unreadable.
@@ -436,7 +461,7 @@ async function saveInterchange() {
 
   _icSaving = true;
   try {
-    const eirNumber = await nextEirNumber(type);
+    const eirNumber = await nextEirNumber(type, val('ic_line'));
     const repairs = window._repairItems.ic || [];
     const ref = sanitize(val('ic_bl'));   // Guarantee No. and B/L No. are the same number
     state.db.interchange.push({
@@ -455,6 +480,7 @@ async function saveInterchange() {
       deliveringParty: sanitize(val('ic_consignee')),   // consignee / C&F
       eirNumber,
       blNumber: ref, guaranteeNo: ref,
+      clerkName: (state.profile && state.profile.name) || '',
       vessel: sanitize(val('ic_vessel')),
       voyage: sanitize(val('ic_voyage')),
       repairs, repairTotal: repairItemsTotal(repairs),
@@ -527,6 +553,10 @@ function buildInterchangeSlip(icId) {
   const sz = decomposeCtype(ic.ctype);
   const guaranteeBl = ic.guaranteeNo || ic.blNumber || '';
 
+  const storageZone  = ic.storageZone  || '';
+  const storageBlock = ic.storageBlock || '';
+  const storageSlot  = ic.storageSlot  || '';
+
   cell(MARGIN,      y, 91, ROW, 'Consignee / C and F', ic.deliveringParty);
   cell(MARGIN + 91, y, 91, ROW, 'Shipping Line / Agent', ic.line ? lineName(ic.line) : '');
   y += ROW;
@@ -544,6 +574,11 @@ function buildInterchangeSlip(icId) {
   y += ROW;
   cell(MARGIN,      y, 73, ROW, 'Transporter', ic.transporter);
   cell(MARGIN + 73, y, 73, ROW, 'Guarantee / BL No.', guaranteeBl);
+  y += ROW;
+  cell(MARGIN,       y, 56, ROW, 'Clerk', ic.clerkName);
+  cell(MARGIN + 56,  y, 42, ROW, 'Storage Zone', storageZone);
+  cell(MARGIN + 98,  y, 42, ROW, 'Storage Block', storageBlock);
+  cell(MARGIN + 140, y, 42, ROW, 'Storage Slot', storageSlot);
   y += ROW;
   cell(MARGIN,      y, 91, ROW, 'Gross Weight (kg)', ic.grossWeight !== '' && ic.grossWeight != null ? Number(ic.grossWeight).toLocaleString() : '');
   cell(MARGIN + 91, y, 91, ROW, 'Date of Manufacture', ic.manufactureDate);
@@ -632,12 +667,16 @@ function buildInterchangeSlip(icId) {
   return { doc, filename: `interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
 }
 
-function downloadInterchangeSlip(icId) {
+async function downloadInterchangeSlip(icId) {
+  const ic = state.db.interchange.find(x => x.id === icId);
+  if (ic) await ensureEirNumber(ic);
   const r = buildInterchangeSlip(icId);
   if (r) r.doc.save(r.filename);
 }
 
-function printInterchangeSlip(icId) {
+async function printInterchangeSlip(icId) {
+  const ic = state.db.interchange.find(x => x.id === icId);
+  if (ic) await ensureEirNumber(ic);
   const r = buildInterchangeSlip(icId);
   if (r) ghPrintPdf(r.doc);
 }
@@ -1360,43 +1399,110 @@ function repairItemsTotal(items) {
 }
 
 function tariffPickerHtml(prefix) {
-  const categoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).map(c => `<option>${c}</option>`).join('');
+  const categoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).sort().map(c => `<option>${esc(c)}</option>`).join('');
+  const canSave = (typeof canEditTariffCatalog === 'function') && canEditTariffCatalog();
   return `
-    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px">Damage / Repair Items</div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">
+      <span>Damage / Repair Items</span>
+      ${canSave ? `<button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="openTariffCatalogEditor()">Edit tariff codes</button>` : ''}
+    </div>
+    <div class="fg"><label>Search tariff <span class="label-optional">(code or words, e.g. cold wash, D10)</span></label>
+      <input id="${prefix}_tsearch" autocomplete="off" placeholder="Type to search every category…" oninput="onTariffSearch('${prefix}')" />
+      <div id="${prefix}_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>
+    </div>
     <div class="form-row-2">
       <div class="fg"><label>Category</label><select id="${prefix}_tcat" onchange="onRepairCategoryChange('${prefix}')"><option value="">—</option>${categoryOptions}</select></div>
       <div class="fg"><label>Code / Item</label><select id="${prefix}_tcode" onchange="onRepairCodeChange('${prefix}')"><option value="">Select category first…</option></select></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" readonly placeholder="Auto-filled"></div>
-      <div class="fg"><label>Material (KSh)</label><input id="${prefix}_tmaterial" type="number" step="0.01" readonly placeholder="Auto-filled"></div>
+      <div class="fg"><label>Code</label><input id="${prefix}_tcodetext" placeholder="Auto-filled — or type your own" /></div>
+      <div class="fg"><label>Description</label><input id="${prefix}_titem" placeholder="Auto-filled — editable" /></div>
     </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" min="0" placeholder="0" /></div>
+      <div class="fg"><label>Material (KSh)</label><input id="${prefix}_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>
+    </div>
+    ${canSave ? `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="${prefix}_tsavecat" /> Also save this to the tariff catalog for next time</label>` : ''}
     <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem('${prefix}')">+ Add item</button>
     <div id="${prefix}_repairList"></div>`;
+}
+
+function _tariffRows(cat) { return (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || []; }
+
+function _tariffFill(prefix, row, cat) {
+  const set = (id, v) => { const e = document.getElementById(`${prefix}_${id}`); if (e) e.value = v; };
+  set('tcodetext', row ? row.code : '');
+  set('titem', row ? row.item : '');
+  set('thours', row ? row.hours : '');
+  set('tmaterial', row ? row.material : '');
+}
+
+// Free-text search across every category (code or any word of the description).
+function onTariffSearch(prefix) {
+  const box = document.getElementById(`${prefix}_tsearch`);
+  const out = document.getElementById(`${prefix}_tsearchResults`);
+  if (!box || !out) return;
+  const terms = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) { out.style.display = 'none'; out.innerHTML = ''; return; }
+  const hits = [];
+  const sched = window.bookingDocs.TARIFF_SCHEDULE || {};
+  Object.keys(sched).forEach(cat => sched[cat].forEach((row, idx) => {
+    const hay = `${row.code} ${row.item} ${cat}`.toLowerCase();
+    if (terms.every(t => hay.indexOf(t) !== -1)) hits.push({ cat, idx, row });
+  }));
+  if (!hits.length) {
+    out.innerHTML = '<div style="padding:8px;font-size:11px;color:var(--text-3)">No match — fill in the code, description, hours and material below to add a one-off item.</div>';
+    out.style.display = 'block';
+    return;
+  }
+  out.innerHTML = hits.slice(0, 40).map(h => `<div class="tariff-hit" style="padding:6px 8px;font-size:11.5px;cursor:pointer;border-top:1px solid var(--border)" data-cat="${esc(h.cat)}" onclick="pickTariffHit('${prefix}',this.dataset.cat,${h.idx})"><span class="mono" style="color:var(--gold)">${esc(h.row.code)}</span> — ${esc(h.row.item)} <span style="color:var(--text-3)">· ${esc(h.cat)}</span></div>`).join('')
+    + (hits.length > 40 ? `<div style="padding:6px 8px;font-size:10.5px;color:var(--text-3)">${hits.length - 40} more — keep typing to narrow it down.</div>` : '');
+  out.style.display = 'block';
+}
+
+function pickTariffHit(prefix, cat, idx) {
+  const catSel = document.getElementById(`${prefix}_tcat`);
+  if (catSel) { catSel.value = cat; onRepairCategoryChange(prefix); }
+  const codeSel = document.getElementById(`${prefix}_tcode`);
+  if (codeSel) codeSel.value = String(idx);
+  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
+  const out = document.getElementById(`${prefix}_tsearchResults`); if (out) out.style.display = 'none';
 }
 
 function onRepairCategoryChange(prefix) {
   const cat = document.getElementById(`${prefix}_tcat`).value;
   const codeSel = document.getElementById(`${prefix}_tcode`);
-  const rows = (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [];
-  [`${prefix}_thours`, `${prefix}_tmaterial`].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
-  codeSel.innerHTML = rows.length ? '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${r.code} — ${r.item}</option>`).join('') : '<option value="">Select category first…</option>';
+  const rows = _tariffRows(cat);
+  _tariffFill(prefix, null, cat);
+  codeSel.innerHTML = rows.length ? '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${esc(r.code)} — ${esc(r.item)}</option>`).join('') : '<option value="">Select category first…</option>';
 }
 
 function onRepairCodeChange(prefix) {
   const cat = document.getElementById(`${prefix}_tcat`).value;
   const idx = document.getElementById(`${prefix}_tcode`).value;
-  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
-  document.getElementById(`${prefix}_thours`).value = row ? row.hours : '';
-  document.getElementById(`${prefix}_tmaterial`).value = row ? row.material : '';
+  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
 }
 
 function addRepairItem(prefix) {
-  const cat = document.getElementById(`${prefix}_tcat`).value;
-  const idx = document.getElementById(`${prefix}_tcode`).value;
-  const row = ((window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [])[idx];
-  if (!row) { toast('Pick a category and code first', 'error'); return; }
-  repairItemsFor(prefix).push({ category: cat, code: row.code, side: row.side, item: row.item, hours: row.hours, material: row.material });
+  const val = id => { const e = document.getElementById(`${prefix}_${id}`); return e ? e.value.trim() : ''; };
+  const cat = val('tcat');
+  const code = val('tcodetext');
+  const item = val('titem');
+  if (!code && !item) { toast('Pick a tariff code, or type a code and description', 'error'); return; }
+  if (!item) { toast('Add a description for this item', 'error'); return; }
+  const hours = Math.max(0, parseFloat(val('thours')) || 0);
+  const material = Math.max(0, parseFloat(val('tmaterial')) || 0);
+  const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours, material };
+  const picked = _tariffRows(cat)[val('tcode')];
+  if (!picked) entry.custom = true;
+  repairItemsFor(prefix).push(entry);
+  const save = document.getElementById(`${prefix}_tsavecat`);
+  if (save && save.checked && typeof saveTariffCatalogEntry === 'function') {
+    saveTariffCatalogEntry({ category: entry.category, code: entry.code, item: entry.item, hours, material }).catch(() => {});
+    save.checked = false;
+  }
+  ['tsearch', 'tcodetext', 'titem', 'thours', 'tmaterial'].forEach(id => { const e = document.getElementById(`${prefix}_${id}`); if (e) e.value = ''; });
+  const codeSel = document.getElementById(`${prefix}_tcode`); if (codeSel) codeSel.value = '';
   renderRepairItemsList(prefix);
 }
 
@@ -1411,15 +1517,14 @@ function renderRepairItemsList(prefix) {
   const items = repairItemsFor(prefix);
   if (!items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added — container will be logged as good condition.</div>'; return; }
   const rows = items.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">
-    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">${r.code}</span> — ${sanitize(r.item)} <span style="color:var(--text-3)">(${r.side})</span></div>
-    <div style="font-size:11px;color:var(--text-2)">${r.hours}h · KSh ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
+    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">${esc(r.code)}</span> — ${esc(r.item)}${r.side ? ` <span style="color:var(--text-3)">(${esc(r.side)})</span>` : ''}${r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : ''}</div>
+    <div style="font-size:11px;color:var(--text-2)">${esc(r.hours)}h · KSh ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
   </div>`).join('');
   const total = repairItemsTotal(items);
   el.innerHTML = rows + `<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">
     <span>Total (labour @ KSh ${REPAIR_LABOUR_RATE_PER_HOUR}/hr + material)</span><span>KSh ${total.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
   </div>`;
 }
-
 
 function _tripToInterchangeReportRow(t) {
   const outward = isOutwardWorkType(t.workType);

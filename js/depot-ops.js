@@ -44,8 +44,11 @@ function renderInward() {
 }
 
 function populateInwardSelects() {
-  fillDatalist('iwTruckList',  state.db.trucks,  t=>t.reg);
-  fillDatalist('iwDriverList', state.db.drivers, d=>d.name);
+  if (typeof fillIncomingDatalists === 'function') fillIncomingDatalists();
+  else { fillDatalist('iwTruckList', state.db.trucks, t=>t.reg); fillDatalist('iwDriverList', state.db.drivers, d=>d.name); }
+  const clerkEl = document.getElementById('iw_clerk');
+  if (clerkEl && !clerkEl.value) clerkEl.value = (state.profile && state.profile.name) || '';
+  if (typeof bindIncomingDriverAutofill === 'function') bindIncomingDriverAutofill('iw');
   fillSelect('iw_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
   populateSizeTypeSelects('iw_size', 'iw_type');
 }
@@ -202,7 +205,7 @@ async function createInwardEntry() {
   _inwardSaving = true;
   let eirNumber;
   try {
-    eirNumber = await nextEirNumber(type);
+    eirNumber = await nextEirNumber(type, document.getElementById('iw_line').value);
   } finally {
     _inwardSaving = false;
   }
@@ -221,6 +224,7 @@ async function createInwardEntry() {
     eirNumber,
     blNumber: guaranteeBl,
     guaranteeNo: guaranteeBl,
+    clerkName: sanitize(((document.getElementById('iw_clerk') || {}).value || '').trim()) || (state.profile && state.profile.name) || '',
     vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
     voyage: sanitize(document.getElementById('iw_voyage').value.trim()),
     deliveringParty: sanitize(document.getElementById('iw_delivering').value.trim()),   // consignee / C&F
@@ -238,6 +242,12 @@ async function createInwardEntry() {
     _dirty: true,
   };
   state.db.interchange.push(icRecord);
+  if (typeof rememberIncomingDriver === 'function' && !driver) {
+    rememberIncomingDriver({
+      name: driverVal, idNo: icRecord.driverIdNumber, transporter: icRecord.transporter,
+      truck: truck ? truck.reg : truckVal, trailer: icRecord.trailerNo,
+    });
+  }
   buildBadges();
   addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type}) · ${eirNumber}${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
   refreshContainerHistory();
@@ -316,6 +326,7 @@ async function createDepotBookingFromInterchange(ic) {
 
 function clearInwardForm(skipRepopulate) {
   ['iw_container','iw_truck','iw_driver','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no','iw_transporter','iw_driver_id','iw_iso','iw_trailer','iw_gross','iw_dom'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const clerkEl = document.getElementById('iw_clerk'); if (clerkEl) clerkEl.value = (state.profile && state.profile.name) || '';
   const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
   const typeEl = document.getElementById('iw_type_movement'); if (typeEl) typeEl.value = 'Gate-In';
   const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
@@ -1179,11 +1190,11 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" value="${sanitize(booking.truck_reg || '')}"></div>
+      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="${sanitize(booking.truck_reg || '')}"></div>
       <div class="fg"><label>Trailer Number</label><input id="sv_trailer"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Driver Name</label><input id="sv_driver" value="${sanitize(booking.driver_name || '')}"></div>
+      <div class="fg"><label>Driver Name</label><input id="sv_driver" list="iwDriverList" value="${sanitize(booking.driver_name || '')}"></div>
       <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="${sanitize(booking.driver_id_number || '')}"></div>
     </div>
     <div class="form-row-2">
@@ -1210,6 +1221,7 @@ async function openSurveyModal(bookingId) {
   const svContEl = document.getElementById('sv_container');
   if (svContEl) markContainerValidity(svContEl);
   renderRepairItemsList('sv');
+  if (typeof bindIncomingDriverAutofill === 'function') bindIncomingDriverAutofill('sv');
 
   // Gate-originated booking (from Inward Container Entry) — carry over any
   // photos already captured at the gate instead of asking for them again.
@@ -1290,6 +1302,15 @@ async function saveSurvey(bookingId) {
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
 
+    if (typeof rememberIncomingDriver === 'function' && val('sv_driver')) {
+      const svDriverName = val('sv_driver').toLowerCase();
+      if (!state.db.drivers.some(d => (d.name || '').toLowerCase() === svDriverName)) {
+        rememberIncomingDriver({
+          name: val('sv_driver'), idNo: val('sv_driver_id'), transporter: val('sv_transporter'),
+          truck: val('sv_truck'), trailer: val('sv_trailer'),
+        });
+      }
+    }
 
     if (sourceIc) {
       syncSurveyBackToInterchange(sourceIc, survey, heavy);
@@ -1327,6 +1348,7 @@ function syncSurveyBackToInterchange(ic, survey, heavy) {
   if (survey.voyage) ic.voyage = survey.voyage;
   if (survey.bl_number) { ic.blNumber = survey.bl_number; ic.guaranteeNo = survey.bl_number; }
   if (survey.transporter) ic.transporter = survey.transporter;
+  if (survey.clerk_name) ic.clerkName = survey.clerk_name;
   if (survey.driver_id_number) ic.driverIdNumber = survey.driver_id_number;
   if (survey.iso_code) ic.isoCode = survey.iso_code;
   if (survey.trailer_number) ic.trailerNo = survey.trailer_number;
@@ -1356,20 +1378,24 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
     const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
 
 
-    let storageLocation = '—';
+    // Storage goes onto the slip in its own boxes (zone / block / slot), using the
+    // block's code rather than its internal id.
+    let storageZone = '', storageBlock = '', storageSlot = '';
     if (booking.storage_status === 'allocated') {
       try {
         const zones = await window.bookingDocs.listZones();
         const zone = zones.find(z => z.id === booking.storage_zone_id);
-        storageLocation = [
-          zone ? (zone.zone_code || zone.zone_name) : null,
-          booking.storage_block_id ? `Block ${booking.storage_block_id}` : null,
-          booking.storage_slot_number ? `Slot ${booking.storage_slot_number}` : null,
-        ].filter(Boolean).join(' · ') || '—';
+        storageZone = zone ? (zone.zone_code || zone.zone_name || '') : '';
+        if (booking.storage_block_id) {
+          const blocks = await window.bookingDocs.listBlocks(booking.storage_zone_id);
+          const blk = blocks.find(x => x.id === booking.storage_block_id);
+          storageBlock = blk ? (blk.block_code || '') : '';
+        }
+        storageSlot = booking.storage_slot_number ? String(booking.storage_slot_number) : '';
       } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
     }
 
-    const eirNumber = await nextEirNumber('Depot-In');
+    const eirNumber = await nextEirNumber('Depot-In', survey.shipping_line_id);
     const icRecord = {
       id: uid('IC'),
       container: (survey.container || (booking && booking.container) || '').toUpperCase(),
@@ -1392,7 +1418,9 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       grossWeight: survey.mgwt || '',
       repairs: survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ category: survey.tariff_category, code: survey.tariff_code, side: survey.tariff_side, item: survey.tariff_item, hours: survey.tariff_hours, material: survey.tariff_material }] : []),
       repairTotal: repairItemsTotal(survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ hours: survey.tariff_hours, material: survey.tariff_material }] : [])),
-      notes: sanitize(`Auto-generated from survey · Clerk: ${survey.clerk_name || '—'} · Transporter: ${survey.transporter || '—'}${!matchedTruck && survey.truck_reg ? ' · Truck: ' + survey.truck_reg : ''}${!matchedDriver && survey.driver_name ? ' · Driver: ' + survey.driver_name : ''} · Storage: ${storageLocation}`),
+      notes: sanitize(survey.remarks || ''),
+      clerkName: survey.clerk_name || '',
+      storageZone, storageBlock, storageSlot,
       date: new Date().toISOString(),
       status: 'pending',
       img: (survey.photos && survey.photos[0]) || '',
@@ -2326,4 +2354,30 @@ async function depOpsConfirmReject(docId, kind) {
     if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutward();
     updateDepOpsBadge();
   } catch (e) { toast(e.message || 'Could not reject document', 'error'); }
+}
+
+/* After a container is allocated to a zone / block / slot, copy that location onto
+   its interchange record so the printed EIR shows it in its own boxes. */
+async function syncStorageToInterchange(bookingId, zoneId, blockId, slotNumber) {
+  try {
+    let zoneName = '', blockCode = '';
+    const zones = await window.bookingDocs.listZones();
+    const zone = zones.find(z => z.id === zoneId);
+    zoneName = zone ? (zone.zone_code || zone.zone_name || '') : '';
+    if (blockId) {
+      const blocks = await window.bookingDocs.listBlocks(zoneId);
+      const blk = blocks.find(x => x.id === blockId);
+      blockCode = blk ? (blk.block_code || '') : '';
+    }
+    const patch = { storage_zone: zoneName || null, storage_block: blockCode || null, storage_slot: slotNumber ? String(slotNumber) : null };
+    const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
+    const icId = survey && survey.interchange_id;
+    let q = supabase.from('interchange').update(patch);
+    q = icId ? q.eq('id', icId) : q.eq('booking_id', bookingId);
+    const { error } = await q;
+    if (error) { console.warn('Could not copy storage location to the EIR (run supabase_clerk_tools_migration.sql):', error.message); return; }
+    (state.db.interchange || []).filter(i => (icId && i.id === icId) || i.bookingId === bookingId).forEach(i => {
+      i.storageZone = zoneName; i.storageBlock = blockCode; i.storageSlot = slotNumber ? String(slotNumber) : '';
+    });
+  } catch (e) { console.warn('syncStorageToInterchange failed:', e); }
 }
