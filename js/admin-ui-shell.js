@@ -643,8 +643,7 @@ function importData(e) {
     try {
       const data = JSON.parse(ev.target.result);
       if (!data.trucks || !data.drivers) throw new Error('Invalid format');
-      // Older exports may carry legacy short ids (e.g. 'TRK001') from
-      // pre-migration backups — those aren't valid uuids, so remap them.
+
       const isUuid = s => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
       const looksLegacy = data.trucks.length && !isUuid(data.trucks[0].id);
       state.db = looksLegacy ? remapSeedIds(data) : data;
