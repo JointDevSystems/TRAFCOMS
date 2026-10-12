@@ -183,12 +183,7 @@ async function upsertRows(table, rows, opts) {
   return null;
 }
 
-// Same as upsertRows but sends the rows in fixed-size batches. A single bulk
-// import (Inward or Dispatch) of several thousand historical rows can still
-// exceed Supabase's statement_timeout in one shot even after switching to
-// dirty-row-only saves — chunking keeps each request small regardless of how
-// large the source file was, so a big historical import can't silently fail
-// as a whole because of one oversized request.
+
 async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
   if (!rows || !rows.length) return null;
   for (let i = 0; i < rows.length; i += chunkSize) {
