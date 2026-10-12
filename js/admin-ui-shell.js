@@ -648,6 +648,7 @@ function importData(e) {
       const isUuid = s => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
       const looksLegacy = data.trucks.length && !isUuid(data.trucks[0].id);
       state.db = looksLegacy ? remapSeedIds(data) : data;
+      invalidateSaveSnapshots(); // a restored backup must be written in full, not diffed
       scheduleSave(); buildBadges(); buildAlerts();
       renderSection(state.currentSection);
       toast('Data imported successfully','success');

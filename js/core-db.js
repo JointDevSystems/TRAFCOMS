@@ -77,8 +77,10 @@ const TRUCK_FUEL_COLS = ['fuel_baseline_litres', 'fuel_baseline_at', 'fuel_basel
 
 // Trucks gained tank/fuel-baseline columns. If the table hasn't been migrated yet, retry without them
 // so the rest of the truck save still goes through (fuel level then falls back to the legacy % value).
-async function upsertTrucks(trucks) {
-  let rows = trucks.map(truckToRow);
+async function upsertTrucks(trucks) { return upsertTruckRows(trucks.map(truckToRow)); }
+
+async function upsertTruckRows(rows) {
+  if (!rows || !rows.length) return null;
   let failure = await upsertRows('trucks', rows);
   if (failure && TRUCK_FUEL_COLS.some(col => new RegExp(`\\b${col}\\b`, 'i').test(failure.error?.message || ''))) {
     console.warn('trucks fuel columns not found \u2014 saving without them. Run fuel_tank_columns.sql');
@@ -157,18 +159,109 @@ async function saveDirty(table, rows, toRowFn) {
   return null;
 }
 
+// Returns true only if every step succeeded, so the caller knows whether it
+// is safe to remember these links as saved.
 async function syncInvoiceTrips(invoices) {
+  let ok = true;
   const invoiceIds = invoices.map(i => i.id);
   if (invoiceIds.length) {
     const { error: delErr } = await supabase.from('invoice_trips').delete().in('invoice_id', invoiceIds);
-    if (delErr) console.error('invoice_trips clear failed:', delErr.message);
+    if (delErr) { ok = false; console.error('invoice_trips clear failed:', delErr.message); }
   }
   const rows = [];
   invoices.forEach(inv => (inv.trips || []).forEach(tripId => rows.push({ invoice_id: inv.id, trip_id: tripId })));
   if (rows.length) {
     const { error } = await supabase.from('invoice_trips').insert(rows);
-    if (error) console.error('invoice_trips save failed:', error.message);
+    if (error) { ok = false; console.error('invoice_trips save failed:', error.message); }
   }
+  return ok;
+}
+
+// ── Change detection for tables that have no per-row _dirty flag ─────
+// shipping_lines, trucks, drivers, billing_rates, allocation_rules,
+// invoice_trips and app_settings used to be re-written in full on every
+// save (trucks included their base64 photo). Many places mutate those
+// arrays directly, so instead of flagging rows at each mutation site we
+// remember what the database last held for each row (as JSON) and send
+// only rows that differ.
+//
+// Safety rules:
+//  * A row missing from the snapshot is always sent.
+//  * A missing/invalidated snapshot means "unknown" -> send everything,
+//    which is the old behaviour.
+//  * Snapshots are only advanced after the write succeeded, so a failed
+//    save is retried on the next one.
+//  * Anything that wipes tables or swaps in a whole new dataset must call
+//    invalidateSaveSnapshots() (clearAllTables and importData do).
+const SAVE_SNAP_SPECS = {
+  shippingLines:   { rows: db => (db.shippingLines || []).map(lineToRow),  id: r => r.id },
+  trucks:          { rows: db => (db.trucks || []).map(truckToRow),        id: r => r.id },
+  drivers:         { rows: db => (db.drivers || []).map(driverToRow),      id: r => r.id },
+  allocationRules: { rows: db => (db.allocationRules || []).map(allocToRow), id: r => r.id },
+  billingRates:    { rows: db => Object.entries(db.billingRates || {}).map(([ctype, v]) => ({ ctype, base: v.base, per_km: v.perKm })), id: r => r.ctype },
+};
+
+// Which snapshot to refresh when a realtime table is re-fetched.
+const SAVE_SNAP_FOR_TABLE = {
+  shipping_lines: ['shippingLines'], trucks: ['trucks'], drivers: ['drivers'],
+  allocation_rules: ['allocationRules'], invoices: ['invoiceTrips'],
+};
+
+const _saveSnap = {};
+
+function _invoiceTripsMap(db) {
+  return new Map((db.invoices || []).map(i => [i.id, JSON.stringify([...(i.trips || [])].sort())]));
+}
+
+// Record the current state.db contents as "what the database holds".
+// app_settings is deliberately not snapshotted here: loadDB() substitutes
+// defaults when the row is missing, so it is only remembered after a
+// successful save.
+function snapshotSaved(names) {
+  if (!state.db) return;
+  const list = names || [...Object.keys(SAVE_SNAP_SPECS), 'invoiceTrips'];
+  list.forEach(name => {
+    try {
+      if (name === 'invoiceTrips') { _saveSnap.invoiceTrips = _invoiceTripsMap(state.db); return; }
+      const spec = SAVE_SNAP_SPECS[name];
+      if (spec) _saveSnap[name] = new Map(spec.rows(state.db).map(r => [spec.id(r), JSON.stringify(r)]));
+    } catch (e) { delete _saveSnap[name]; }
+  });
+}
+
+function invalidateSaveSnapshots() {
+  Object.keys(_saveSnap).forEach(k => delete _saveSnap[k]);
+}
+
+function _planBlindSave(name) {
+  const spec = SAVE_SNAP_SPECS[name];
+  const rows = spec.rows(state.db);
+  const next = new Map(rows.map(r => [spec.id(r), JSON.stringify(r)]));
+  const prev = _saveSnap[name];
+  const changed = prev ? rows.filter(r => prev.get(spec.id(r)) !== next.get(spec.id(r))) : rows;
+  return { rows: changed, commit() { _saveSnap[name] = next; } };
+}
+
+function _planInvoiceTripsSave() {
+  const next = _invoiceTripsMap(state.db);
+  const prev = _saveSnap.invoiceTrips;
+  const changed = (state.db.invoices || []).filter(i => !prev || prev.get(i.id) !== next.get(i.id));
+  return { invoices: changed, commit() { _saveSnap.invoiceTrips = next; } };
+}
+
+function _settingsRow(settings) {
+  return {
+    id: 1,
+    company_name: settings.companyName,
+    backup_date: settings.backupDate,
+    map_api_key: settings.mapApiKey,
+    whatsapp: settings.whatsapp,
+    mpesa: settings.mpesa,
+    invoice_config: settings.invoiceConfig || null,
+    wialon_enabled: !!settings.wialonEnabled,
+    wialon_host: settings.wialonHost || 'https://hst-api.wialon.com',
+    fuel_price_history: settings.fuelPriceHistory || null,
+  };
 }
 
 async function loadDB() {
@@ -301,9 +394,17 @@ async function saveDB() {
   const failures = [];
   try {
 
-    failures.push(await upsertRows('shipping_lines', db.shippingLines.map(lineToRow)));
-    failures.push(await upsertTrucks(db.trucks));
-    failures.push(await upsertRows('drivers',        db.drivers.map(driverToRow)));
+    // Send only rows that changed since the database last held them.
+    const saveChanged = async (name, write) => {
+      const plan = _planBlindSave(name);
+      const failure = await write(plan.rows);
+      failures.push(failure);
+      if (!failure) plan.commit();
+    };
+
+    await saveChanged('shippingLines', rows => upsertRows('shipping_lines', rows));
+    await saveChanged('trucks',        rows => upsertTruckRows(rows));
+    await saveChanged('drivers',       rows => upsertRows('drivers', rows));
     
     failures.push(await saveDirty('trips', db.trips, tripToRow));
    
@@ -324,12 +425,17 @@ async function saveDB() {
     failures.push(await saveDirty('container_repairs', db.containerRepairs, crToRow));
 
     failures.push(await saveDirty('invoices', db.invoices, invToRow));
-    await syncInvoiceTrips(db.invoices);
+    {
+      const plan = _planInvoiceTripsSave();
+      if (plan.invoices.length) {
+        if (await syncInvoiceTrips(plan.invoices)) plan.commit();
+      } else {
+        plan.commit(); // nothing changed; also drops links of deleted invoices from the snapshot
+      }
+    }
 
-    const billingRows = Object.entries(db.billingRates || {}).map(([ctype, v]) => ({ ctype, base: v.base, per_km: v.perKm }));
-    failures.push(await upsertRows('billing_rates', billingRows, { onConflict: 'ctype' }));
-
-    failures.push(await upsertRows('allocation_rules', db.allocationRules.map(allocToRow)));
+    await saveChanged('billingRates',    rows => upsertRows('billing_rates', rows, { onConflict: 'ctype' }));
+    await saveChanged('allocationRules', rows => upsertRows('allocation_rules', rows));
 
     // NOTE: tracking_positions is deliberately NOT written from here. Positions are owned by the
     // wialon-sync edge function (Wialon trucks) and by each driver's own pings (phone trucks).
@@ -344,18 +450,9 @@ async function saveDB() {
     }
 
     if (db.settings) {
-      const settingsRow = {
-        id: 1,
-        company_name: db.settings.companyName,
-        backup_date: db.settings.backupDate,
-        map_api_key: db.settings.mapApiKey,
-        whatsapp: db.settings.whatsapp,
-        mpesa: db.settings.mpesa,
-        invoice_config: db.settings.invoiceConfig || null,
-        wialon_enabled: !!db.settings.wialonEnabled,
-        wialon_host: db.settings.wialonHost || 'https://hst-api.wialon.com',
-        fuel_price_history: db.settings.fuelPriceHistory || null,
-      };
+      const settingsRow = _settingsRow(db.settings);
+      const settingsJson = JSON.stringify(settingsRow);
+      if (_saveSnap.settings !== settingsJson) {
       let { error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' });
       if (error && /invoice_config/i.test(error.message || '')) {
 
@@ -367,6 +464,8 @@ async function saveDB() {
         ({ error } = await supabase.from('app_settings').upsert(settingsRow, { onConflict: 'id' }));
       }
       if (error) { console.error('app_settings save failed:', error.message); failures.push({ table: 'app_settings', error }); }
+      else _saveSnap.settings = settingsJson;
+      }
     }
   } catch (e) {
     console.warn('Unable to save to Supabase:', e);
@@ -505,12 +604,16 @@ async function clearAllTables() {
     if (error) console.error('depot_storage_zones link clear failed:', error.message);
   }
   await del('shipping_lines', 'id');
+  invalidateSaveSnapshots(); // tables are empty now: the next save must write everything
 }
 
 async function initDB() {
   const loaded = await loadDB();
   if (loaded) {
     state.db = loaded;
+    // Taken before the defaults below are applied, so defaults that are not
+    // yet in the database still count as changes and get saved.
+    snapshotSaved();
   } else {
    
     state.db = {
@@ -670,6 +773,8 @@ async function _refreshTables(tables) {
   if ((done.has('trucks') || done.has('fuel_logs')) && typeof recomputeAllTruckFuel === 'function') {
     recomputeAllTruckFuel(state.db.trucks, state.db.fuel);
   }
+  // Only the tables just re-fetched: other tables may hold unsaved local edits.
+  snapshotSaved([...done].flatMap(t => SAVE_SNAP_FOR_TABLE[t] || []));
   return done;
 }
 
@@ -701,6 +806,7 @@ async function refreshFromServer(opts) {
       const fresh = await loadDB();
       if (fresh) {
         state.db = fresh;
+        snapshotSaved();
         buildBadges();
         buildAlerts();
         renderSection(state.currentSection);
