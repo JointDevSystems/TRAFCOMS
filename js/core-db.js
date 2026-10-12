@@ -561,23 +561,77 @@ let _liveSyncDebounce = null;
 
 let _bulkWriteInProgress = false;
 
+// ── Targeted live sync ───────────────────────────────────────────────
+// A realtime event used to trigger loadDB() — every table, ~21 queries —
+// in every connected browser. Now each event only marks the table that
+// changed, and only that slice of state.db is re-fetched.
+//
+// Each loader returns the already-mapped array for its state.db key and
+// throws on error, so a failed fetch leaves the existing data in place
+// instead of wiping it. Queries mirror loadDB() — if you change the
+// operational window or ordering there, change it here too.
+const _liveRows = async (q) => { const { data, error } = await q; if (error) throw error; return data || []; };
+const _livePaged = async (factory) => { const { data, error } = await fetchAllPaginated(factory); if (error) throw error; return data || []; };
+
+const LIVE_TABLE_LOADERS = {
+  trucks:            { key: 'trucks',           load: async () => (await _liveRows(supabase.from('trucks').select('*'))).map(truckFromRow) },
+  drivers:           { key: 'drivers',          load: async () => (await _liveRows(supabase.from('drivers').select('*'))).map(driverFromRow) },
+  trips:             { key: 'trips',            load: async () => (await _livePaged((from, to) =>
+                        supabase.from('trips').select('*')
+                          .or(`status.neq.completed,start_time.gte.${operationalCutoffISO()}`)
+                          .order('start_time', { ascending: false }).range(from, to))).map(tripFromRow) },
+  maintenance:       { key: 'maintenance',      load: async () => (await _liveRows(supabase.from('maintenance').select('*'))).map(maintFromRow) },
+  fuel_logs:         { key: 'fuel',             load: async () => (await _livePaged((from, to) =>
+                        supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to))).map(fuelFromRow) },
+  shipping_lines:    { key: 'shippingLines',    load: async () => (await _liveRows(supabase.from('shipping_lines').select('*'))).map(lineFromRow) },
+  shutouts:          { key: 'shutouts',         load: async () => (await _liveRows(supabase.from('shutouts').select('*'))).map(shutoutFromRow) },
+  interchange:       { key: 'interchange',      load: async () => (await _livePaged((from, to) =>
+                        supabase.from('interchange').select('*')
+                          .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
+                          .order('date', { ascending: false }).range(from, to))).map(icFromRow) },
+  requisitions:      { key: 'requisitions',     load: async () => (await _liveRows(supabase.from('requisitions').select('*'))).map(reqFromRow) },
+  workshop_jobs:     { key: 'workshop',         load: async () => (await _liveRows(supabase.from('workshop_jobs').select('*'))).map(wsFromRow) },
+  invoices:          { key: 'invoices',         load: async () => {
+                        const [invRows, linkRows] = await Promise.all([
+                          _liveRows(supabase.from('invoices').select('*')),
+                          _liveRows(supabase.from('invoice_trips').select('*')),
+                        ]);
+                        const invoices = invRows.map(invFromRow);
+                        const byInvoice = {};
+                        linkRows.forEach(r => { (byInvoice[r.invoice_id] = byInvoice[r.invoice_id] || []).push(r.trip_id); });
+                        invoices.forEach(inv => { inv.trips = byInvoice[inv.id] || []; });
+                        return invoices;
+                      } },
+  allocation_rules:  { key: 'allocationRules',  load: async () => (await _liveRows(supabase.from('allocation_rules').select('*'))).map(allocFromRow) },
+  vessel_prestaking: { key: 'vesselPrestaking', load: async () => (await _liveRows(supabase.from('vessel_prestaking').select('*'))).map(prestakeFromRow) },
+  container_repairs: { key: 'containerRepairs', load: async () => (await _liveRows(
+                        supabase.from('container_repairs').select('*').order('created_at', { ascending: false }).limit(2000))).map(crFromRow) },
+};
+
+let _livePendingTables = new Set();
+let _livePendingFull = false;
+
+function queueLiveRefresh(table, delayMs) {
+  if (table && LIVE_TABLE_LOADERS[table]) _livePendingTables.add(table);
+  else _livePendingFull = true; // unknown table -> be safe, reload everything
+  clearTimeout(_liveSyncDebounce);
+  _liveSyncDebounce = setTimeout(_runQueuedLiveRefresh, delayMs);
+}
+
+function _runQueuedLiveRefresh() { return refreshFromServer({ queued: true }); }
+
 function subscribeLiveSync() {
   if (state._liveSyncChannel) return;
-  const tables = [
-    'trucks', 'drivers', 'trips', 'maintenance', 'fuel_logs', 'shutouts',
-    'interchange', 'requisitions', 'workshop_jobs', 'invoices',
-    'shipping_lines', 'allocation_rules', 'vessel_prestaking', 'container_repairs',
-  ];
+  const tables = Object.keys(LIVE_TABLE_LOADERS);
 
   let channel = supabase.channel('gargo-live-sync');
   tables.forEach(t => {
     channel = channel.on(
       'postgres_changes', { event: '*', schema: 'public', table: t },
-      () => {
-        if (_bulkWriteInProgress) return; 
+      (payload) => {
+        if (_bulkWriteInProgress) return;
 
-        clearTimeout(_liveSyncDebounce);
-        _liveSyncDebounce = setTimeout(refreshFromServer, 2000);
+        queueLiveRefresh((payload && payload.table) || t, 2000);
       }
     );
   });
@@ -588,32 +642,87 @@ let _refreshInFlight = false;
 
 let _refreshQueuedAgain = false;
 
-async function refreshFromServer() {
+function _relinkDriversToTrucks() {
+  const db = state.db;
+  (db.trucks || []).forEach(t => { t.driver = null; });
+  (db.drivers || []).forEach(d => {
+    if (d.truckId) { const t = db.trucks.find(x => x.id === d.truckId); if (t) t.driver = d.id; }
+  });
+}
+
+// Re-fetch only the given realtime tables into state.db.
+// Returns the set of tables that were actually refreshed.
+async function _refreshTables(tables) {
+  const results = await Promise.allSettled(tables.map(t => LIVE_TABLE_LOADERS[t].load()));
+  const done = new Set();
+  results.forEach((res, i) => {
+    const t = tables[i];
+    if (res.status === 'fulfilled') {
+      state.db[LIVE_TABLE_LOADERS[t].key] = res.value;
+      done.add(t);
+    } else {
+      console.warn(`Live sync: ${t} refresh failed, keeping existing data:`, res.reason);
+    }
+  });
+
+  // Cross-table derived state that loadDB() computes after loading.
+  if (done.has('trucks') || done.has('drivers')) _relinkDriversToTrucks();
+  if ((done.has('trucks') || done.has('fuel_logs')) && typeof recomputeAllTruckFuel === 'function') {
+    recomputeAllTruckFuel(state.db.trucks, state.db.fuel);
+  }
+  return done;
+}
+
+// Called with no arguments (e.g. the auto-refresh timer in admin-ui-shell.js)
+// it does a full reload exactly as before. Realtime events call it via
+// _runQueuedLiveRefresh and only refresh the tables that changed.
+async function refreshFromServer(opts) {
+  if (!(opts && opts.queued)) _livePendingFull = true;
 
   const modalOpen = document.getElementById('modalOverlay')?.classList.contains('active');
-  if (modalOpen) { _liveSyncDebounce = setTimeout(refreshFromServer, 1500); return; }
+  if (modalOpen) { _liveSyncDebounce = setTimeout(_runQueuedLiveRefresh, 1500); return; }
 
-
+  // A burst of realtime events (e.g. a bulk import writing hundreds of rows)
+  // can re-trigger this faster than one reload completes. Overlapping reloads
+  // stack up parallel queries and exhaust Supabase's connection pool, which
+  // makes every query on every table time out. Coalesce instead: if a refresh
+  // is already running, remember to run one more after it finishes. Pending
+  // tables are kept in _livePendingTables so nothing is lost meanwhile.
   if (_refreshInFlight) { _refreshQueuedAgain = true; return; }
   _refreshInFlight = true;
 
+  const full = _livePendingFull;
+  const tables = [..._livePendingTables];
+  _livePendingFull = false;
+  _livePendingTables.clear();
+
   try {
-    const fresh = await loadDB();
-    if (fresh) {
-      state.db = fresh;
-      buildBadges();
-      buildAlerts();
-      renderSection(state.currentSection);
-      startWialonPolling();
+    if (full) {
+      const fresh = await loadDB();
+      if (fresh) {
+        state.db = fresh;
+        buildBadges();
+        buildAlerts();
+        renderSection(state.currentSection);
+        startWialonPolling();
+      }
+    } else if (tables.length) {
+      const done = await _refreshTables(tables);
+      if (done.size) {
+        buildBadges();
+        buildAlerts();
+        renderSection(state.currentSection);
+        if (done.has('trucks') || done.has('drivers')) startWialonPolling();
+      }
     }
   } catch (e) {
     console.warn('Live sync refresh failed:', e);
   } finally {
     _refreshInFlight = false;
-    if (_refreshQueuedAgain) {
+    if (_refreshQueuedAgain || _livePendingFull || _livePendingTables.size) {
       _refreshQueuedAgain = false;
       clearTimeout(_liveSyncDebounce);
-      _liveSyncDebounce = setTimeout(refreshFromServer, 700);
+      _liveSyncDebounce = setTimeout(_runQueuedLiveRefresh, 700);
     }
   }
 }
