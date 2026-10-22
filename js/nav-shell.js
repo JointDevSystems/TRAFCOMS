@@ -37,18 +37,18 @@
 
   /* ───────────── what lives where ───────────── */
   const AREAS = [
-    { id: 'home', label: 'Home', short: 'Home', blurb: 'Where you start', hue: '#FF9A52', icon: IC.home, groups: [['', ['dashboard']]] },
-    { id: 'depot', label: 'Depot', short: 'Depot', blurb: 'Gate, yard and shipping lines', hue: '#FF9A52', icon: IC.depot,
+    { id: 'home', label: 'Home', short: 'Home', blurb: 'Where you start', hue: '#D9B23A', icon: IC.home, groups: [['', ['dashboard']]] },
+    { id: 'depot', label: 'Depot', short: 'Depot', blurb: 'Gate, yard and shipping lines', hue: '#D9B23A', icon: IC.depot,
       groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout']], ['Vessels and lines', ['prestaking', 'depotreport', 'shippinglines']]] },
-    { id: 'fleet', label: 'Fleet', short: 'Fleet', blurb: 'Trucks, drivers and trips', hue: '#5AA4DB', icon: IC.fleet,
+    { id: 'fleet', label: 'Fleet', short: 'Fleet', blurb: 'Trucks, drivers and trips', hue: '#38BDF8', icon: IC.fleet,
       groups: [['Movement', ['dispatch', 'trips', 'livetracking']], ['Assets', ['trucks', 'drivers', 'maintenance', 'fuel']]] },
-    { id: 'compliance', label: 'Compliance', short: 'Compliance', blurb: 'Requests and workshop jobs', hue: '#3FB5B0', icon: IC.compliance,
+    { id: 'compliance', label: 'Compliance', short: 'Compliance', blurb: 'Requests and workshop jobs', hue: '#2DD4BF', icon: IC.compliance,
       groups: [['', ['requisitions', 'workshop']]] },
-    { id: 'finance', label: 'Finance & HR', short: 'Finance', blurb: 'Money, approvals and people', hue: '#3DB486', icon: IC.finance,
+    { id: 'finance', label: 'Finance & HR', short: 'Finance', blurb: 'Money, approvals and people', hue: '#22C55E', icon: IC.finance,
       groups: [['Finance', ['finance', 'invoicing', 'approvals']], ['People', ['hr', 'people']]] },
-    { id: 'insights', label: 'Insights', short: 'Insights', blurb: 'Allocation, analysis and reports', hue: '#9C8FE0', icon: IC.insights,
+    { id: 'insights', label: 'Insights', short: 'Insights', blurb: 'Allocation, analysis and reports', hue: '#A78BFA', icon: IC.insights,
       groups: [['', ['allocation', 'workanalysis', 'reports', 'tripreports']]] },
-    { id: 'platform', label: 'Platform', short: 'Platform', blurb: 'Users and system settings', hue: '#A9B7D6', icon: IC.platform, bottom: true,
+    { id: 'platform', label: 'Platform', short: 'Platform', blurb: 'Users and system settings', hue: '#8A92A8', icon: IC.platform, bottom: true,
       groups: [['', ['usermgmt', 'settings']]] },
   ];
   AREAS.forEach(a => { a.pages = a.groups.reduce((n, g) => n.concat(g[1]), []); a.rgb = rgbOf(a.hue); });
@@ -120,7 +120,7 @@
     // any page button that has no home in AREAS goes under "More" so nothing is ever lost
     const known = new Set(AREAS.reduce((n, a) => n.concat(a.pages), []));
     const extra = [...document.querySelectorAll('.nav-item[data-section]')].map(b => b.dataset.section).filter(s => !known.has(s));
-    if (extra.length) AREAS.splice(AREAS.length - 1, 0, { id: 'more', label: 'More', short: 'More', blurb: 'Other pages', hue: '#A9B7D6', rgb: rgbOf('#A9B7D6'), icon: IC.more, groups: [['', extra]], pages: extra });
+    if (extra.length) AREAS.splice(AREAS.length - 1, 0, { id: 'more', label: 'More', short: 'More', blurb: 'Other pages', hue: '#8A92A8', rgb: rgbOf('#8A92A8'), icon: IC.more, groups: [['', extra]], pages: extra });
 
     // rail
     const rail = el('div', 'nx-rail');
@@ -260,7 +260,7 @@
   }
 
   function paintBar(a) {
-    const tb = $('sectionTopbar'); if (tb) tb.style.setProperty('--nx-hue', a ? a.hue : '#FF9A52');
+    const tb = $('sectionTopbar'); if (tb) tb.style.setProperty('--nx-hue', a ? a.hue : '#D9B23A');
     const ta = $('topbarArea'); if (ta && a) ta.textContent = a.label;
   }
 
@@ -393,7 +393,7 @@
       const out = [], pg = pages();
       if (!q) {
         let rec = []; try { rec = (window.NAV ? NAV.recent() : []).filter(x => x.t === 'v' && x.s !== curSec && canSee(x.s)).slice(0, 4); } catch (e) {}
-        if (rec.length) { out.push({ head: 'Recent' }); rec.forEach(r => { const a = areaOf(r.s); out.push({ kind: 'page', sec: r.s, tab: r.tab, label: r.label, sub: a ? a.label : '', hue: a ? a.hue : '#FF9A52', icon: links[r.s] && links[r.s].querySelector('svg'), recent: true }); }); }
+        if (rec.length) { out.push({ head: 'Recent' }); rec.forEach(r => { const a = areaOf(r.s); out.push({ kind: 'page', sec: r.s, tab: r.tab, label: r.label, sub: a ? a.label : '', hue: a ? a.hue : '#D9B23A', icon: links[r.s] && links[r.s].querySelector('svg'), recent: true }); }); }
         AREAS.forEach(a => { const ps = pg.filter(p => p.sub === a.label); if (ps.length) { out.push({ head: a.label }); ps.forEach(p => out.push(p)); } });
         out.push({ head: 'Actions' }); actions().forEach(x => out.push(Object.assign({ kind: 'action', icon: IC.bolt }, x)));
         return out;

@@ -1,6 +1,8 @@
 'use strict';
 /* Helpers the navigation layer relies on. Defined only when missing, so they never override Gargo's own versions. */
 (function () {
+  /* Gargo declares `const state` at top level, which is not a window property. The navigation layer reads window.state. */
+  try { if (!window.state && typeof state !== 'undefined') window.state = state; } catch (e) {}
   if (typeof window.icOutIndex !== 'function') {
     window.icOutIndex = function () {
       const idx = new Map();

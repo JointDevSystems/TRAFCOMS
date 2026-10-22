@@ -1,5 +1,7 @@
 'use strict';
-
+/* Gargo HR Hub — overview, employees (360° profile), leave (workflow + balances), attendance, payroll (Kenya statutory,
+   payslips, bank & statutory exports), licences & compliance, recruitment, performance, training, discipline, assets.
+   Uses GARGO_HUB from finance.js. New tables/columns: see supabase/hr-expansion.sql */
 const hrCan = () => isAdmin() || currentRole() === 'hr';
 const HR_DEPTS = ['Gate & Security', 'Yard Operations', 'Weighbridge', 'Workshop', 'Reefer Unit', 'Transport & Fleet', 'Finance', 'HR & Admin', 'Management'];
 const today10 = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
