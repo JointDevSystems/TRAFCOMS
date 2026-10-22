@@ -1,4 +1,4 @@
-const CACHE_VERSION = '3.5';
+const CACHE_VERSION = '3.6';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
@@ -9,6 +9,7 @@ const SHELL_FILES = [
   './',
   './index.html',
   './styles.css',
+  './nav-shell.css',
   './js/branding.js',
   './js/core-state.js',
   './js/core-db.js',
@@ -32,6 +33,9 @@ const SHELL_FILES = [
   './js/payroll-config.js',
   './js/finance.js',
   './js/hr.js',
+  './js/nav-compat.js',
+  './js/navigation.js',
+  './js/nav-shell.js',
   './manifest.json',
 ];
 
