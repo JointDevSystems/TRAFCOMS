@@ -2,11 +2,12 @@
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','finance','hr','workshop'],
   clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport'],
   dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport','fuel'],
   ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','workshop'],
-  finance:  ['trips','shippinglines'],
+  finance:  ['finance','trips','shippinglines'],
+  hr:       ['hr','drivers'],
   viewer:   ['trucks','drivers','trips'],
 };
 
@@ -87,6 +88,7 @@ const SECTION_META = {
   reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
+  finance:['Finance','Finance Hub'], hr:['Human Resources','HR Hub'],
   
 };
 
@@ -145,6 +147,7 @@ const sectionRenderers = {
   usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
   depops: renderDepOps,
+  finance: ()=>renderFinance('overview'), hr: ()=>renderHR('overview'),
 };
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
@@ -231,9 +234,7 @@ function showAddDriverModal() {
   openModal('Add New Driver', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="nd_name" placeholder="John Doe"/></div><div class="fg"><label>Phone</label><input id="nd_phone" placeholder="+254 7XX XXX XXX"/></div></div><div class="form-row-2"><div class="fg"><label>Licence No.</label><input id="nd_lic" placeholder="DL-A0000"/></div><div class="fg"><label>Licence Expiry</label><input id="nd_licexp" type="date"/></div></div><div class="form-row-2"><div class="fg"><label>ID Number</label><input id="nd_idno" placeholder="ID number"/></div><div class="fg"><label>Rating</label><input id="nd_rating" type="number" placeholder="4.0" min="0" max="5" step="0.1"/></div></div><button class="submit-btn" onclick="saveDriver()">Add Driver →</button>`);
 }
 
-// Shipping-line Add / Edit modals live in interchange-shutouts.js (showAddLineModal, showEditLineModal,
-// applyOfficialLineDefaults) next to the rate-card code that reads their fields. They used to be duplicated
-// here with an old 3-rate form; because this file loads later it silently overrode the real ones.
+
 
 function openUnmappedVesselsModal() {
   const groups = _unmappedVesselGroups();

@@ -1,4 +1,4 @@
-const CACHE_VERSION = '3.4';
+const CACHE_VERSION = '3.5';
 
 const STATIC_FILES = [
   './icons/icon-192.png',
@@ -29,6 +29,9 @@ const SHELL_FILES = [
   './js/service-rate-schedule.js',
   './js/booking-documents.js',
   './js/clerk-tools.js',
+  './js/payroll-config.js',
+  './js/finance.js',
+  './js/hr.js',
   './manifest.json',
 ];
 

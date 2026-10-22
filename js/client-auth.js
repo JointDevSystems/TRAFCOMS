@@ -202,7 +202,7 @@ function updateUserChip() {
   if(mh) mh.innerHTML= `<div class="user-menu-header-name">${p.name}</div><div class="user-menu-header-role">${roleLabel(p.role)}</div>`;
 }
 
-function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', clerk:'Clerk', viewer:'Read-Only Viewer', driver:'Driver' }; return m[r]||r; }
+function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', hr:'HR Manager', dispatch:'Dispatch Controller', clerk:'Clerk', viewer:'Read-Only Viewer', driver:'Driver' }; return m[r]||r; }
 
 function startClock() {
   const update=()=>{
