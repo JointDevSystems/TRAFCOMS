@@ -333,9 +333,12 @@
   };
 
   const FIN_TABS = [['overview', 'Overview'], ['receipts', 'Receipts'], ['bills', 'Supplier Bills'], ['expenses', 'Expenses'], ['suppliers', 'Suppliers'], ['controls', 'Controls']];
+  /* Add-on tabs (reports, ops cost posting, ledger...) register here instead of patching renderFinance: GARGO_FIN.add(id, label, run). */
+  const EXT = {};
+  const tabList = () => { const base = FIN_TABS.slice(), i = base.findIndex(t => t[0] === 'controls'), ext = Object.entries(EXT).map(([id, x]) => [id, x.label]); base.splice(i < 0 ? base.length : i, 0, ...ext); return base; };
   function finTabs(tab) {
     const el = document.getElementById('financeTabs'); if (!el) return;
-    el.innerHTML = FIN_TABS.map(([id, l]) => `<button class="filter-btn${id === tab ? ' active' : ''}" onclick="renderFinance('${id}',this)">${l}</button>`).join('');
+    el.innerHTML = tabList().map(([id, l]) => `<button class="filter-btn${id === tab ? ' active' : ''}" onclick="renderFinance('${id}',this)">${l}</button>`).join('');
   }
 
   window.renderFinance = async function (tab) {
@@ -343,6 +346,7 @@
     const body = document.getElementById('financeBody'), kp = document.getElementById('financeKpis');
     if (!body) return;
     if (!canFinance()) { if (kp) kp.innerHTML = ''; body.innerHTML = '<div class="ops-notice">The Finance Hub is restricted to the Finance Manager and Administrators.</div>'; return; }
+    if (EXT[tab]) { if (kp) kp.innerHTML = ''; try { return await EXT[tab].run(); } catch (e) { console.error(tab, e); body.innerHTML = `<div class="ops-notice">Could not open this tab. ${esc(friendlyError(e))}</div>`; return; } }
     if (tab === 'controls') return finControls();
     if (tab !== 'overview') return HUB.render(FIN[tab], FIN_KPI[tab]);
     kp.innerHTML = ''; body.innerHTML = '<div class="hub-loading">Loading…</div>';
@@ -438,15 +442,26 @@
       ${adm ? '' : '<div class="ops-notice" style="margin-bottom:10px">Only an administrator can change these.</div>'}
       <div class="hr-grid"><div class="hr-card"><h4>Approval rules</h4>
         <div class="fg"><label>Administrator-only above (KSh, 0 = no limit)</label><input id="fc_limit" type="number" min="0" value="${N(s.approval_limit)}" ${dis}></div>
-        <div class="fg"><label>Nobody approves their own entry (administrators excepted)</label><select id="fc_sep" ${dis}><option value="false" ${s.separate_approver ? '' : 'selected'}>Off</option><option value="true" ${s.separate_approver ? 'selected' : ''}>On</option></select></div></div></div>
+        <div class="fg"><label>Nobody approves their own entry (administrators excepted)</label><select id="fc_sep" ${dis}><option value="false" ${s.separate_approver ? '' : 'selected'}>Off</option><option value="true" ${s.separate_approver ? 'selected' : ''}>On</option></select></div></div>
+        <div class="hr-card"><h4>Month-end close <small>blocks edits for non-administrators</small></h4>
+          <div class="fg"><label>Books closed up to and including</label><input id="fc_lock" type="date" value="${esc(s.lock_before || '')}" ${dis}></div>
+          <p style="color:var(--text-3);font-size:12px">Receipts, expenses and bills dated on or before this day can no longer be added, changed or deleted by Finance. ${adm ? '<button class="action-btn ghost" onclick="finCloseMonth()">Close last month</button> <button class="action-btn ghost" onclick="document.getElementById(\'fc_lock\').value=\'\'">Reopen all</button>' : ''}</p></div>
+        <div class="hr-card"><h4>Tax</h4><div class="fg"><label>VAT rate (%)</label><input id="fc_vat" type="number" min="0" max="100" step="0.01" value="${N(s.vat_rate)}" ${dis}></div></div></div>
       <p style="color:var(--text-3);font-size:12px">Only the Finance Manager and Administrators can approve money (expenses, payroll). HR prepares payroll; Finance approves it. With "nobody approves their own entry" on, a Finance user cannot approve what they entered themselves. Keep it on. The database enforces these rules, not just this screen.</p>`;
   }
+  window.finCloseMonth = function () { const n = new Date(), d = new Date(n.getFullYear(), n.getMonth(), 0), el = document.getElementById('fc_lock'); if (el) el.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   window.finSaveControls = async function () {
     if (!isAdmin()) return;
-    const u = { approval_limit: Math.max(0, N(document.getElementById('fc_limit').value)), separate_approver: document.getElementById('fc_sep').value === 'true', updated_at: new Date().toISOString() };
+    const lk = document.getElementById('fc_lock').value || null, vat = N(document.getElementById('fc_vat').value);
+    if (vat < 0 || vat > 100) return toast('VAT rate must be between 0 and 100', 'error');
+    if (lk && (lk < '2000-01-01' || lk > nextDay())) return toast('The close date looks wrong', 'error');
+    const u = { approval_limit: Math.max(0, N(document.getElementById('fc_limit').value)), separate_approver: document.getElementById('fc_sep').value === 'true', lock_before: lk, vat_rate: vat, updated_at: new Date().toISOString() };
     const { error } = await supabase.from('finance_settings').update(u).eq('id', 1);
     if (error) return toast(error.message, 'error');
     POLICY.loaded = false; addAudit(state.profile?.username, 'Finance controls changed', JSON.stringify(u).slice(0, 180));
     toast('Controls saved', 'success'); finControls();
   };
+  /* ── public surface for add-on finance files (finance-suite.js, finance-corp.js) ── */
+  Object.assign(HUB, { friendlyError, withTimeout, cents, sumC, downloadCSV, dayNum, N });
+  window.GARGO_FIN = { FIN, FIN_CATS, FIN_KPI, add(id, label, run) { EXT[id] = { label, run }; }, tabs: EXT };
 })();
