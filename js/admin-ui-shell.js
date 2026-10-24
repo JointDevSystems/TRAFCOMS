@@ -22,17 +22,19 @@ function buildBadges() {
   set('badge-allocation',   awaitingDispatchTrips().length);
   set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
   set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
-  set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
+  set('badge-interchange',  db.interchange.filter(i=>i.status==='pending' && !icAwaitingSurvey(i)).length);
   set('badge-prestaking',   (db.vesselPrestaking||[]).filter(p=>p.status==='staged').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-workshop',     (db.containerRepairs||[]).filter(c=>c.status==='awaiting_approval').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
   set('badge-depotreport',  computeDepotReportDuplicates().length);
+  if (typeof refreshBookingBadge === 'function') refreshBookingBadge();
 }
 
 function buildAlerts() {
   const db=state.db;
   const alerts=[];
+  const C=(k,d)=>{ const v=window.cfgGet?window.cfgGet(k):undefined; return v===undefined||v===null||v===''?d:v; };   // optional System Settings
 
   db.maintenance.filter(m=>m.status==='open' && m.priority==='critical' && m.reportedByDriver).forEach(m=>{
     alerts.push({ type:'driver_breakdown', msg: `🚨 DRIVER BREAKDOWN REPORT — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
@@ -40,17 +42,24 @@ function buildAlerts() {
   db.maintenance.filter(m=>m.status==='open' && m.priority==='critical' && !m.reportedByDriver).forEach(m=>{
     alerts.push({ type:'crit', msg: `Critical breakdown — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
   });
-  db.trucks.filter(t=>t.fuelPct != null && t.fuelPct < 20).forEach(t=>{
+  db.trucks.filter(t=>t.fuelPct != null && t.fuelPct < C('alerts.lowFuelPct',20)).forEach(t=>{
     alerts.push({ type:'warn', msg: `Low fuel — ${t.reg}: ${truckFuelLabel(t)} remaining` });
   });
   db.trips.filter(t=>t.status==='delayed').forEach(t=>{
     alerts.push({ type:'warn', msg: `Trip delayed — ${truckName(t.truckId)} → ${t.dest}` });
   });
-  db.drivers.filter(d=>{ const daysLeft=(new Date(d.licenceExp)-Date.now())/(86400000); return daysLeft <90 && daysLeft >0; }).forEach(d=>{
+  db.drivers.filter(d=>{ const daysLeft=(new Date(d.licenceExp)-Date.now())/(86400000); return daysLeft < C('alerts.licenceDays',90) && daysLeft >0; }).forEach(d=>{
     const days=Math.round((new Date(d.licenceExp)-Date.now())/86400000);
     alerts.push({ type:'warn', msg: `Licence expiry — ${d.name}: ${days} days remaining` });
   });
 
+  try {   // depot + system alerts (thresholds come from System Settings → Alerts)
+    const idx = icOutIndex(), agedDays = Number(C('ops.agedDays',30)), inYard = (db.interchange||[]).filter(i=>icInYard(i,idx));
+    if (C('alerts.agedContainers',true)!==false) { const n = inYard.filter(i=>(Date.now()-new Date(i.date))/864e5 > agedDays).length; if (n) alerts.push({ type:'warn', msg:`${n} container${n===1?'':'s'} in the yard longer than ${agedDays} days` }); }
+    if (C('alerts.awaitingSurvey',true)!==false) { const hrs = Number(C('alerts.awaitingSurveyHours',24)); const n = inYard.filter(i=>i.surveyStatus==='awaiting_survey' && (Date.now()-new Date(i.date))/36e5 > hrs).length; if (n) alerts.push({ type:'warn', msg:`${n} gated-in container${n===1?'':'s'} waiting for survey for over ${hrs} h` }); }
+    const bd = Number(C('alerts.backupDays',7));
+    if (isAdmin() && bd > 0) { const last = db.settings && db.settings.backupDate, age = last ? (Date.now()-new Date(last))/864e5 : Infinity; if (age > bd) alerts.push({ type:'warn', msg: last ? `Backup overdue: the last one was ${Math.floor(age)} days ago` : 'No backup has been made yet' }); }
+  } catch(e) { console.warn('depot alerts', e); }
 
   const priorityOrder = { driver_breakdown:0, crit:1, warn:2 };
   alerts.sort((a,b)=>(priorityOrder[a.type]??9)-(priorityOrder[b.type]??9));

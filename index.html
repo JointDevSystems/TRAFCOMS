@@ -664,92 +664,42 @@
                             </div>
                         </div>
                         <div class="ops-notice" style="margin-bottom:14px">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                            Log containers entering the depot or yard — Gate-In or Depot-In. Entries are recorded as interchange records and appear in Interchange, DepOps and container history immediately.
-                        </div>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><span style="flex:1;min-width:0">Inward containers are processed in two steps: <b>Gate-In</b> (container, size/type, line, driver and truck) then <b>Survey</b> (everything else). A surveyed container becomes a <b>Depot-In</b> and carries on through allocation and storage as usual.</span></div>
 
                         <div id="inwardTabSingle">
                             <div class="dispatch-layout">
                                 <div class="form-card">
                                     <div class="form-card-head" style="display:flex;justify-content:space-between;align-items:center">
-                                        <span>New Inward Entry</span>
+                                        <span>Gate-In · Step 1 of 2</span>
                                     </div>
                                     <div class="form-card-body">
-                                        <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px">The <strong>EIR No.</strong> is generated automatically when the entry is recorded.</div>
+                                        <div id="inwardBookingBanner" class="ops-notice" style="display:none;margin-bottom:12px;font-size:11.5px"></div>
+                                        <div id="inwardJustGated" class="ops-notice" style="display:none;margin-bottom:12px;font-size:12px;border-color:var(--green)"></div>
+                                        <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0"><strong>Step 1 of 2 · Gate-In.</strong> Record only what the gate can see. The time is stamped automatically and the container then waits under <strong>Awaiting Survey</strong>. The survey (step 2) captures the rest, completes the <strong>Depot-In</strong> and issues the <strong>EIR No.</strong> (shipping line initials + number).</span></div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="iw_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
-                                            <div class="fg"><label>Size</label><select id="iw_size" onchange="refreshTypeSelectForSize('iw_size','iw_type')"></select></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Type</label><select id="iw_type"></select></div>
-                                            <div class="fg"><label>ISO Code <span class="label-optional">(optional)</span></label><input id="iw_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" /></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Date IN <span class="label-optional">(optional, defaults to now)</span></label><input id="iw_date" type="datetime-local" /></div>
-                                            <div class="fg"><label>Movement</label>
-                                                <select id="iw_type_movement"><option>Gate-In</option><option>Depot-In</option></select>
-                                            </div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Consignee / C&amp;F</label><input id="iw_delivering" placeholder="Consignee / clearing &amp; forwarding agent" /></div>
                                             <div class="fg"><label>Shipping Line / Agent</label><select id="iw_line"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Ex Vessel</label><input id="iw_vessel" /></div>
-                                            <div class="fg"><label>Voyage</label><input id="iw_voyage" /></div>
+                                            <div class="fg"><label>Size</label><select id="iw_size" onchange="refreshTypeSelectForSize('iw_size','iw_type')"></select></div>
+                                            <div class="fg"><label>Type</label><select id="iw_type"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Guarantee / B/L No.</label><input id="iw_guarantee_no" placeholder="Guarantee form / B/L no." /></div>
-                                            <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="iw_gross" type="number" min="0" step="1" placeholder="e.g. 30480" /></div>
+                                            <div class="fg"><label>Driver Name</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" oninput="iwDriverPicked(this)" onchange="iwDriverPicked(this)" /></div>
+                                            <div class="fg"><label>Driver ID / Driving Licence No.</label><input id="iw_driver_id" placeholder="National ID / driving licence no." /></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Lorry No.</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" /></div>
+                                            <div class="fg"><label>Lorry / Truck No.</label><input id="iw_truck" list="iwTruckList" placeholder="Reg no. — pick existing or type new" style="text-transform:uppercase" /></div>
                                             <div class="fg"><label>Trailer No. <span class="label-optional">(optional)</span></label><input id="iw_trailer" placeholder="e.g. ZD502" /></div>
                                         </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Driver Name</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" /></div>
-                                            <div class="fg"><label>ID / Driving No. <span class="label-optional">(optional)</span></label><input id="iw_driver_id" placeholder="National ID / driving licence no." /></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="iw_transporter" placeholder="Transporting company" /></div>
-                                            <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="iw_dom" placeholder="MM/YYYY" maxlength="7" /></div>
-                                        </div>
-                                        <div class="form-row-2">
-                                            <div class="fg"><label>Overall Condition</label><select id="iw_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
-                                            <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label>
-                                                <select id="iw_cargo_status"><option value="">—</option><option>Empty</option><option>Laden / Full</option><option>Part Load</option><option>Damaged Cargo</option></select>
-                                            </div>
-                                        </div>
-                                        <div class="fg"><label>Clerk</label><input id="iw_clerk" placeholder="Recorded by" /></div>
-                                        <div class="fg"><label>Notes</label><textarea id="iw_notes" rows="2" placeholder="Remarks…"></textarea></div>
-                                        <div class="fg">
-                                            <label>Container Photos <span class="label-optional">(optional, up to 6)</span></label>
-                                            <div class="file-upload-area" id="inwardImgUpload" onclick="document.getElementById('iw_img').click()">
-                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                <span id="inwardImgLabel">Upload container photos</span>
-                                            </div>
-                                            <input type="file" id="iw_img" accept="image/*" multiple style="display:none" onchange="previewInwardImg(event)" />
-                                        </div>
-                                        <div id="inwardImgPreview" style="display:none;margin-bottom:10px"></div>
-                                        <div class="fg">
-                                            <label>Guarantee Form <span class="label-optional">(optional)</span></label>
-                                            <div class="file-upload-area" id="inwardGuaranteeUpload" onclick="document.getElementById('iw_guarantee_file').click()">
-                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                                <span id="inwardGuaranteeLabel">Upload container guarantee form</span>
-                                            </div>
-                                            <input type="file" id="iw_guarantee_file" accept="image/*,.pdf" style="display:none" onchange="previewInwardGuaranteeFile(event)" />
-                                        </div>
-                                        <div id="inwardGuaranteePreview" style="display:none;margin-bottom:10px;font-size:11.5px;color:var(--text-2)"></div>
-                                        <div class="fg" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:14px">
-                                            <input type="checkbox" id="iw_needs_survey" style="margin-top:3px;width:15px;height:15px;flex-shrink:0;accent-color:var(--gold)" />
-                                            <label for="iw_needs_survey" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text-2);cursor:pointer">
-                                                Send to <strong style="color:var(--text)">Awaiting Survey</strong> — this container needs a depot survey before it's considered complete. It'll appear in the Awaiting Survey list below until marked surveyed.
-                                            </label>
-                                        </div>
-                                        <button class="submit-btn" onclick="createInwardEntry()">Record Inward Entry →</button>
+                                        <button class="submit-btn" onclick="createInwardEntry()">Complete Gate-In →</button>
                                     </div>
                                 </div>
                                 <div>
+                                    <div class="panel" style="margin-bottom:14px">
+                                        <div class="panel-head"><span class="panel-title">Awaiting Gate-In</span><span class="panel-meta" id="inwardAwaitingGateInMeta"></span></div>
+                                        <div id="inwardAwaitingGateInList"></div>
+                                    </div>
                                     <div class="panel" style="margin-bottom:14px">
                                         <div class="panel-head"><span class="panel-title">Awaiting Survey</span><span class="panel-meta" id="inwardAwaitingSurveyMeta"></span></div>
                                         <div id="inwardAwaitingSurveyList"></div>
@@ -1502,7 +1452,9 @@
     <div class="sec-title">Public Bookings</div>
     <div class="filter-row">
       <button class="filter-btn active" onclick="filterPublicBookings('pending',this)">Pending</button>
-      <button class="filter-btn" onclick="filterPublicBookings('imported',this)">Imported</button>
+      <button class="filter-btn" onclick="filterPublicBookings('confirmed',this)">Awaiting Gate-In</button>
+      <button class="filter-btn" onclick="filterPublicBookings('imported',this)">Gated In</button>
+      <button class="filter-btn" onclick="filterPublicBookings('cancelled',this)">Cancelled</button>
       <button class="filter-btn" onclick="filterPublicBookings('all',this)">All</button>
       <button class="action-btn" onclick="refreshPublicBookings()">↻ Refresh</button>
     </div>

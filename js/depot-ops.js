@@ -37,6 +37,7 @@ let _inwardImages = [];
 
 function renderInward() {
   populateInwardSelects();
+  renderInwardAwaitingGateIn();
   renderInwardRecent();
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
@@ -46,8 +47,6 @@ function renderInward() {
 function populateInwardSelects() {
   if (typeof fillIncomingDatalists === 'function') fillIncomingDatalists();
   else { fillDatalist('iwTruckList', state.db.trucks, t=>t.reg); fillDatalist('iwDriverList', state.db.drivers, d=>d.name); }
-  const clerkEl = document.getElementById('iw_clerk');
-  if (clerkEl && !clerkEl.value) clerkEl.value = (state.profile && state.profile.name) || '';
   if (typeof bindIncomingDriverAutofill === 'function') bindIncomingDriverAutofill('iw');
   fillSelect('iw_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
   populateSizeTypeSelects('iw_size', 'iw_type');
@@ -61,6 +60,7 @@ function renderInwardRecent() {
     .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
     .sort((a,b) => new Date(b.date) - new Date(a.date))
     .slice(0, 8);
+  const _idx = icOutIndex();
   if (meta) meta.textContent = `${items.length} shown`;
   el.innerHTML = items.map(ic => `<div class="dispatch-queue-item" onclick="showSection('interchange', document.querySelector('[data-section=&quot;interchange&quot;]'))">
       <div class="dqi-ref">${esc(ic.container)}</div>
@@ -68,9 +68,10 @@ function renderInwardRecent() {
         <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.type)} · ${esc(lineName(ic.line))}</div>
         <div style="font-size:10px;color:var(--text-3)">${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '—')} · ${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '—')}</div>
       </div>
-      ${sbadge(ic.status)}
+      ${icAwaitingSurvey(ic) ? '<span class="sbadge s-pending">Awaiting survey</span>' : sbadge(ic.status)}
+      ${(() => { const x = icExitDate(ic, _idx); return x ? `<span class="sbadge" title="This container has left the yard" style="color:var(--text-3)">Exited ${fmtDate(x)}</span>` : (ic.surveyStatus === 'awaiting_survey' ? '' : '<span class="sbadge s-active">In yard</span>'); })()}
       <div class="dqi-time">${timeAgo(ic.date)}</div>
-      ${!ic.dateOut ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
+      ${icInYard(ic, _idx) ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
     </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
 }
 
@@ -79,11 +80,9 @@ function renderInwardStillInStorage() {
   const wrap = document.getElementById('inwardStillInStorageList');
   const meta = document.getElementById('inwardStillInStorageMeta');
   if (!wrap) return;
-  const exitedContainers = new Set(
-    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
-  );
+  const _idx = icOutIndex();
   const items = state.db.interchange
-    .filter(i => (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut && !exitedContainers.has(i.container))
+    .filter(i => icInYard(i, _idx))
     .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
 
   if (meta) meta.textContent = items.length ? `${items.length} without a recorded exit` : '';
@@ -121,13 +120,17 @@ async function renderInwardAwaitingSurvey() {
     return;
   }
 
-  let docsByIc = {};
+  let docsByIc = {}, docsByBooking = {};
   try {
-    if (window.bookingDocs) docsByIc = await window.bookingDocs.documentsForInterchanges(items.map(i => i.id));
+    if (window.bookingDocs) {
+      docsByIc = await window.bookingDocs.documentsForInterchanges(items.map(i => i.id));
+      const bIds = items.map(i => i.bookingId).filter(Boolean);
+      if (bIds.length) docsByBooking = await window.bookingDocs.documentsForBookings(bIds);
+    }
   } catch (e) { /* guarantee-form status is best-effort — list still renders without it */ }
 
   wrap.innerHTML = items.map(ic => {
-    const hasGuarantee = (docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form');
+    const hasGuarantee = (docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form') || (docsByBooking[ic.bookingId] || []).some(d => d.doc_type === 'guarantee_form');
     return `<div class="dispatch-queue-item">
       <div class="dqi-ref">${esc(ic.container)}</div>
       <div class="dqi-route">
@@ -138,9 +141,7 @@ async function renderInwardAwaitingSurvey() {
         ${hasGuarantee ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}
         <div class="dqi-time" style="margin:0">${timeAgo(ic.date)}</div>
       </div>
-      ${ic.bookingId
-        ? `<button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="openSurveyModal('${ic.bookingId}')">Start Survey →</button>`
-        : `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="markInwardSurveyed('${ic.id}')" title="No DepOps booking on file for this record (created before this workflow) — quick local status flip only">Mark Surveyed (quick) →</button>`}
+      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="startSurveyForInterchange('${ic.id}')">Start Survey →</button>
     </div>`;
   }).join('');
 }
@@ -159,132 +160,208 @@ function markInwardSurveyed(id) {
   renderInwardRecent();
 }
 
-function switchInwardTab(tab, btn) {
-  document.getElementById('inwardTabSingle').style.display = tab==='single' ? 'block' : 'none';
-  document.getElementById('inwardTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
-  document.querySelectorAll('#sec-inward .filter-row .filter-btn').forEach(b=>b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-}
-
 let _inwardSaving = false;
+let _inwardBooking = null;   // the confirmed website/account booking being gated in (null = ordinary entry)
 async function createInwardEntry() {
   if (_inwardSaving) return;
-  const cont = document.getElementById('iw_container').value.trim().toUpperCase();
+  _inwardSaving = true;
+  try { await _createInwardEntryInner(); } finally { _inwardSaving = false; }
+}
+/* ── STEP 1 of 2: Gate-In ────────────────────────────────────────────
+   The gate records only what it can see: container, size/type, shipping line,
+   driver (name + ID) and truck. That completes the Gate-In and queues the
+   container for survey. The survey (step 2) captures everything else and, when
+   saved, turns the record into a Depot-In.                                      */
+async function _createInwardEntryInner() {
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const cont = val('iw_container').toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
   const contIssue = containerFormatIssue(cont);
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
 
-  const type = document.getElementById('iw_type_movement').value;
-  const dateInput = document.getElementById('iw_date').value;
-  const dateVal = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
+  const lineId = val('iw_line');
+  if (!lineId) { toast('Choose the shipping line', 'error'); return; }
+  if (!document.getElementById('iw_size').value || !document.getElementById('iw_type').value) { toast('Choose the container size and type', 'error'); return; }
+  const truckVal = val('iw_truck'), driverVal = val('iw_driver'), driverIdVal = val('iw_driver_id');
+  const cg = k => (window.cfgGet ? window.cfgGet(k) : undefined);   // System Settings → Depot operations
+  if (!truckVal && cg('gate.requireTruck') !== false) { toast('Lorry / truck number required', 'error'); return; }
+  if (!val('iw_trailer') && cg('gate.requireTrailer')) { toast('Trailer number required', 'error'); return; }
+  if (!driverVal) { toast('Driver name required', 'error'); return; }
+  if (!driverIdVal && cg('gate.requireDriverId') !== false) { toast("Driver's ID / driving licence number required", 'error'); return; }
 
+  const type = 'Gate-In';
+  const dateVal = new Date().toISOString();
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
   if (dupIc) { toast(`${cont} already has a ${type} record logged on ${fmtDate(dateVal)}`, 'warning'); return; }
 
-  const domVal = normalizeManufactureDate(document.getElementById('iw_dom').value);
-  if (domVal === null) { toast('Date of manufacture must look like 05/2011', 'error'); return; }
-  const grossRaw = document.getElementById('iw_gross').value.trim();
-  const grossVal = grossRaw ? Number(grossRaw) : '';
-  if (grossRaw && (!isFinite(grossVal) || grossVal <= 0)) { toast('Gross weight must be a positive number', 'error'); return; }
+  const booking = _inwardBooking;
+  // One live record per container number, checked against the server before anything is saved
+  const avail = await checkContainerAvailable(cont, { bookingId: booking ? booking.id : null });
+  if (avail) { toast(avail, 'error', 7000); return; }
 
-  const truckVal  = document.getElementById('iw_truck').value.trim();
-  const driverVal = document.getElementById('iw_driver').value.trim();
-  const truck  = truckVal  ? state.db.trucks.find(t => t.reg.toLowerCase()===truckVal.toLowerCase())   : null;
-  const driver = driverVal ? state.db.drivers.find(d => d.name.toLowerCase()===driverVal.toLowerCase()) : null;
-
-  const needsSurvey = !!document.getElementById('iw_needs_survey').checked;
-  const guaranteeFile = _inwardGuaranteeFile;
+  const truck = state.db.trucks.find(t => t.reg.toLowerCase() === truckVal.toLowerCase());
+  const driver = state.db.drivers.find(d => d.name.toLowerCase() === driverVal.toLowerCase());
   const icId = uid('IC');
   const ctype = composeCtype(document.getElementById('iw_size').value, document.getElementById('iw_type').value);
-  const cargoStatusEl = document.getElementById('iw_cargo_status');
-  const photos = _inwardImages.slice();
-
-  // Guarantee No. and B/L No. are one number on the paperwork — one field, stored in both.
-  const guaranteeBl = sanitize(document.getElementById('iw_guarantee_no').value.trim());
-
-  _inwardSaving = true;
-  let eirNumber;
-  try {
-    eirNumber = await nextEirNumber(type, document.getElementById('iw_line').value);
-  } finally {
-    _inwardSaving = false;
-  }
+  const bk = booking || {};   // the interchange (EIR) number is issued when the survey is complete, not at the gate
 
   const icRecord = {
-    id: icId, container: cont, type,
-    ctype,
-    line: document.getElementById('iw_line').value,
-    condition: document.getElementById('iw_cond').value,
-    truck:  truck  ? truck.id  : '',
-    driver: driver ? driver.id : '',
-    truckRegText:   truck  ? '' : sanitize(truckVal),
-    driverNameText: driver ? '' : sanitize(driverVal),
-    transporter: sanitize(document.getElementById('iw_transporter').value.trim()),
-    driverIdNumber: sanitize(document.getElementById('iw_driver_id').value.trim()),
-    eirNumber,
-    blNumber: guaranteeBl,
-    guaranteeNo: guaranteeBl,
-    clerkName: sanitize(((document.getElementById('iw_clerk') || {}).value || '').trim()) || (state.profile && state.profile.name) || '',
-    vessel: sanitize(document.getElementById('iw_vessel').value.trim()),
-    voyage: sanitize(document.getElementById('iw_voyage').value.trim()),
-    deliveringParty: sanitize(document.getElementById('iw_delivering').value.trim()),   // consignee / C&F
-    isoCode: sanitize(document.getElementById('iw_iso').value.trim()).toUpperCase(),
-    trailerNo: sanitize(document.getElementById('iw_trailer').value.trim()),
-    grossWeight: grossVal,
-    manufactureDate: domVal,
-    cargoStatus: cargoStatusEl ? cargoStatusEl.value : '',
-    repairs: [], repairTotal: 0,
-    notes: sanitize(document.getElementById('iw_notes').value.trim()),
-    date: dateVal, status: 'pending', img: photos[0] || '', photos,
+    id: icId, container: cont, type, ctype, line: lineId, condition: 'Good',
+    truck: truck ? truck.id : '', driver: driver ? driver.id : '',
+    truckRegText: truck ? '' : sanitize(truckVal), driverNameText: driver ? '' : sanitize(driverVal),
+    driverIdNumber: sanitize(driverIdVal), trailerNo: sanitize(val('iw_trailer')),
+    transporter: sanitize(bk.transporter || ''), eirNumber: '',
+    clerkName: (state.profile && state.profile.name) || '',
+    blNumber: sanitize(bk.bl_number || ''), guaranteeNo: sanitize(bk.bl_number || ''),
+    vessel: sanitize(bk.vessel || ''), voyage: sanitize(bk.voyage || ''), deliveringParty: sanitize(bk.company || bk.full_name || ''),
+    isoCode: '', grossWeight: '', manufactureDate: '', cargoStatus: '',
+    repairs: [], repairTotal: 0, notes: booking ? `Booking ${bk.reference || String(bk.id).slice(0, 8)} \u00b7 ${bk.full_name || ''}${bk.phone ? ' \u00b7 ' + bk.phone : ''}` : '',
+    date: dateVal, gateInAt: dateVal, depotInAt: null, status: 'pending', img: '', photos: [],
     dateOut: null, receivingParty: '', releaseOrderNo: '',
-    needsSurvey, surveyStatus: needsSurvey ? 'awaiting_survey' : null,
-    surveyedAt: null, surveyedBy: null, bookingId: null,
+    needsSurvey: true, surveyStatus: 'awaiting_survey', surveyedAt: null, surveyedBy: null, bookingId: booking ? booking.id : null,
     _dirty: true,
   };
-  state.db.interchange.push(icRecord);
-  if (typeof rememberIncomingDriver === 'function' && !driver) {
-    rememberIncomingDriver({
-      name: driverVal, idNo: icRecord.driverIdNumber, transporter: icRecord.transporter,
-      truck: truck ? truck.reg : truckVal, trailer: icRecord.trailerNo,
-    });
-  }
+  // Save first, then confirm: if the server refuses (e.g. duplicate), nothing is left half-recorded
+  const savedIc = await persistNewInterchange(icRecord);
+  if (!savedIc.ok) { toast(`Gate-In NOT saved \u2014 ${savedIc.message}`, 'error', 9000); return; }
   buildBadges();
-  addAudit(state.profile.username, 'Inward Entry Recorded', `${cont} (${type}) · ${eirNumber}${needsSurvey ? ' — sent to Awaiting Survey' : ''}`);
+  if (typeof rememberIncomingDriver === 'function' && !driver) {
+    rememberIncomingDriver({ name: driverVal, idNo: driverIdVal, transporter: icRecord.transporter, truck: truck ? truck.reg : truckVal, trailer: icRecord.trailerNo });
+  }
+  if (booking) {
+    const { error: bErr } = await supabase.from('public_bookings').update({
+      status: 'imported', storage_status: 'awaiting_survey', gated_in_at: dateVal,
+      truck_reg: truckVal, driver_name: driverVal, driver_id_number: driverIdVal, shipping_line_id: lineId, container: cont,
+    }).eq('id', booking.id).in('status', ['pending', 'confirmed']);
+    if (bErr) toast(`Gate-In saved, but the booking status could not be updated \u2014 ${bErr.message}`, 'warning', 8000);
+    addAudit(state.profile.username, 'Booking Gated In', `${bk.reference || String(bk.id).slice(0, 8)} \u00b7 ${cont}`);
+  }
+  addAudit(state.profile.username, 'Gate-In Recorded', `${cont} \u2014 awaiting survey`);
   refreshContainerHistory();
-  toast(`Inward entry recorded — ${cont} · ${eirNumber}`, 'success');
   clearInwardForm();
   renderInterchange('all');
-  renderInwardRecent();
-  renderInwardAwaitingSurvey();
-  renderInwardStillInStorage();
+  renderInwardRecent(); renderInwardAwaitingSurvey(); renderInwardStillInStorage(); renderInwardAwaitingGateIn();
+  if (booking && typeof renderPublicBookings === 'function' && state.currentSection === 'publicbookings') renderPublicBookings();
 
-
-  if (needsSurvey) {
+  if (!booking) {
+    // Queue it for survey: a companion DepOps booking lets it use the same survey and allocation pipeline as customer bookings
     try {
       const bookingId = await createDepotBookingFromInterchange(icRecord);
-      if (bookingId) {
-        icRecord.bookingId = bookingId;
-        icRecord._dirty = true;
-        renderInwardAwaitingSurvey();
-        if (typeof renderDepOpsAwaitingSurvey === 'function') renderDepOpsAwaitingSurvey();
-      }
+      if (bookingId) { icRecord.bookingId = bookingId; icRecord._dirty = true; }
     } catch (e) {
-      toast(`Entry saved, but couldn't queue ${cont} for DepOps survey (${e.message || e})`, 'warning', 6000);
+      toast(`Gate-In saved, but couldn't queue ${cont} for survey (${e.message || e}). Use Start Survey in the Awaiting Survey list to retry.`, 'warning', 8000);
     }
   }
+  scheduleSave();
+  renderInwardAwaitingSurvey();
+  if (typeof renderDepOpsAwaitingSurvey === 'function') renderDepOpsAwaitingSurvey();
+  showInwardGated(icRecord);
+  toast(`Gate-In complete \u2014 ${cont}. Now awaiting survey; the interchange is issued after the survey.`, 'success', 5000);
+}
 
-  if (guaranteeFile) {
-    try {
-      await saveNowAwaited();
-      await window.bookingDocs.uploadInterchangeDocument({ interchangeId: icId, docType: 'guarantee_form', containerNo: cont, file: guaranteeFile, autoVerify: true });
-      toast('Guarantee form uploaded', 'success');
-      renderInwardAwaitingSurvey();
-    } catch (e) {
-      toast(`Entry saved, but guarantee form upload failed: ${e.message || e}`, 'warning');
-    }
-  } else {
-    scheduleSave();
+function showInwardGated(ic) {
+  const el = document.getElementById('inwardJustGated'); if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `<b>${esc(ic.container)} gated in</b><br>Step 2: survey it to complete the Depot-In. The interchange (EIR) is issued when the survey is saved.
+    <div style="margin-top:8px"><button class="action-btn" onclick="startSurveyForInterchange('${ic.id}')">Start survey now &rarr;</button>
+    <button class="action-btn ghost" onclick="this.closest('#inwardJustGated').style.display='none'">Later</button></div>`;
+}
+
+/* A driver picked from the list fills in their ID and usual truck. */
+function iwDriverPicked(inp) {
+  const d = (state.db.drivers || []).find(x => (x.name || '').toLowerCase() === inp.value.trim().toLowerCase());
+  if (!d) return;
+  const idEl = document.getElementById('iw_driver_id'), trEl = document.getElementById('iw_truck');
+  if (idEl && !idEl.value && d.idNo) idEl.value = d.idNo;
+  if (trEl && !trEl.value && d.truckId) { const t = state.db.trucks.find(x => x.id === d.truckId); if (t) trEl.value = t.reg; }
+}
+
+/* Start (or resume) the survey for a gate-in record, creating its DepOps queue entry if it has none yet. */
+async function startSurveyForInterchange(icId) {
+  const ic = state.db.interchange.find(i => i.id === icId);
+  if (!ic) { toast('Record not found', 'error'); return; }
+  let bid = ic.bookingId;
+  if (!bid) {
+    try { bid = await createDepotBookingFromInterchange(ic); }
+    catch (e) { toast(`Could not prepare the survey: ${e.message || e}`, 'error', 7000); return; }
+    if (!bid) { toast('Could not prepare the survey for this container', 'error'); return; }
+    ic.bookingId = bid; ic._dirty = true; scheduleSave();
   }
+  openSurveyModal(bid);
+}
+
+/* Survey complete: the container is now Depot-In. The original gate-in time and EIR number are kept. */
+function finalizeDepotIn(ic) {
+  if (!ic || !isInwardMovement(ic.type)) return false;
+  if (!ic.gateInAt) ic.gateInAt = ic.date;
+  ic.type = 'Depot-In';
+  ic.depotInAt = ic.depotInAt || new Date().toISOString();
+  ic._dirty = true;
+  return true;
+}
+
+function clearInwardForm(skipRepopulate) {
+  ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  _inwardBooking = null;
+  const bn = document.getElementById('inwardBookingBanner'); if (bn) { bn.style.display = 'none'; bn.innerHTML = ''; }
+  _inwardImages = [];
+  if (!skipRepopulate) populateInwardSelects();
+}
+
+function switchInwardTab(tab, btn) {
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? 'block' : 'none'; };
+  show('inwardTabSingle', tab === 'single'); show('inwardTabBulk', tab === 'bulk'); show('inwardTabReports', tab === 'reports');
+  document.querySelectorAll('#sec-inward .filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab === 'reports') { fillSelect('iwRptLine', state.db.shippingLines, l => [l.id, `${l.code} \u2014 ${l.name}`]); { const s = document.getElementById('iwRptLine'); if (s && s.options[0]) s.options[0].textContent = 'All Lines'; } renderInwardReports(); }
+}
+
+/* ── Inward reports ── */
+let _iwRptRows = [];
+function iwStatusOf(ic, exited) {
+  const out = exited[String(ic.container || '').toUpperCase()];
+  if (ic.dateOut || (out && new Date(out) >= new Date(ic.gateInAt || ic.date))) return 'exited';
+  if (ic.surveyStatus === 'awaiting_survey' || ic.surveyStatus === 'escalated') return 'awaiting_survey';
+  return 'in_storage';
+}
+const IW_STATUS_LABEL = { awaiting_survey: 'Awaiting Survey', in_storage: 'In Storage', exited: 'Exited' };
+
+function renderInwardReports() {
+  const body = document.getElementById('iwRptBody'); if (!body) return;
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const line = g('iwRptLine'), mv = g('iwRptType'), st = g('iwRptStatus'), from = g('iwRptFrom'), to = g('iwRptTo');
+  const exited = {};
+  (state.db.interchange || []).filter(i => /Out$/.test(i.type)).forEach(i => { const k = String(i.container || '').toUpperCase(); if (!exited[k] || new Date(i.date) > new Date(exited[k])) exited[k] = i.date; });
+  const all = (state.db.interchange || []).filter(i => isInwardMovement(i.type)).map(i => ({ ic: i, status: iwStatusOf(i, exited), at: i.gateInAt || i.date }));
+  _iwRptRows = all.filter(r =>
+    (!line || r.ic.line === line) && (!mv || r.ic.type === mv) && (!st || r.status === st) &&
+    (!from || String(r.at).slice(0, 10) >= from) && (!to || String(r.at).slice(0, 10) <= to))
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
+  const n = s => _iwRptRows.filter(r => r.status === s).length;
+  const sum = document.getElementById('iwRptSummary');
+  if (sum) sum.innerHTML = `<div class="kpi-row" style="margin-bottom:14px">${kpiCard('Matching records', _iwRptRows.length, '', 'kpi-blue')}${kpiCard('Awaiting survey', n('awaiting_survey'), 'Gated in, not surveyed', n('awaiting_survey') ? 'kpi-orange' : 'kpi-green')}${kpiCard('In storage', n('in_storage'), 'Surveyed, on the ground', 'kpi-gold')}${kpiCard('Exited', n('exited'), 'Released', 'kpi-green')}</div>`;
+  const meta = document.getElementById('iwRptMeta'); if (meta) meta.textContent = `${_iwRptRows.length} record${_iwRptRows.length === 1 ? '' : 's'}`;
+  const btn = document.getElementById('iwRptExportBtn'); if (btn) btn.disabled = !_iwRptRows.length;
+  body.innerHTML = _iwRptRows.map(({ ic, status, at }) => `<tr><td>${fmtDate(at)}</td><td><b>${esc(ic.container)}</b></td><td>${esc(ic.type)}</td><td>${esc(ic.ctype || '-')}</td><td>${esc(lineName(ic.line))}</td>
+    <td>${ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || '-')}</td><td>${ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || '-')}</td><td>${esc(IW_STATUS_LABEL[status])}</td>
+    <td>${status === 'awaiting_survey' && ic.surveyStatus !== 'escalated' ? `<button class="modal-btn primary" style="padding:3px 9px;font-size:10.5px" onclick="startSurveyForInterchange('${ic.id}')">Survey</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="9" class="empty-td">No inward entries match these filters</td></tr>';
+}
+
+function inwardReportsReset() {
+  ['iwRptLine', 'iwRptType', 'iwRptStatus', 'iwRptFrom', 'iwRptTo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderInwardReports();
+}
+
+function downloadInwardReportCSV() {
+  if (!_iwRptRows.length) { toast('Run the report first. There is nothing to export.', 'warning'); return; }
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const head = ['Gate-In date', 'Depot-In date', 'Container', 'Movement', 'Size/Type', 'Shipping line', 'EIR No.', 'Truck', 'Trailer', 'Driver', 'Driver ID', 'Status'];
+  const rows = _iwRptRows.map(({ ic, status, at }) => [at, ic.depotInAt || '', ic.container, ic.type, ic.ctype, lineName(ic.line), ic.eirNumber,
+    ic.truck ? truckName(ic.truck) : ic.truckRegText, ic.trailerNo, ic.driver ? driverName(ic.driver) : ic.driverNameText, ic.driverIdNumber, IW_STATUS_LABEL[status]]);
+  const blob = new Blob(['\ufeff' + [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `inward-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 /* ── Companion DepOps booking for gate-flagged containers ──────────
@@ -324,19 +401,93 @@ async function createDepotBookingFromInterchange(ic) {
   return data.id;
 }
 
-function clearInwardForm(skipRepopulate) {
-  ['iw_container','iw_truck','iw_driver','iw_vessel','iw_voyage','iw_notes','iw_delivering','iw_guarantee_no','iw_transporter','iw_driver_id','iw_iso','iw_trailer','iw_gross','iw_dom'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const clerkEl = document.getElementById('iw_clerk'); if (clerkEl) clerkEl.value = (state.profile && state.profile.name) || '';
-  const dateEl = document.getElementById('iw_date'); if (dateEl) dateEl.value = '';
-  const typeEl = document.getElementById('iw_type_movement'); if (typeEl) typeEl.value = 'Gate-In';
-  const condEl = document.getElementById('iw_cond'); if (condEl) condEl.value = 'Good';
-  const cargoStatusEl = document.getElementById('iw_cargo_status'); if (cargoStatusEl) cargoStatusEl.value = '';
-  const surveyEl = document.getElementById('iw_needs_survey'); if (surveyEl) surveyEl.checked = false;
-  _inwardImages = [];
-  const fileInput = document.getElementById('iw_img'); if (fileInput) fileInput.value = '';
-  renderInwardImgPreview();
-  clearInwardGuaranteeFile();
-  if (!skipRepopulate) populateInwardSelects();
+/* ── Awaiting Gate-In: confirmed bookings (website / customer accounts) that have not arrived yet ── */
+async function renderInwardAwaitingGateIn() {
+  const wrap = document.getElementById('inwardAwaitingGateInList');
+  const meta = document.getElementById('inwardAwaitingGateInMeta');
+  if (!wrap) return;
+  try {
+    const { data, error } = await supabase.from('public_bookings').select('*').eq('status', 'confirmed')
+      .order('confirmed_at', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    const list = data || [];
+    if (meta) meta.textContent = list.length ? `${list.length} expected` : '';
+    if (!list.length) { wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No confirmed bookings are waiting to arrive</div></div>'; return; }
+    let docs = {};
+    try { if (window.bookingDocs) docs = await window.bookingDocs.documentsForBookings(list.map(b => b.id)); } catch (e) { /* best effort */ }
+    wrap.innerHTML = list.map(b => {
+      const hasG = (docs[b.id] || []).some(d => d.doc_type === 'guarantee_form');
+      return `<div class="dispatch-queue-item" style="align-items:center;gap:10px">
+        <div class="dqi-ref">${esc(b.container || 'No container no.')}</div>
+        <div class="dqi-route" style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(b.company || b.full_name || '—')}</div>
+          <div style="font-size:10px;color:var(--text-3)">${esc(b.reference || b.id.slice(0, 8))}${b.bulk_ref ? ' · ' + esc(b.bulk_ref) : ''}${b.cargo_type ? ' · ' + esc(b.cargo_type) : ''}${b.pickup_date ? ' · expected ' + fmtDate(b.pickup_date) : ''}</div>
+          <div style="margin-top:3px">${hasG ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="modal-btn primary" onclick="startInwardFromBooking('${b.id}')">Confirmed In →</button>
+          <button class="modal-btn ghost" onclick="cancelPublicBooking('${b.id}','cancelled')">Cancel</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.warn('Awaiting gate-in load failed:', e);
+    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Could not load bookings — check your connection</div></div>';
+  }
+}
+
+// "40ft Standard", "20' High Cube", "Reefer 40ft" ... -> one of CONTAINER_TYPE_OPTIONS (or null)
+function ctypeFromBookingText(txt) {
+  const s = String(txt || '').toLowerCase();
+  if (!s) return null;
+  const m = s.match(/(20|40|45)\s*(?:ft|foot|')?/);
+  const size = m ? (m[1] === '45' ? '40' : m[1]) + 'ft' : null;
+  let type = 'Dry';
+  if (/reefer|refrigerat/.test(s)) type = 'Reefer';
+  else if (/open\s*top/.test(s)) type = 'Open Top';
+  else if (/flat\s*rack/.test(s)) type = 'Flat Rack';
+  else if (/tank/.test(s)) type = 'Tank';
+  else if (/high\s*cube|\bhc\b/.test(s)) type = 'HC';
+  const combo = size ? `${size} ${type}` : type;
+  if (CONTAINER_TYPE_OPTIONS.indexOf(combo) !== -1) return combo;
+  if (CONTAINER_TYPE_OPTIONS.indexOf(type) !== -1) return type;
+  return null;
+}
+
+// "Confirmed In": the container has arrived — open Inward Container Entry pre-filled from the booking
+async function startInwardFromBooking(bookingId) {
+  const { data: b, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !b) { toast('Booking not found', 'error'); return; }
+  if (b.status !== 'confirmed' && b.status !== 'pending') { toast('This booking has already been received or closed', 'warning'); renderInwardAwaitingGateIn(); return; }
+  if (b.container) {
+    const avail = await checkContainerAvailable(b.container, { bookingId: b.id });
+    if (avail) { toast(avail, 'error', 7000); return; }
+  }
+  showSection('inward', document.querySelector('.nav-item[data-section="inward"]'));
+  const firstTab = document.querySelector('#sec-inward .filter-row .filter-btn');
+  if (typeof switchInwardTab === 'function') switchInwardTab('single', firstTab);
+  _inwardBooking = b;
+  const setv = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  setv('iw_container', (b.container || '').toUpperCase());
+  setv('iw_type_movement', 'Gate-In');
+  const ct = ctypeFromBookingText(b.cargo_type);
+  if (ct) populateSizeTypeSelects('iw_size', 'iw_type', ct);
+  if (b.shipping_line_id && (state.db.shippingLines || []).some(l => l.id === b.shipping_line_id)) setv('iw_line', b.shipping_line_id);
+  setv('iw_delivering', b.company || b.full_name || '');
+  setv('iw_guarantee_no', b.bl_number || '');
+  setv('iw_vessel', b.vessel || ''); setv('iw_voyage', b.voyage || '');
+  setv('iw_transporter', b.transporter || ''); setv('iw_truck', b.truck_reg || '');
+  setv('iw_driver', b.driver_name || ''); setv('iw_driver_id', b.driver_id_number || '');
+  setv('iw_notes', `Booking ${b.reference || b.id.slice(0, 8)} · ${b.full_name || ''}${b.phone ? ' · ' + b.phone : ''}`);
+  const sv = document.getElementById('iw_needs_survey'); if (sv) { sv.checked = true; sv.disabled = true; }
+  const cEl = document.getElementById('iw_container'); if (cEl && typeof markContainerValidity === 'function') markContainerValidity(cEl);
+  const bn = document.getElementById('inwardBookingBanner');
+  if (bn) {
+    bn.style.display = 'block';
+    bn.innerHTML = `<b>Receiving booking ${esc(b.reference || b.id.slice(0, 8))}</b> — ${esc(b.company || b.full_name || '')}${b.container ? '' : '<br><span style="color:var(--amber)">This booking has no container number — enter it below.</span>'}
+      <br>Saving sends it to <b>Awaiting Survey</b>. <a href="#" onclick="clearInwardForm();return false" style="color:var(--gold)">Cancel / enter a different container</a>`;
+  }
+  if (cEl) { cEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); cEl.focus(); }
 }
 
 function previewInwardImg(e) {
@@ -457,7 +608,7 @@ function showInwardBulkPreview(rows, direction) {
   dirSel.onchange = updateBulkDirectionLabel;
 }
 
-function processBulkInward() {
+async function processBulkInward() {
   const rows = JSON.parse(document.getElementById('inwardBulkPreview').dataset.rows || '[]');
   const direction = document.getElementById('iw_bulk_direction')?.value === 'out' ? 'out' : 'in';
   const VALID_TYPES = {
@@ -466,6 +617,23 @@ function processBulkInward() {
   };
   const defaultType = direction === 'out' ? 'Gate-Out' : 'Gate-In';
   const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair'];
+
+  // Duplicate control: a container already in the system is never imported a second time.
+  let serverConflicts = {};
+  try {
+    const keys = [...new Set(rows.map(r => normContainerKey(pickField(r, ['container','containerno','containernumber','containernrno']))).filter(Boolean))];
+    for (let i = 0; i < keys.length; i += 1000) {
+      const { data, error } = await supabase.rpc('check_containers_available', { p_containers: keys.slice(i, i + 1000) });
+      if (error) throw error;
+      Object.assign(serverConflicts, data || {});
+    }
+  } catch (e) {
+    console.warn('bulk duplicate pre-check failed:', e);
+    toast('Could not verify duplicates with the server — nothing was imported. Please try again.', 'error', 7000);
+    return;
+  }
+  const skipped = [];
+  const liveInFile = new Set();
 
   let created = 0;
   const flagged = []; // rows still created, but tagged for later cleanup
@@ -538,6 +706,13 @@ function processBulkInward() {
     const dateOutRaw = pickField(r, ['dateout','exitdate','gateoutdate','dateexited']);
     { const dOut = parseFlexibleDate(dateOutRaw); if (dOut) dateOutVal = dOut.toISOString(); }
 
+    if ((type === 'Gate-In' || type === 'Depot-In') && !dateOutVal) {
+      const key = normContainerKey(cont);
+      const why = serverConflicts[key] || localContainerConflict(cont) || (liveInFile.has(key) ? `${cont} appears more than once in this file as a container still in the yard` : null);
+      if (why) { skipped.push(why); return; }
+      liveInFile.add(key);
+    }
+
     const cargoStatusRaw = pickField(r, ['cargostatus']);
     const cargoStatus = CARGO_STATUS_OPTIONS.find(c => c.toLowerCase() === cargoStatusRaw.toLowerCase()) || sanitize(cargoStatusRaw);
 
@@ -577,7 +752,10 @@ function processBulkInward() {
 
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Bulk Inward Entry', `${created} entries imported${flagged.length?`, ${flagged.length} flagged for review`:''} (batch ${importBatchId})`);
-  if (flagged.length) {
+  if (skipped.length) {
+    toast(`${created} created — ${skipped.length} skipped (container already in the system)`, 'warning', 8000);
+    openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created. <b>${skipped.length} row(s) were NOT imported</b> because that container is already in the system:</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--text-2);max-height:300px;overflow:auto">${skipped.map(x => esc(x)).join('<br>')}</div>${flagged.length ? `<div style="margin-top:10px;font-size:11.5px;color:var(--text-3)">${flagged.length} imported row(s) are also flagged for cleanup in the Depot Report.</div>` : ''}`);
+  } else if (flagged.length) {
     toast(`${created} created — ${flagged.length} flagged for cleanup (see details)`, 'warning', 6000);
     openModal('Bulk Inward Entry Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} entry(ies) created successfully — all imported, nothing skipped.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Flagged For Review (${flagged.length})</div><div style="max-height:240px;overflow-y:auto">${flaggedPreview(flagged).map(s=>`<div class="ops-notice" style="margin-bottom:6px">${esc(s)}</div>`).join('')}</div>`);
   } else {
@@ -1093,9 +1271,9 @@ function depOpsReadyCard(entry) {
       </div>
       <span class="sbadge s-approved">verified & ready</span>
     </div>
-    ${b.service_type === 'Depot Storage' ? '<div style="margin-top:8px;font-size:11px;color:var(--text-3)">Importing will send this container to Awaiting Survey below.</div>' : ''}
+    <div style="margin-top:8px;font-size:11px;color:var(--text-3)">Confirming moves this booking to Awaiting Gate-In. It reaches Awaiting Survey once it is recorded at the gate.</div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">${b.service_type === 'Depot Storage' ? 'Confirm Into Storage →' : 'Import to Fleet →'}</button>
+      <button class="modal-btn primary" onclick="confirmPublicBooking('${b.id}')">Confirm Booking →</button>${bookingIsMovement(b.service_type) ? ` <button class="modal-btn ghost" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
       <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
     </div>
   </div>`;
@@ -1144,48 +1322,75 @@ async function renderDepOpsAwaitingSurvey() {
 }
 
 let _surveyImages = [];
+let _surveyGuaranteeFile = null;
 
+function _svLocalInput(iso) {
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ── STEP 2 of 2: Survey ─────────────────────────────────────────────
+   The survey is the continuation of the Gate-In. It carries every field the old
+   single inward form had (date in, ISO code, weights, date of manufacture, cargo status,
+   vessel / voyage, B/L, consignee, transporter, truck, driver, photos, guarantee form,
+   remarks). Saving it turns the Gate-In into a Depot-In (original gate-in time and EIR kept). */
 async function openSurveyModal(bookingId) {
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
-  const lineId = resolveBookingShippingLineId(booking);
+  const ic = state.db.interchange.find(i => i.bookingId === bookingId) || null;   // the gate-in this survey continues
+  const x = ic || {};
+  const lineId = x.line || resolveBookingShippingLineId(booking);
   const lineOptions = state.db.shippingLines.map(l => `<option value="${l.id}" ${l.id === lineId ? 'selected' : ''}>${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
-  const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${booking.cargo_type === t ? 'selected' : ''}>${t}</option>`).join('');
-  _surveyImages = [];
+  const curType = x.ctype || booking.cargo_type;
+  const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${curType === t ? 'selected' : ''}>${t}</option>`).join('');
+  const cargoOpts = ['', 'Empty', 'Laden / Full', 'Part Load', 'Damaged Cargo'].map(o => `<option value="${o}" ${x.cargoStatus === o ? 'selected' : ''}>${o || '—'}</option>`).join('');
+  const pick = (a, b) => sanitize(a || b || '');
+  _surveyImages = (x.photos && x.photos.length) ? x.photos.slice() : [];
+  _surveyGuaranteeFile = null;
   window._repairItems.sv = [];
 
-  openModal(`Survey — ${sanitize(booking.container) || 'Container'}`, `
+  openModal(`Survey — ${sanitize(x.container || booking.container) || 'Container'}`, `
+    ${ic ? `<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Gate-In recorded ${fmtDate(ic.gateInAt || ic.date)}. Saving this survey completes the <b>Depot-In</b> and issues the <b>interchange (EIR)</b>; the gate-in time is kept.</span></div>` : ''}
     <div class="form-row-2">
-      <div class="fg"><label>Container No.</label><input id="sv_container" value="${sanitize(booking.container || '')}" oninput="markContainerValidity(this)"></div>
+      <div class="fg"><label>Container No.</label><input id="sv_container" value="${pick(x.container, booking.container)}" oninput="markContainerValidity(this)"></div>
       <div class="fg"><label>Type / Size</label><select id="sv_ctype">${typeOptions}</select></div>
     </div>
     <div class="form-row-2">
+      <div class="fg"><label>Date IN</label><input id="sv_datein" type="datetime-local" value="${_svLocalInput(x.gateInAt || x.date || booking.gated_in_at)}"></div>
       <div class="fg"><label>Shipping Line</label><select id="sv_line"><option value="">—</option>${lineOptions}</select></div>
-      <div class="fg"><label>Consignee</label><input id="sv_consignee" value="${sanitize(booking.company || booking.full_name || '')}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="${sanitize(booking.bl_number || '')}"></div>
-      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="${sanitize(booking.transporter || '')}"></div>
+      <div class="fg"><label>Consignee / C&amp;F</label><input id="sv_consignee" value="${pick(x.deliveringParty, booking.company || booking.full_name)}"></div>
+      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="${pick(x.blNumber, booking.bl_number)}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Vessel</label><input id="sv_vessel" value="${sanitize(booking.vessel || '')}"></div>
-      <div class="fg"><label>Voyage</label><input id="sv_voyage" value="${sanitize(booking.voyage || '')}"></div>
+      <div class="fg"><label>Ex Vessel</label><input id="sv_vessel" value="${pick(x.vessel, booking.vessel)}"></div>
+      <div class="fg"><label>Voyage</label><input id="sv_voyage" value="${pick(x.voyage, booking.voyage)}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1"></div>
+      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="${pick(x.transporter, booking.transporter)}"></div>
+      <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" value="${pick(x.isoCode)}"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number" min="0" value="${x.grossWeight || ''}"></div>
+      <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number" min="0"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="sv_gross" type="number" min="0" step="1" placeholder="e.g. 30480" value="${x.grossWeight || ''}"></div>
+      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="${pick(x.manufactureDate)}"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label><select id="sv_cargo">${cargoOpts}</select></div>
       <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number"></div>
-      <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number"></div>
+      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="${sanitize(x.truck ? truckName(x.truck).split(' · ')[0] : (x.truckRegText || booking.truck_reg || ''))}"></div>
+      <div class="fg"><label>Trailer Number</label><input id="sv_trailer" value="${pick(x.trailerNo)}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="${sanitize(booking.truck_reg || '')}"></div>
-      <div class="fg"><label>Trailer Number</label><input id="sv_trailer"></div>
-    </div>
-    <div class="form-row-2">
-      <div class="fg"><label>Driver Name</label><input id="sv_driver" list="iwDriverList" value="${sanitize(booking.driver_name || '')}"></div>
-      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="${sanitize(booking.driver_id_number || '')}"></div>
+      <div class="fg"><label>Driver Name</label><input id="sv_driver" list="iwDriverList" value="${sanitize(x.driver ? driverName(x.driver) : (x.driverNameText || booking.driver_name || ''))}"></div>
+      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="${pick(x.driverIdNumber, booking.driver_id_number)}"></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Surveyed By</label><input id="sv_clerk" value="${sanitize((state.profile && state.profile.name) || '')}"></div>
@@ -1199,33 +1404,30 @@ async function openSurveyModal(bookingId) {
       <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
     </select></div>
     <div id="sv_heavily_damaged_note" style="display:none;margin-bottom:10px" class="ops-notice">
-      This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding.
+      This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding. It stays a Gate-In until then.
     </div>
 
     ${tariffPickerHtml('sv')}
 
-    <div class="fg"><label>Survey Photos</label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
-    <div class="fg"><label>Remarks</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc."></textarea></div>
-    <button class="submit-btn" onclick="saveSurvey('${bookingId}')">Save Survey →</button>
+    <div class="fg"><label>Survey Photos <span class="label-optional">(up to 6)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
+    <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>
+    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(x.notes || '')}</textarea></div>
+    <button class="submit-btn" onclick="saveSurvey('${bookingId}')">${ic ? 'Save Survey &amp; Complete Depot-In' : 'Save Survey'} →</button>
   `);
   const svContEl = document.getElementById('sv_container');
   if (svContEl) markContainerValidity(svContEl);
   renderRepairItemsList('sv');
+  _renderSurveyPhotos();
   if (typeof bindIncomingDriverAutofill === 'function') bindIncomingDriverAutofill('sv');
-
-  // Gate-originated booking (from Inward Container Entry) — carry over any
-  // photos already captured at the gate instead of asking for them again.
-  const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
-  if (sourceIc && sourceIc.photos && sourceIc.photos.length) {
-    _surveyImages = sourceIc.photos.slice();
-    const preview = document.getElementById('sv_images_preview');
-    if (preview) {
-      preview.innerHTML = _surveyImages.map(src =>
-        `<img src="${src}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--border)" />`
-      ).join('');
-    }
-  }
 }
+
+function _renderSurveyPhotos() {
+  const preview = document.getElementById('sv_images_preview'); if (!preview) return;
+  preview.innerHTML = _surveyImages.map((src, i) =>
+    `<div style="position:relative"><img src="${src}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--border)" /><button type="button" onclick="removeSurveyImage(${i})" title="Remove" style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;line-height:14px;padding:0;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11px;cursor:pointer">×</button></div>`
+  ).join('');
+}
+function removeSurveyImage(i) { _surveyImages.splice(i, 1); _renderSurveyPhotos(); }
 
 function onSurveyConditionChange() {
   const el = document.getElementById('sv_condition');
@@ -1234,22 +1436,29 @@ function onSurveyConditionChange() {
 }
 
 function onSurveyImagesSelected(e) {
-  const files = Array.from(e.target.files || []).slice(0, 6);
-  const preview = document.getElementById('sv_images_preview');
-  preview.innerHTML = '';
-  _surveyImages = [];
-  files.forEach(file => {
+  const files = Array.from(e.target.files || []);
+  const room = 6 - _surveyImages.length;
+  if (room <= 0) { toast('Maximum 6 photos — remove one to add another', 'error'); e.target.value = ''; return; }
+  files.slice(0, room).forEach(file => {
+    if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
     if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB per photo`, 'error'); return; }
     const reader = new FileReader();
-    reader.onload = () => {
-      _surveyImages.push(reader.result);
-      const img = document.createElement('img');
-      img.src = reader.result;
-      img.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--border)';
-      preview.appendChild(img);
-    };
+    reader.onload = () => { _surveyImages.push(reader.result); _renderSurveyPhotos(); };
     reader.readAsDataURL(file);
   });
+  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max 6)`, 'warning');
+  e.target.value = '';
+}
+
+function onSurveyGuaranteePicked(e) {
+  const file = e.target.files && e.target.files[0];
+  const lab = document.getElementById('sv_guarantee_label');
+  if (!file) { _surveyGuaranteeFile = null; if (lab) lab.textContent = ''; return; }
+  const ok = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) || file.type.startsWith('image/');
+  if (!ok) { toast('Upload an image or PDF', 'error'); e.target.value = ''; return; }
+  if (file.size > 5*1024*1024) { toast('File too large — max 5MB', 'error'); e.target.value = ''; return; }
+  _surveyGuaranteeFile = file;
+  if (lab) lab.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
 }
 
 async function saveSurvey(bookingId) {
@@ -1259,9 +1468,37 @@ async function saveSurvey(bookingId) {
     const containerIssue = containerFormatIssue(container);
     if (containerIssue) { toast(`Container number: ${containerIssue}`, 'error'); return; }
   }
+  const dom = normalizeManufactureDate(val('sv_dom'));
+  if (dom === null) { toast('Date of manufacture must look like 05/2011', 'error'); return; }
+  const grossRaw = val('sv_gross'), gross = grossRaw ? Number(grossRaw) : '';
+  if (grossRaw && (!isFinite(gross) || gross <= 0)) { toast('Gross weight must be a positive number', 'error'); return; }
+  const dateInRaw = val('sv_datein');
+  if (dateInRaw && isNaN(new Date(dateInRaw))) { toast('Date IN is not a valid date', 'error'); return; }
+
+  const cg = k => (window.cfgGet ? window.cfgGet(k) : undefined);   // System Settings → Depot operations
+  const need = (cond, msg) => { if (cond) { toast(msg, 'error'); return true; } return false; };
+  if (need(cg('survey.requireIso') && !val('sv_iso'), 'ISO code is required')) return;
+  if (need(cg('survey.requireWeight') && !grossRaw && !val('sv_mgwt'), 'Gross weight is required')) return;
+  if (need(cg('survey.requireManufactureDate') && !val('sv_dom'), 'Date of manufacture is required')) return;
+  if (need(cg('survey.requireCargoStatus') && !val('sv_cargo'), 'Cargo status is required')) return;
+  if (need(_surveyImages.length < (Number(cg('survey.minPhotos')) || 0), `At least ${cg('survey.minPhotos')} survey photo${Number(cg('survey.minPhotos')) === 1 ? '' : 's'} required`)) return;
   const repairItems = repairItemsFor('sv');
   const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
+  if (container) {
+    const avail = await checkContainerAvailable(container, { bookingId, icId: sourceIc ? sourceIc.id : null });
+    if (avail) { toast(avail, 'error', 7000); return; }
+  }
+  if (cg('survey.requireGuarantee') && !_surveyGuaranteeFile) {
+    let have = false;
+    try { if (sourceIc && window.bookingDocs) { const d = await window.bookingDocs.documentsForInterchanges([sourceIc.id]); have = (d[sourceIc.id] || []).some(x => x.doc_type === 'guarantee_form'); } } catch (e) {}
+    if (!have) { toast('Upload the guarantee form (required by your settings)', 'error'); return; }
+  }
+  const btn = document.querySelector('#modalOverlay .submit-btn'); if (btn) btn.disabled = true;
   try {
+    // The interchange (EIR) is issued here, after the survey, never at the gate. A heavily damaged container waits for its joint survey.
+    const willEscalate = val('sv_condition') === 'heavily_damaged';
+    let eirForSurvey = sourceIc ? (sourceIc.eirNumber || '') : '';
+    if (sourceIc && !eirForSurvey && !willEscalate) eirForSurvey = await nextEirNumber('Depot-In', val('sv_line') || sourceIc.line || '');
     const survey = await window.bookingDocs.recordSurvey({
       bookingId,
       sourceInterchangeId: sourceIc ? sourceIc.id : null,
@@ -1271,8 +1508,8 @@ async function saveSurvey(bookingId) {
       shippingLineId: val('sv_line') || null,
       consignee: val('sv_consignee'),
       blNumber: val('sv_bl'),
-      eirNumber: sourceIc ? (sourceIc.eirNumber || '') : '',   // EIR is system-generated; never typed in
-      isoCode: val('sv_iso'),
+      eirNumber: eirForSurvey,   // EIR is system-generated at survey completion; never typed in
+      isoCode: val('sv_iso').toUpperCase(),
       mgwt: val('sv_mgwt') ? parseFloat(val('sv_mgwt')) : null,
       tareWeight: val('sv_tare') ? parseFloat(val('sv_tare')) : null,
       vessel: val('sv_vessel'),
@@ -1292,23 +1529,47 @@ async function saveSurvey(bookingId) {
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
 
+    // Everything the old inward form captured that the survey table has no column for goes onto the interchange record
+    const extra = {
+      dateIn: dateInRaw ? new Date(dateInRaw).toISOString() : null, dateInInput: dateInRaw,
+      manufactureDate: dom, cargoStatus: val('sv_cargo'), gross,
+      deliveringParty: sanitize(val('sv_consignee')), notes: sanitize(val('sv_remarks')),
+      truckReg: val('sv_truck'), driverName: val('sv_driver'), ctype: val('sv_ctype'), line: val('sv_line'),
+    };
+
     if (typeof rememberIncomingDriver === 'function' && val('sv_driver')) {
       const svDriverName = val('sv_driver').toLowerCase();
       if (!state.db.drivers.some(d => (d.name || '').toLowerCase() === svDriverName)) {
-        rememberIncomingDriver({
-          name: val('sv_driver'), idNo: val('sv_driver_id'), transporter: val('sv_transporter'),
-          truck: val('sv_truck'), trailer: val('sv_trailer'),
-        });
+        rememberIncomingDriver({ name: val('sv_driver'), idNo: val('sv_driver_id'), transporter: val('sv_transporter'), truck: val('sv_truck'), trailer: val('sv_trailer') });
       }
     }
 
     if (sourceIc) {
-      syncSurveyBackToInterchange(sourceIc, survey, heavy);
+      if (eirForSurvey) sourceIc.eirNumber = eirForSurvey;
+      syncSurveyBackToInterchange(sourceIc, survey, heavy, extra);
+      if (!heavy) {
+        finalizeDepotIn(sourceIc);                  // survey done → Depot-In, interchange issued
+        if (sourceIc.eirNumber) supabase.from('public_bookings').update({ eir_number: sourceIc.eirNumber }).eq('id', bookingId).then(() => {}, () => {});
+        try { await window.bookingDocs.markInterchangeGenerated(survey.id, sourceIc.id); } catch (e) { console.warn('markInterchangeGenerated', e); }
+      }
     } else if (!heavy && bookingId && survey && survey.id) {
       await generateInterchangeFromSurvey(bookingId, survey.id);
     }
 
-    toast(heavy ? 'Survey saved — escalated for joint survey' : 'Survey saved', heavy ? 'warning' : 'success');
+    if (_surveyGuaranteeFile) {
+      const file = _surveyGuaranteeFile;
+      try {
+        await saveNowAwaited();
+        if (sourceIc) await window.bookingDocs.uploadInterchangeDocument({ interchangeId: sourceIc.id, docType: 'guarantee_form', containerNo: container, file, autoVerify: true });
+        else await window.bookingDocs.uploadBookingDocument({ bookingId, docType: 'guarantee_form', containerNo: container, file });
+        toast('Guarantee form uploaded', 'success');
+      } catch (e) {
+        toast(`Survey saved, but the guarantee form upload failed: ${e.message || e}`, 'warning', 7000);
+      }
+      _surveyGuaranteeFile = null;
+    }
+
+    toast(heavy ? 'Survey saved — escalated for joint survey (stays Gate-In until cleared)' : (sourceIc ? `Survey saved — ${container || sourceIc.container} is now Depot-In · interchange ${sourceIc.eirNumber || ''} issued` : 'Survey saved'), heavy ? 'warning' : 'success', 5000);
     closeModal();
     renderDepOpsAwaitingSurvey();
     renderDepOpsAllocationQueue();
@@ -1316,17 +1577,22 @@ async function saveSurvey(bookingId) {
     if (typeof renderDepOpsEscalations === 'function') renderDepOpsEscalations();
     if (typeof renderInwardAwaitingSurvey === 'function') renderInwardAwaitingSurvey();
     if (typeof renderInwardStillInStorage === 'function') renderInwardStillInStorage();
+    if (typeof renderInwardRecent === 'function') renderInwardRecent();
+    if (typeof buildBadges === 'function') buildBadges();
     if (state.currentSection === 'interchange') renderInterchange(_icFilter || 'all');
+    if (state.currentSection === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
   } catch (e) {
+    if (btn) btn.disabled = false;
     toast(e.message || 'Could not save survey', 'error');
   }
 }
 
 /* Gate-originated survey (source_interchange_id set): the interchange row
    this booking was created from is updated in place with the survey
-   findings, rather than a fresh Depot-In interchange record being
-   generated — keeping Inward Container Entry's own status in sync. */
-function syncSurveyBackToInterchange(ic, survey, heavy) {
+   findings (including every field the old inward form captured), rather than a
+   fresh Depot-In record being generated. The caller then promotes it to Depot-In. */
+function syncSurveyBackToInterchange(ic, survey, heavy, x) {
+  x = x || {};
   const conditionMap = { food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
   if (survey.container) ic.container = survey.container.toUpperCase();
   ic.condition = conditionMap[survey.condition_status] || ic.condition;
@@ -1334,26 +1600,39 @@ function syncSurveyBackToInterchange(ic, survey, heavy) {
   ic.surveyStatus = heavy ? 'escalated' : 'surveyed';
   ic.surveyedAt = survey.surveyed_at || new Date().toISOString();
   ic.surveyedBy = (state.profile && state.profile.username) || ic.surveyedBy;
-  if (survey.vessel) ic.vessel = survey.vessel;
-  if (survey.voyage) ic.voyage = survey.voyage;
+  if (survey.vessel != null) ic.vessel = survey.vessel || '';
+  if (survey.voyage != null) ic.voyage = survey.voyage || '';
   if (survey.bl_number) { ic.blNumber = survey.bl_number; ic.guaranteeNo = survey.bl_number; }
-  if (survey.transporter) ic.transporter = survey.transporter;
+  if (survey.transporter != null) ic.transporter = survey.transporter || '';
   if (survey.clerk_name) ic.clerkName = survey.clerk_name;
   if (survey.driver_id_number) ic.driverIdNumber = survey.driver_id_number;
   if (survey.iso_code) ic.isoCode = survey.iso_code;
-  if (survey.trailer_number) ic.trailerNo = survey.trailer_number;
-  if (survey.mgwt) ic.grossWeight = survey.mgwt;
-  if (survey.photos && survey.photos.length) {
-    ic.photos = survey.photos.slice();
-    ic.img = survey.photos[0];
+  if (survey.trailer_number != null) ic.trailerNo = survey.trailer_number || '';
+  if (survey.shipping_line_id) ic.line = survey.shipping_line_id;
+  if (x.ctype) ic.ctype = x.ctype;
+  if (x.gross !== undefined && x.gross !== '') ic.grossWeight = x.gross; else if (survey.mgwt) ic.grossWeight = survey.mgwt;
+  if (x.manufactureDate !== undefined) ic.manufactureDate = x.manufactureDate;
+  if (x.cargoStatus !== undefined) ic.cargoStatus = x.cargoStatus;
+  if (x.deliveringParty) ic.deliveringParty = x.deliveringParty;
+  if (x.notes) ic.notes = x.notes;
+  if (x.dateIn && x.dateInInput !== _svLocalInput(ic.gateInAt || ic.date)) { ic.date = x.dateIn; ic.gateInAt = x.dateIn; }   // only when the clerk actually corrected it
+  if (x.truckReg) {
+    const t = state.db.trucks.find(t => (t.reg || '').toLowerCase() === x.truckReg.toLowerCase());
+    ic.truck = t ? t.id : ''; ic.truckRegText = t ? '' : sanitize(x.truckReg);
   }
+  if (x.driverName) {
+    const d = state.db.drivers.find(d => (d.name || '').toLowerCase() === x.driverName.toLowerCase());
+    ic.driver = d ? d.id : ''; ic.driverNameText = d ? '' : sanitize(x.driverName);
+  }
+  ic.photos = (survey.photos || []).slice();
+  ic.img = ic.photos[0] || '';
   if (survey.tariff_items && survey.tariff_items.length) {
     ic.repairs = survey.tariff_items;
     ic.repairTotal = repairItemsTotal(survey.tariff_items);
   }
   ic._dirty = true;
   scheduleSave();
-  addAudit((state.profile && state.profile.username) || 'system', 'Inward Entry Surveyed', ic.container);
+  addAudit((state.profile && state.profile.username) || 'system', heavy ? 'Gate-In Surveyed (escalated)' : 'Depot-In Completed (surveyed)', ic.container);
 }
 
 async function generateInterchangeFromSurvey(bookingId, surveyId) {
@@ -1385,7 +1664,11 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       } catch (e) { /* storage location is a nice-to-have on the slip, never blocks generation */ }
     }
 
-    const eirNumber = await nextEirNumber('Depot-In', survey.shipping_line_id);
+    {
+      const availDup = await checkContainerAvailable((survey.container || (booking && booking.container) || '').toUpperCase(), { bookingId });
+      if (availDup) { toast(availDup, 'error', 8000); return; }
+    }
+    const eirNumber = await nextEirNumber('Depot-In', survey.shipping_line_id || (booking && booking.shipping_line_id) || '');
     const icRecord = {
       id: uid('IC'),
       container: (survey.container || (booking && booking.container) || '').toUpperCase(),
@@ -1420,8 +1703,9 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       driverNameText: !matchedDriver ? (survey.driver_name || '') : '',
       _dirty: true,
     };
-    state.db.interchange.push(icRecord);
-    scheduleSave(); buildBadges();
+    const savedGen = await persistNewInterchange(icRecord);
+    if (!savedGen.ok) { toast(`Interchange not saved \u2014 ${savedGen.message}`, 'error', 9000); return; }
+    buildBadges();
     addAudit(state.profile.username, 'Interchange Generated (from survey)', icRecord.container);
     await window.bookingDocs.markInterchangeGenerated(surveyId, icRecord.id);
     toast(`Interchange generated for ${icRecord.container} — awaiting admin approval to release payment`, 'success', 5000);
@@ -1528,10 +1812,22 @@ async function saveJointSurvey(bookingId, surveyId, reject) {
 
 
     if (!reject && bookingId && surveyId) {
-      await generateInterchangeFromSurvey(bookingId, surveyId);
+      const srcIc = state.db.interchange.find(i => i.bookingId === bookingId);
+      if (srcIc) {
+        // Gate-originated container: the joint finding clears it, so the Gate-In becomes the Depot-In
+        srcIc.condition = ({ food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged' })[condition] || srcIc.condition;
+        srcIc.surveyStatus = 'surveyed'; srcIc.surveyedAt = srcIc.surveyedAt || new Date().toISOString();
+        if (!srcIc.eirNumber) srcIc.eirNumber = await nextEirNumber('Depot-In', srcIc.line || '');   // interchange issued now
+        finalizeDepotIn(srcIc); scheduleSave();
+        supabase.from('public_bookings').update({ eir_number: srcIc.eirNumber }).eq('id', bookingId).then(() => {}, () => {});
+        try { await window.bookingDocs.markInterchangeGenerated(surveyId, srcIc.id); } catch (e) { console.warn('markInterchangeGenerated', e); }
+      } else {
+        await generateInterchangeFromSurvey(bookingId, surveyId);
+      }
     }
 
-    toast(reject ? 'Container rejected' : 'Joint survey recorded — interchange generated', reject ? 'warning' : 'success');
+    toast(reject ? 'Container rejected' : 'Joint survey recorded — container is now Depot-In', reject ? 'warning' : 'success');
+    if (typeof renderInwardAwaitingSurvey === 'function') renderInwardAwaitingSurvey();
     closeModal();
     renderDepOpsEscalations();
     renderDepOpsAllocationQueue();

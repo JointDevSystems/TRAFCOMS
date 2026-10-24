@@ -44,7 +44,13 @@ function containerFormatIssue(cont) {
   const expected = iso6346CheckDigit(c.slice(0, 10));
   const actual = parseInt(c[10], 10);
   if (expected === null) return 'Could not compute check digit';
-  if (expected !== actual) return `Check digit should be ${expected}, not ${actual} — verify the container number`;
+  if (expected !== actual) {
+    const mode = (window.cfgGet && window.cfgGet('ops.checkDigit')) || 'block';   // optional System Settings: block | warn | off
+    const msg = `Check digit should be ${expected}, not ${actual} — verify the container number`;
+    if (mode === 'off') return null;
+    if (mode === 'warn') { window.__cdWarned = window.__cdWarned || new Set(); if (!window.__cdWarned.has(c)) { window.__cdWarned.add(c); if (window.toast) toast(c + ': ' + msg + ' (allowed by your settings)', 'warning', 6000); } return null; }
+    return msg;
+  }
   return null;
 }
 
@@ -1087,6 +1093,17 @@ function confirmQuickDispatchOut(id) {
 }
 
 // ================== PUBLIC BOOKINGS ==================
+/* Movement services (transport / returns) still become fleet trips. Every other website or
+   account booking follows the depot flow:  Pending -> Confirm -> Awaiting Gate-In -> "Confirmed In"
+   (opens Inward Container Entry) -> Awaiting Survey -> Survey -> Storage -> Dispatch. */
+function bookingIsMovement(serviceType) {
+  const x = String(serviceType || '').toLowerCase();
+  return x.includes('transport') || x.includes('return') || x.includes('haulage');
+}
+
+const BOOKING_STATUS_LABEL = { pending: 'Pending', confirmed: 'Awaiting gate-in', imported: 'Gated in', cancelled: 'Cancelled', rejected: 'Rejected' };
+const BOOKING_STATUS_CLASS = { pending: 's-pending', confirmed: 's-approved', imported: 's-imported', cancelled: 's-cancelled', rejected: 's-cancelled' };
+
 let _publicBookingFilter = 'pending';
 
 function filterPublicBookings(filter, btn) {
@@ -1107,48 +1124,107 @@ async function renderPublicBookings() {
   const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
-    container.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
+    container.innerHTML = `<div class="empty-state">Error: ${sanitize(error.message)}</div>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
+    container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter === 'all' ? '' : (BOOKING_STATUS_LABEL[_publicBookingFilter] || _publicBookingFilter).toLowerCase() + ' '}bookings</div>`;
+    refreshBookingBadge(true);
     return;
   }
 
+  let docs = {};
+  try { if (window.bookingDocs) docs = await window.bookingDocs.documentsForBookings(data.map(b => b.id)); } catch (e) { /* best effort */ }
+
   container.innerHTML = data.map(b => {
-    let importedAction = '';
-    if (b.status === 'imported') {
+    const movement = bookingIsMovement(b.service_type);
+    let actions = '';
+    if (b.status === 'pending') {
+      actions += `<button class="modal-btn primary" onclick="confirmPublicBooking('${b.id}')">Confirm Booking</button>`;
+      if (movement) actions += `<button class="modal-btn ghost" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>`;
+      actions += `<button class="modal-btn ghost" onclick="cancelPublicBooking('${b.id}','rejected')">Reject</button>`;
+    } else if (b.status === 'confirmed') {
+      actions += `<button class="modal-btn primary" onclick="startInwardFromBooking('${b.id}')">Confirmed In →</button>`;
+      actions += `<button class="modal-btn ghost" onclick="cancelPublicBooking('${b.id}','cancelled')">Cancel</button>`;
+    } else if (b.status === 'imported') {
       const trip = findTripByBookingId(b.id);
       if (trip && (!trip.truckId || !trip.driverId)) {
-        importedAction = `<button class="modal-btn primary" onclick="jumpToCompleteDispatch('${trip.id}')">Complete Dispatch →</button>`;
+        actions += `<button class="modal-btn primary" onclick="jumpToCompleteDispatch('${trip.id}')">Complete Dispatch →</button>`;
       } else if (trip) {
-        importedAction = `<button class="modal-btn ghost" onclick="showTripDetail('${trip.id}')">View Trip</button>`;
+        actions += `<button class="modal-btn ghost" onclick="showTripDetail('${trip.id}')">View Trip</button>`;
       }
     }
+    const hasG = (docs[b.id] || []).some(d => d.doc_type === 'guarantee_form');
+    const gBadge = movement ? '' : (hasG ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>');
     return `
-    <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
-      <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
-      <div>Service: ${sanitize(b.service_type)}</div>
-<div>Container: ${sanitize(b.container) || 'Not provided'}</div>
-<div style="font-size:10px;color:var(--text-3);">Booking ID: ${b.id.slice(0,8)}</div>
-      <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
+    <div style="border:1px solid var(--glass-edge,#333);padding:12px;margin-bottom:10px;background:var(--glass,#111);">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div><strong>${sanitize(b.full_name)}</strong>${b.company ? ' · ' + sanitize(b.company) : ''} <span style="color:var(--text-3);font-size:11px">${sanitize(b.email)}${b.phone ? ' · ' + sanitize(b.phone) : ''}</span></div>
+        <div style="font-size:11px;color:var(--text-3)">${b.intake_source === 'portal' ? 'Customer account' : b.intake_source === 'website' ? 'Website' : sanitize(b.intake_source || '')}</div>
+      </div>
+      <div>Service: ${sanitize(b.service_type)}${b.cargo_type ? ' · ' + sanitize(b.cargo_type) : ''}</div>
+      <div>Container: <strong>${sanitize(b.container) || 'Not provided'}</strong></div>
+      <div style="font-size:10px;color:var(--text-3);">Ref: ${sanitize(b.reference || b.id.slice(0, 8))}${b.bulk_ref ? ' · Bulk ' + sanitize(b.bulk_ref) : ''}${b.pickup_date ? ' · Expected ' + fmtDate(b.pickup_date) : ''}</div>
+      <div>${sanitize(b.pickup_location)} → ${sanitize(b.dropoff_location)}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span class="sbadge s-${b.status}">${b.status}</span>
-        ${b.status === 'pending' ? `<button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
-        ${importedAction}
+        <span class="sbadge ${BOOKING_STATUS_CLASS[b.status] || 's-' + b.status}">${BOOKING_STATUS_LABEL[b.status] || sanitize(b.status)}</span>
+        ${gBadge}
+        ${actions}
         <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
       </div>
     </div>
   `; }).join('');
 
-  // Update badge
-  const badge = document.getElementById('badge-publicbookings');
-  if (badge) {
-    const pending = data.filter(b => b.status === 'pending').length;
-    badge.textContent = pending || '';
-    badge.style.display = pending ? 'inline' : 'none';
+  refreshBookingBadge(true);
+}
+
+let _bkBadgeAt = 0;
+async function refreshBookingBadge(force) {
+  if (!force && Date.now() - _bkBadgeAt < 20000) return;
+  _bkBadgeAt = Date.now();
+  try {
+    const { count, error } = await supabase.from('public_bookings').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+    if (error) return;
+    const badge = document.getElementById('badge-publicbookings');
+    if (badge) { badge.textContent = count || ''; badge.style.display = count ? 'inline' : 'none'; }
+  } catch (e) { /* badge is cosmetic */ }
+}
+
+// Pending -> Awaiting Gate-In. Nothing is imported to trips.
+async function confirmPublicBooking(bookingId) {
+  const { data: b, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !b) { toast('Booking not found', 'error'); return; }
+  if (b.status !== 'pending') { toast('Already processed', 'warning'); renderPublicBookings(); return; }
+  if (b.container) {
+    const issue = containerFormatIssue(b.container);
+    if (issue && !confirm(`Container number "${b.container}" looks wrong: ${issue}.\n\nConfirm the booking anyway?`)) return;
+    const avail = await checkContainerAvailable(b.container, { bookingId: b.id });
+    if (avail) { toast(avail, 'error', 7000); return; }
   }
+  const { data: rows, error: upErr } = await supabase.from('public_bookings')
+    .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: state.profile ? state.profile.id : null })
+    .eq('id', bookingId).eq('status', 'pending').select();
+  if (upErr) { toast(`Could not confirm — ${upErr.message}`, 'error', 8000); return; }
+  if (!rows || !rows.length) { toast('Already processed by someone else', 'warning'); renderPublicBookings(); return; }
+  addAudit(state.profile.username, 'Booking Confirmed', `${b.container || b.reference || b.id.slice(0, 8)} — awaiting gate-in`);
+  toast('Booking confirmed — it is now in Awaiting Gate-In', 'success');
+  renderPublicBookings();
+  if (typeof renderInwardAwaitingGateIn === 'function') renderInwardAwaitingGateIn();
+}
+
+// Reject (pending) or cancel (awaiting gate-in). Frees the container number for a new booking.
+async function cancelPublicBooking(bookingId, newStatus) {
+  const verb = newStatus === 'rejected' ? 'Reject' : 'Cancel';
+  if (!confirm(`${verb} this booking? The container number will be free to book again.`)) return;
+  const { data: rows, error } = await supabase.from('public_bookings')
+    .update({ status: newStatus === 'rejected' ? 'rejected' : 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('id', bookingId).in('status', ['pending', 'confirmed']).select();
+  if (error) { toast(`Could not ${verb.toLowerCase()} — ${error.message}`, 'error', 8000); return; }
+  if (!rows || !rows.length) { toast('This booking can no longer be changed', 'warning'); }
+  else addAudit(state.profile.username, `Booking ${newStatus === 'rejected' ? 'Rejected' : 'Cancelled'}`, rows[0].container || rows[0].reference || bookingId.slice(0, 8));
+  renderPublicBookings();
+  if (typeof renderInwardAwaitingGateIn === 'function') renderInwardAwaitingGateIn();
 }
 
 function findTripByBookingId(bookingId) {
@@ -1156,10 +1232,12 @@ function findTripByBookingId(bookingId) {
 }
 
 async function importPublicBooking(bookingId) {
-  if (!confirm('Import this booking?')) return;
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
   if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
+  // Storage / depot bookings are never imported to trips — they go through Awaiting Gate-In.
+  if (!bookingIsMovement(booking.service_type)) return confirmPublicBooking(bookingId);
+  if (!confirm('Import this booking?')) return;
 
 
 

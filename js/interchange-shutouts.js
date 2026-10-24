@@ -17,7 +17,74 @@ function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.ve
 
 function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'', eir_number:i.eirNumber||null, vessel:i.vessel||null, voyage:i.voyage||null, bl_number:i.blNumber||null, ctype:i.ctype||null, repairs:JSON.stringify(i.repairs||[]), repair_total:i.repairTotal||0, survey_id:i.surveyId||null, booking_id:i.bookingId||null, truck_reg_text:i.truckRegText||null, driver_name_text:i.driverNameText||null, needs_survey:!!i.needsSurvey, survey_status:i.surveyStatus||null, surveyed_at:i.surveyedAt||null, surveyed_by:i.surveyedBy||null, delivering_party:i.deliveringParty||null, guarantee_no:i.guaranteeNo||null, cargo_status:i.cargoStatus||null, date_out:i.dateOut||null, receiving_party:i.receivingParty||null, release_order_no:i.releaseOrderNo||null, flagged_for_review:!!i.flaggedForReview, flag_reasons:JSON.stringify(i.flagReasons||[]), duplicate_of_id:i.duplicateOfId||null, import_batch_id:i.importBatchId||null, transporter:i.transporter||null, driver_id_number:i.driverIdNumber||null, photos:JSON.stringify(i.photos||[]), iso_code:i.isoCode||null, trailer_no:i.trailerNo||null, gross_weight:(i.grossWeight===''||i.grossWeight==null)?null:Number(i.grossWeight), manufacture_date:i.manufactureDate||null, clerk_name:i.clerkName||null, storage_zone:i.storageZone||null, storage_block:i.storageBlock||null, storage_slot:i.storageSlot||null }; }
 
-function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'', clerkName:r.clerk_name||'', storageZone:r.storage_zone||'', storageBlock:r.storage_block||'', storageSlot:r.storage_slot||'' }; }
+function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { gateInAt:r.date, depotInAt:((r.type==='Depot-In' && r.survey_status && r.survey_status!=='awaiting_survey') ? (r.surveyed_at||null) : null), id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'', clerkName:r.clerk_name||'', storageZone:r.storage_zone||'', storageBlock:r.storage_block||'', storageSlot:r.storage_slot||'' }; }
+
+/* ── Container uniqueness ─────────────────────────────────────────────
+   The database is the real gatekeeper (triggers refuse a second live record for the same
+   container number). These helpers give the user a clear message BEFORE anything is saved,
+   and roll back the screen if the server still refuses. */
+function normContainerKey(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+function localContainerConflict(container, ignoreIcId) {
+  const key = normContainerKey(container);
+  if (!key) return null;
+  const rows = state.db.interchange || [];
+  const live = rows.find(i => i.id !== ignoreIcId && (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut
+    && normContainerKey(i.container) === key
+    && !rows.some(o => (o.type === 'Gate-Out' || o.type === 'Depot-Out') && normContainerKey(o.container) === key && new Date(o.date) >= new Date(i.date)));
+  return live ? `${key} is already in the yard (received ${fmtDate(live.date)}). A container cannot be entered again until it has been gated out.` : null;
+}
+
+async function checkContainerAvailable(container, opts) {
+  opts = opts || {};
+  const cont = String(container || '').trim().toUpperCase();
+  if (!cont) return null;
+  const local = localContainerConflict(cont, opts.icId);
+  if (local) return local;
+  try {
+    const { data, error } = await supabase.rpc('check_container_available', { p_container: cont, p_booking: opts.bookingId || null, p_interchange: opts.icId || null });
+    if (error) { console.warn('check_container_available failed:', error.message); return null; }
+    return data || null;
+  } catch (e) { console.warn('check_container_available error:', e); return null; }
+}
+
+async function persistNewInterchange(rec) {
+  state.db.interchange.push(rec);
+  const res = await saveNowAwaited();
+  const fail = ((res && res.failures) || []).find(x => x && x.table === 'interchange');
+  if (fail) {
+    const idx = state.db.interchange.indexOf(rec);
+    if (idx > -1) state.db.interchange.splice(idx, 1);
+    return { ok: false, message: (fail.error && fail.error.message) || 'The server refused the record' };
+  }
+  return { ok: true };
+}
+
+
+/* Is a container still in the yard?  An inward record has LEFT only if it carries a date-out, or an outward
+   interchange for the same container was logged on/after the day it came in. Comparing dates matters: a container
+   that left last month and came back today must show as in the yard again. */
+function icOutIndex() {
+  const idx = new Map();
+  (state.db.interchange || []).forEach(o => {
+    if (!/Out$/.test(o.type || '')) return;
+    const k = normContainerKey(o.container), t = new Date(o.date).getTime();
+    if (!idx.has(k) || t > idx.get(k)) idx.set(k, t);
+  });
+  return idx;
+}
+function icExitDate(ic, idx) {
+  if (ic.dateOut) return ic.dateOut;
+  const last = (idx || icOutIndex()).get(normContainerKey(ic.container));
+  return last !== undefined && last >= new Date(ic.date).getTime() ? new Date(last).toISOString() : null;
+}
+function icInYard(ic, idx) { return (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !icExitDate(ic, idx); }
+
+/* An inward container's interchange (EIR) is issued only once its survey is complete.
+   Until then it is a Gate-In waiting in the yard: it stays in the yard / survey lists but is NOT an interchange record. */
+function icAwaitingSurvey(ic) { return (ic.type === 'Gate-In' || ic.type === 'Depot-In') && (ic.surveyStatus === 'awaiting_survey' || ic.surveyStatus === 'escalated'); }
+function issuedInterchanges() { return (state.db.interchange || []).filter(i => !icAwaitingSurvey(i)); }
+
 
 
 function normVessel(v) { return (v || '').trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -189,20 +256,20 @@ let _icFilter='all';
 function filterInterchange(f,btn){ _icFilter=f; document.querySelectorAll('#sec-interchange .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderInterchange(f); }
 
 function renderInterchange(f){
-  let items = f==='all' ? state.db.interchange
-    : f==='flagged' ? state.db.interchange.filter(i=>i.flaggedForReview)
-    : state.db.interchange.filter(i=>i.status===f);
+  const issued = issuedInterchanges();
+  const waiting = (state.db.interchange || []).length - issued.length;
+  let items = f==='all' ? issued
+    : f==='flagged' ? issued.filter(i=>i.flaggedForReview)
+    : issued.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  // Same "already has a matching Gate-Out somewhere" logic as the Still In
-  // Storage panel — computed once per render, not per card.
-  const exitedContainers = new Set(
-    state.db.interchange.filter(i => i.type === 'Gate-Out' || i.type === 'Depot-Out').map(i => i.container)
-  );
-  el.innerHTML=items.map(ic=>{
+  // Same "has this container left the yard?" logic as the Inward panels, computed once per render.
+  const _icIdx = icOutIndex();
+  const waitNote = waiting ? `<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0"><b>${waiting}</b> gated-in container${waiting === 1 ? ' is' : 's are'} waiting for survey. The interchange (EIR) is issued automatically when the survey is complete.</span></div>` : '';
+  el.innerHTML=waitNote+items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
-    const canQuickDispatch = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.dateOut && !exitedContainers.has(ic.container);
+    const canQuickDispatch = icInYard(ic, _icIdx);
     const canSendToSurvey = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.surveyStatus;
     return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
@@ -269,7 +336,7 @@ async function showContainerPhotos(icId) {
 }
 
 function printInterchangeList() {
-  const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
+  const items = _icFilter === 'all' ? issuedInterchanges() : issuedInterchanges().filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to print yet', 'error'); return; }
   const rows = items.map(ic => `<tr>
     <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.eirNumber || '—')}</td><td>${sanitize(ic.type || '—')}</td>
@@ -293,7 +360,7 @@ function printInterchangeList() {
 }
 
 function downloadInterchangeCSV() {
-  const items = _icFilter === 'all' ? state.db.interchange : state.db.interchange.filter(i => i.status === _icFilter);
+  const items = _icFilter === 'all' ? issuedInterchanges() : issuedInterchanges().filter(i => i.status === _icFilter);
   if (!items.length) { toast('Nothing to download yet', 'error'); return; }
   const headers = ['Date', 'Container', 'EIR No.', 'Type', 'Container Type', 'Shipping Line', 'Vessel', 'Voyage', 'Consignee / C&F', 'Guarantee / B/L No.', 'ISO Code', 'Trailer No.', 'Gross Weight (kg)', 'Date of Manufacture', 'Transporter', 'Driver ID / Driving No.', 'Cargo Status', 'Condition', 'Truck', 'Driver', 'Date Out', 'Receiving Party', 'Release Order No.', 'Repair Items', 'Repair Total', 'Status', 'Notes'];
   const rows = items.map(ic => [
@@ -320,6 +387,7 @@ function approveInterchange(id) {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const ic = state.db.interchange.find(i=>i.id===id);
   if (!ic) return;
+  if (icAwaitingSurvey(ic)) { toast('This container has not been surveyed yet, so there is no interchange to approve', 'error'); return; }
   ic.status='approved';
   ic._dirty = true;
   scheduleSave(); buildBadges();
@@ -402,10 +470,10 @@ function showAddInterchangeModal() {
   window._repairItems.ic = [];
   const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option>${t}</option>`).join('');
   openModal('Record Interchange', `
-    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px">The <strong>EIR No.</strong> is generated automatically when the interchange is recorded.</div>
+    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">The <strong>EIR No.</strong> is generated automatically when the interchange is recorded. Inward interchanges (Gate-In / Depot-In) are not entered here: they are issued automatically when the container's survey is complete.</span></div>
     <div class="form-row-2">
       <div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)"/></div>
-      <div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div>
+      <div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-Out</option><option>Depot-Out</option></select></div>
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Container Type/Size</label><select id="ic_ctype">${typeOptions}</select></div>
@@ -451,6 +519,7 @@ async function saveInterchange() {
   const contIssue = containerFormatIssue(cont);
   if (contIssue) { toast(`Container number: ${contIssue}`, 'error'); return; }
   const type = val('ic_type');
+  if (isInwardMovement(type)) { toast('Inward interchange is issued automatically after the survey. Record the Gate-In under Inward Container Entry, then survey it.', 'error', 7000); return; }
   const dupIc = findDuplicateInterchange(cont, type, new Date().toISOString());
   if (dupIc) { toast(`${cont} already has a ${type} interchange record logged today`, 'warning'); return; }
   const dom = normalizeManufactureDate(val('ic_dom'));
@@ -464,7 +533,7 @@ async function saveInterchange() {
     const eirNumber = await nextEirNumber(type, val('ic_line'));
     const repairs = window._repairItems.ic || [];
     const ref = sanitize(val('ic_bl'));   // Guarantee No. and B/L No. are the same number
-    state.db.interchange.push({
+    const icRec = {
       id: uid('IC'), container: cont, type,
       ctype: val('ic_ctype'),
       line: val('ic_line'),
@@ -487,8 +556,10 @@ async function saveInterchange() {
       notes:  sanitize(val('ic_notes')),
       date: new Date().toISOString(), status:'pending', img:'',
       _dirty: true,
-    });
-    scheduleSave(); buildBadges();
+    };
+    const savedIc = await persistNewInterchange(icRec);
+    if (!savedIc.ok) { toast(`Not saved \u2014 ${savedIc.message}`, 'error', 9000); return; }
+    buildBadges();
     addAudit(state.profile.username, 'Interchange Recorded', `${cont} · ${eirNumber}`);
     closeModal(); renderInterchange('all');
     refreshContainerHistory();
@@ -505,6 +576,7 @@ function buildInterchangeSlip(icId) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
+  if (icAwaitingSurvey(ic)) { toast('The interchange is issued after the survey is complete', 'warning'); return null; }
   const inward = isInwardMovement(ic.type);
   const money = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -669,14 +741,14 @@ function buildInterchangeSlip(icId) {
 
 async function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
-  if (ic) await ensureEirNumber(ic);
+  if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
   const r = buildInterchangeSlip(icId);
   if (r) r.doc.save(r.filename);
 }
 
 async function printInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
-  if (ic) await ensureEirNumber(ic);
+  if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
   const r = buildInterchangeSlip(icId);
   if (r) ghPrintPdf(r.doc);
 }
