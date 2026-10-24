@@ -225,16 +225,24 @@
         await kvDel('pending').catch(() => {}); _hadPending = false;
       }
       const wasOffline = !!state.offlineData;
-      await refreshFromServer();
-      state.offlineData = false;
+      await refreshFromServer();   // clears state.offlineData itself once fresh data is in
       if (typeof refreshTracking === 'function') refreshTracking(true);
-      banner(null);
-      if (wasOffline && typeof toast === 'function') toast('Back online — data refreshed', 'success');
+      refreshBanner();
+      if (wasOffline && !state.offlineData && typeof toast === 'function') toast('Back online — data refreshed', 'success');
       setTimeout(saveSnapshot, 4000);
     } catch (e) {
       console.warn('Reconnect sync failed:', e);
       refreshBanner();
     } finally { _syncing = false; }
+  }
+
+  /* Opened from the device copy while the network is actually up (server was unreachable): keep trying. */
+  let _reconAt = 0, _reconDelay = 10000;
+  function reconnectIfNeeded() {
+    if (typeof state === 'undefined' || !state.offlineData || !navigator.onLine || _syncing) { if (typeof state !== 'undefined' && !state.offlineData) _reconDelay = 10000; return; }
+    if (Date.now() < _reconAt) return;
+    _reconAt = Date.now() + _reconDelay; _reconDelay = Math.min(_reconDelay * 2, 120000);
+    onOnline();
   }
 
   /* Quiet retry for rows that failed to save (flaky signal). Backs off up to 5 minutes. */
@@ -261,7 +269,7 @@
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistPending(); });
   window.addEventListener('pagehide', () => { persistPending(); });
-  setInterval(() => { persistPending(); refreshBanner(); retryQuietly(); }, 4000);
+  setInterval(() => { persistPending(); refreshBanner(); reconnectIfNeeded(); retryQuietly(); }, 4000);
   setInterval(saveSnapshot, 5 * 60 * 1000);
   window.addEventListener('load', () => setTimeout(saveSnapshot, 10000));
 

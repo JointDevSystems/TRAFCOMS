@@ -608,7 +608,12 @@ async function clearAllTables() {
 }
 
 async function initDB() {
-  const loaded = await loadDB();
+  let loaded = await loadDB();
+  if (!loaded && window.GargoOffline) {
+    // Offline or server unreachable: open from the copy saved on this device.
+    const snap = await GargoOffline.loadSnapshot();
+    if (snap) { loaded = snap.db; state.offlineData = true; console.warn('Opened from offline snapshot'); }
+  }
   if (loaded) {
     state.db = loaded;
     // Taken before the defaults below are applied, so defaults that are not
@@ -756,6 +761,7 @@ function _relinkDriversToTrucks() {
 // Re-fetch only the given realtime tables into state.db.
 // Returns the set of tables that were actually refreshed.
 async function _refreshTables(tables) {
+  const keep = window.GargoOffline ? GargoOffline._t.dirtyRows().rows : null;
   const results = await Promise.allSettled(tables.map(t => LIVE_TABLE_LOADERS[t].load()));
   const done = new Set();
   results.forEach((res, i) => {
@@ -767,6 +773,13 @@ async function _refreshTables(tables) {
       console.warn(`Live sync: ${t} refresh failed, keeping existing data:`, res.reason);
     }
   });
+
+  if (keep) {   // re-apply unsaved rows for the slices just replaced
+    const refreshed = new Set([...done].map(t => LIVE_TABLE_LOADERS[t].key));
+    const sub = {};
+    Object.keys(keep).forEach(k => { if (refreshed.has(k)) sub[k] = keep[k]; });
+    if (Object.keys(sub).length) GargoOffline._t.mergePending(sub);
+  }
 
   // Cross-table derived state that loadDB() computes after loading.
   if (done.has('trucks') || done.has('drivers')) _relinkDriversToTrucks();
@@ -783,6 +796,7 @@ async function _refreshTables(tables) {
 // _runQueuedLiveRefresh and only refresh the tables that changed.
 async function refreshFromServer(opts) {
   if (!(opts && opts.queued)) _livePendingFull = true;
+  if (!navigator.onLine) return;   // stays queued; offline.js refreshes after it reconnects
 
   const modalOpen = document.getElementById('modalOverlay')?.classList.contains('active');
   if (modalOpen) { _liveSyncDebounce = setTimeout(_runQueuedLiveRefresh, 1500); return; }
@@ -805,8 +819,12 @@ async function refreshFromServer(opts) {
     if (full) {
       const fresh = await loadDB();
       if (fresh) {
+        // Unsaved local rows must survive the replacement of state.db.
+        const keep = window.GargoOffline ? GargoOffline._t.dirtyRows().rows : null;
         state.db = fresh;
         snapshotSaved();
+        if (keep && Object.keys(keep).length) GargoOffline._t.mergePending(keep);
+        if (state.offlineData) { state.offlineData = false; GargoOffline.refreshBanner(); }
         buildBadges();
         buildAlerts();
         renderSection(state.currentSection);

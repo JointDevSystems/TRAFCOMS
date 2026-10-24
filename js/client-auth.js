@@ -130,6 +130,7 @@ async function performLogout(auditDetail) {
   stopWialonPolling();
   stopAutoRefresh();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
+  try { if (window.GargoOffline) await GargoOffline.onLogout(); } catch (e) {}
   await supabase.auth.signOut();
   state.currentUser = null;
   state.profile = null;
@@ -154,6 +155,15 @@ function togglePwVis(inputId, btn) {
 }
 
 function bootShell() {
+  // Offline layer: remember who is signed in, then replay any edits saved on this device.
+  try {
+    if (window.GargoOffline) {
+      GargoOffline.remember();
+      GargoOffline.afterLoad().then(n => {
+        if (n) { try { buildBadges(); buildAlerts(); renderSection(state.currentSection); } catch (e) {} }
+      });
+    }
+  } catch (e) { console.warn('Offline init failed:', e); }
 
   if (isDriver()) {
     document.body.classList.add('driver-portal-active');
