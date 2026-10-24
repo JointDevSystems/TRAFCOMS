@@ -63,7 +63,7 @@
 
   function client() {
     if (window.ghSupabase) return window.ghSupabase;
-    throw new Error('Supabase client not initialised — load script.js first, or provide window.ghSupabase.');
+    throw new Error('Supabase client not initialised — ensure core-state.js loads first, or provide window.ghSupabase.');
   }
 
   function assertDocType(docType) {
