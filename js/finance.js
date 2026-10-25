@@ -333,12 +333,26 @@
   };
 
   const FIN_TABS = [['overview', 'Overview'], ['receipts', 'Receipts'], ['bills', 'Supplier Bills'], ['expenses', 'Expenses'], ['suppliers', 'Suppliers'], ['controls', 'Controls']];
-  /* Add-on tabs (reports, ops cost posting, ledger...) register here instead of patching renderFinance: GARGO_FIN.add(id, label, run). */
+  /* Add-on tabs (reports, ops cost posting, ledger...) register here instead of patching renderFinance:
+       GARGO_FIN.add(id, label, run, group, after)
+     group = which heading the tab sits under (default "Daily operations"); after = id of a tab it should follow. */
   const EXT = {};
-  const tabList = () => { const base = FIN_TABS.slice(), i = base.findIndex(t => t[0] === 'controls'), ext = Object.entries(EXT).map(([id, x]) => [id, x.label]); base.splice(i < 0 ? base.length : i, 0, ...ext); return base; };
+  const GROUP_ORDER = ['Daily operations', 'Control & planning', 'General ledger', 'Assets & tax'];
+  const tabList = () => {
+    const rows = FIN_TABS.filter(t => t[0] !== 'controls').map(t => ({ id: t[0], label: t[1], group: GROUP_ORDER[0] }));
+    Object.entries(EXT).forEach(([id, x]) => {
+      const item = { id, label: x.label, group: x.group || GROUP_ORDER[0] };
+      let at = x.after ? rows.findIndex(r => r.id === x.after) : -1;
+      if (at >= 0) { while (rows[at + 1] && rows[at + 1].after === x.after) at++; item.after = x.after; rows.splice(at + 1, 0, item); } else rows.push(item);
+    });
+    rows.push({ id: 'controls', label: 'Controls', group: GROUP_ORDER[0] });
+    return rows;
+  };
   function finTabs(tab) {
     const el = document.getElementById('financeTabs'); if (!el) return;
-    el.innerHTML = tabList().map(([id, l]) => `<button class="filter-btn${id === tab ? ' active' : ''}" onclick="renderFinance('${id}',this)">${l}</button>`).join('');
+    const rows = tabList(), groups = GROUP_ORDER.concat([...new Set(rows.map(r => r.group))].filter(g => !GROUP_ORDER.includes(g)));
+    el.innerHTML = groups.map(g => { const ts = rows.filter(r => r.group === g); return ts.length ? `<span class="fin-grp">${g}</span>` + ts.map(r => `<button class="filter-btn${r.id === tab ? ' active' : ''}" onclick="renderFinance('${r.id}',this)">${r.label}</button>`).join('') : ''; }).join('')
+      + (typeof canSeeAdminSection === 'function' && canSeeAdminSection('invoicing') ? '<button class="action-btn ghost" onclick="showAdminSection(\'invoicing\')">Invoicing →</button>' : '');
   }
 
   window.renderFinance = async function (tab) {
@@ -463,5 +477,5 @@
   };
   /* ── public surface for add-on finance files (finance-suite.js, finance-corp.js) ── */
   Object.assign(HUB, { friendlyError, withTimeout, cents, sumC, downloadCSV, dayNum, N });
-  window.GARGO_FIN = { FIN, FIN_CATS, FIN_KPI, add(id, label, run) { EXT[id] = { label, run }; }, tabs: EXT };
+  window.GARGO_FIN = { FIN, FIN_CATS, FIN_KPI, approvalBlock, loadPolicy, canApprove, add(id, label, run, group, after) { EXT[id] = { label, run, group, after }; }, tabs: EXT };
 })();

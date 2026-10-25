@@ -316,6 +316,10 @@
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                         HR Hub
                     </button>
+                    <button class="nav-item" onclick="showSection('approvals',this)" data-section="approvals">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h9"/></svg>
+                        Approvals <span class="nav-badge warn" id="badge-approvals"></span>
+                    </button>
                     <div class="nav-group-label" id="sidebarAdminGroupLabel">Admin &amp; Reports</div>
                     <button class="nav-item admin-nav-item" onclick="showAdminSection('allocation',this)" id="adminBtn-allocation">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -998,6 +1002,11 @@
                         </div>
                         <div class="kpi-row" id="hrKpis"></div>
                         <div id="hrBody"></div>
+                    </section>
+
+                    <section class="section" id="sec-approvals">
+                        <div class="kpi-row" id="approvalsKpis"></div>
+                        <div id="approvalsBody"></div>
                     </section>
 
                     <section class="section" id="sec-requisitions">
@@ -1740,5 +1749,7 @@
     <script defer src="js/finance.js"></script>
     <script defer src="js/hr.js"></script>
     <script defer src="js/finance-suite.js"></script>
+    <script defer src="js/erp-hub.js"></script>
+    <script defer src="js/finance-corp.js"></script>
 </body>
 </html>
