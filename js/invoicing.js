@@ -141,7 +141,7 @@ function combineTripCharges(trips, opts) {
 
 
 function renderInvoicing(f) {
-  if (!isAdmin()) return;
+  if (!canFinance()) return;
   renderInvoiceKpis();
   renderInvoiceList(f);
 }
@@ -437,7 +437,7 @@ async function printInvoicePDF(id) {
 let _ciLastLineItems = [];
 
 function showCreateInvoiceModal() {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  if (!canFinance()) { toast('Finance rights required', 'error'); return; }
   _ciLastLineItems = [];
   openModal('Create Invoice', `
     <div class="fg"><label>Client Name</label><input id="ci_client" placeholder="Company Ltd"/></div>
@@ -525,7 +525,7 @@ function saveInvoice() {
 }
 
 function autoGenerateInvoices() {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  if (!canFinance()) { toast('Finance rights required', 'error'); return; }
   const tripsWithoutInvoice = state.db.trips.filter(t=>t.status==='completed' && !state.db.invoices.some(i=>i.trips.includes(t.id)));
   if (!tripsWithoutInvoice.length) { toast('All completed trips already invoiced','info'); return; }
   let legacyCount = 0;

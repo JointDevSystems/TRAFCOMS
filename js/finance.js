@@ -333,26 +333,24 @@
   };
 
   const FIN_TABS = [['overview', 'Overview'], ['receipts', 'Receipts'], ['bills', 'Supplier Bills'], ['expenses', 'Expenses'], ['suppliers', 'Suppliers'], ['controls', 'Controls']];
-  /* Add-on tabs (reports, ops cost posting, ledger...) register here instead of patching renderFinance:
-       GARGO_FIN.add(id, label, run, group, after)
-     group = which heading the tab sits under (default "Daily operations"); after = id of a tab it should follow. */
+  /* Add-on tabs register here instead of patching renderFinance:
+       GARGO_FIN.add(id, label, run, group, after, pos)
+     group = heading the tab sits under; pos = sort order inside the group (lower first); after = a tab it should sit next to. */
   const EXT = {};
-  const GROUP_ORDER = ['Daily operations', 'Control & planning', 'General ledger', 'Assets & tax'];
+  const GROUP_ORDER = ['Overview', 'Billing & collections', 'Payables & spending', 'Cash & planning', 'Control', 'General ledger', 'Assets & tax'];
+  const BASE_GROUP = { overview: 'Overview', receipts: 'Billing & collections', bills: 'Payables & spending', expenses: 'Payables & spending', suppliers: 'Payables & spending', controls: 'Control' };
   const tabList = () => {
-    const rows = FIN_TABS.filter(t => t[0] !== 'controls').map(t => ({ id: t[0], label: t[1], group: GROUP_ORDER[0] }));
-    Object.entries(EXT).forEach(([id, x]) => {
-      const item = { id, label: x.label, group: x.group || GROUP_ORDER[0] };
-      let at = x.after ? rows.findIndex(r => r.id === x.after) : -1;
-      if (at >= 0) { while (rows[at + 1] && rows[at + 1].after === x.after) at++; item.after = x.after; rows.splice(at + 1, 0, item); } else rows.push(item);
+    const rows = FIN_TABS.map((t, i) => ({ id: t[0], label: t[1], group: BASE_GROUP[t[0]] || GROUP_ORDER[0], pos: (i + 1) * 100 }));
+    Object.entries(EXT).forEach(([id, x], n) => {
+      const anchor = x.after ? rows.find(r => r.id === x.after) : null;
+      rows.push({ id, label: x.label, group: x.group || (anchor ? anchor.group : 'Payables & spending'), pos: x.pos != null ? x.pos : (anchor ? anchor.pos + 1 + n / 1000 : 1000 + n) });
     });
-    rows.push({ id: 'controls', label: 'Controls', group: GROUP_ORDER[0] });
     return rows;
   };
   function finTabs(tab) {
     const el = document.getElementById('financeTabs'); if (!el) return;
     const rows = tabList(), groups = GROUP_ORDER.concat([...new Set(rows.map(r => r.group))].filter(g => !GROUP_ORDER.includes(g)));
-    el.innerHTML = groups.map(g => { const ts = rows.filter(r => r.group === g); return ts.length ? `<span class="fin-grp">${g}</span>` + ts.map(r => `<button class="filter-btn${r.id === tab ? ' active' : ''}" onclick="renderFinance('${r.id}',this)">${r.label}</button>`).join('') : ''; }).join('')
-      + (typeof canSeeAdminSection === 'function' && canSeeAdminSection('invoicing') ? '<button class="action-btn ghost" onclick="showAdminSection(\'invoicing\')">Invoicing →</button>' : '');
+    el.innerHTML = groups.map(g => { const ts = rows.filter(r => r.group === g).sort((a, b) => a.pos - b.pos); return ts.length ? `<span class="fin-grp">${g}</span>` + ts.map(r => `<button class="filter-btn${r.id === tab ? ' active' : ''}" onclick="renderFinance('${r.id}',this)">${r.label}</button>`).join('') : ''; }).join('');
   }
 
   window.renderFinance = async function (tab) {
@@ -477,5 +475,5 @@
   };
   /* ── public surface for add-on finance files (finance-suite.js, finance-corp.js) ── */
   Object.assign(HUB, { friendlyError, withTimeout, cents, sumC, downloadCSV, dayNum, N });
-  window.GARGO_FIN = { FIN, FIN_CATS, FIN_KPI, approvalBlock, loadPolicy, canApprove, add(id, label, run, group, after) { EXT[id] = { label, run, group, after }; }, tabs: EXT };
+  window.GARGO_FIN = { FIN, FIN_CATS, FIN_KPI, approvalBlock, loadPolicy, canApprove, add(id, label, run, group, after, pos) { EXT[id] = { label, run, group, after, pos }; }, tabs: EXT };
 })();
