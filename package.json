@@ -1,5 +1,6 @@
 {
-  "dependencies": {
-    "@supabase/supabase-js": "^2.110.0"
-  }
+  "name": "trafcoms",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "npx serve .", "test": "node tests/logic.test.mjs" }
 }

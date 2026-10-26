@@ -1,0 +1,9 @@
+/* TRAFCOMS additions only. The portal stylesheets above are used unchanged. */
+#loginScreen .login-field select{width:100%;padding:13px 16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:14px;font-family:var(--font-ui);outline:none}
+#loginScreen .login-field select:focus{border-color:var(--gold);box-shadow:0 0 0 4px var(--gold-dim)}
+.sub{color:var(--text-3);font-size:11.5px}
+.panel{margin-bottom:14px}
+.two-col-grid>.panel{margin-bottom:0}
+.panel-body{padding:14px 16px}
+.panel>p.sub{padding:10px 16px}
+.rolecard{cursor:pointer}
