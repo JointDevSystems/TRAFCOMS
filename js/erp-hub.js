@@ -100,7 +100,7 @@
     const emps = (await H.loadEmployees()).filter(e => e.status === 'active' && Number(e.basic_salary) > 0), ln = (await H.load('staff_loans')).filter(l => l.status === 'active');
     const have = new Set((await H.load('payroll')).filter(p => p.period === period).map(p => p.employee_id));
     const rows = emps.filter(e => !have.has(e.id)).map(e => { const m = ln.filter(l => l.employee_id === e.id), ded = Math.min(S(m, 'instalment'), S(m, 'balance'));
-      return { employee_id: e.id, period, basic: e.basic_salary, allowances: 0, other_deductions: ded, status: 'draft', created_by: uid(), ...hrCalcPayroll(e.basic_salary, 0, ded) }; });
+      return { employee_id: e.id, period, basic: e.basic_salary, allowances: 0, other_deductions: ded, status: 'draft', created_by: uid(), breakdown: { loan_instalment: ded }, ...hrCalcPayroll(e.basic_salary, 0, ded) }; });
     if (!rows.length) return toast('All active staff already have payslips for ' + period, 'info');
     const { error } = await supabase.from('payroll').insert(rows); if (error) return toast(error.message, 'error');
     addAudit(who(), 'Payroll run', `${period}: ${rows.length} drafts`); toast(`${rows.length} draft payslips created`, 'success'); renderHR('payroll');
@@ -108,15 +108,9 @@
   window.hrApproveDrafts = async () => {
     if (!canApprove()) return toast('Only the Finance Manager or an Administrator can approve payroll. HR prepares the run; Finance approves it.', 'error');
     const period = prompt('Approve all draft payslips for which month? (YYYY-MM)', T().slice(0, 7)); if (!period || !confirm(`Approve every draft payslip for ${period}?`)) return;
-    const drafts = (await H.load('payroll')).filter(p => p.period === period && p.status === 'draft');
-    const { error } = await supabase.from('payroll').update({ status: 'approved' }).eq('period', period).eq('status', 'draft'); if (error) return toast(error.message, 'error');
-    const ln = (await H.load('staff_loans')).filter(l => l.status === 'active');
-    let loanFail = 0; for (const p of drafts) { let rem = Number(p.other_deductions || 0); for (const l of ln.filter(x => x.employee_id === p.employee_id)) { if (rem <= 0) break;
-      const dec = Math.min(rem, Number(l.balance)), nb = Math.round((Number(l.balance) - dec) * 100) / 100; rem -= dec; l.balance = nb;
-      const lr = await supabase.from('staff_loans').update({ balance: nb, status: nb <= 0 ? 'cleared' : 'active' }).eq('id', l.id); if (lr.error) loanFail++; } }
-    addAudit(who(), 'Payroll approved', period + (loanFail ? ` (${loanFail} loan balance update(s) failed)` : ''));
-    if (loanFail) toast(`Drafts approved, but ${loanFail} loan balance update(s) failed. Check Loans & Advances before the next run.`, 'error', 8000); else toast('Drafts approved · loan balances updated', 'success');
-    renderHR('payroll');
+    const { data, error } = await supabase.from('payroll').update({ status: 'approved' }).eq('period', period).eq('status', 'draft').select('id'); if (error) return toast(H.friendlyError(error), 'error', 5000);
+    if (!data || !data.length) return toast('No draft payslips for ' + period, 'info');
+    addAudit(who(), 'Payroll approved', `${period}: ${data.length} payslips`); toast(`${data.length} payslips approved. Loan instalments are recovered automatically.`, 'success'); renderHR('payroll');
   };
   /* Payroll → Finance: cost-to-company expense + statutory remittance bill (idempotent per period) */
   window.erpPostPayroll = async () => {
