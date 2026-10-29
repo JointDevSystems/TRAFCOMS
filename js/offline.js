@@ -95,14 +95,44 @@
       return snap && snap.db ? snap : null;
     } catch (e) { console.warn('Offline snapshot unreadable:', e); return null; }
   }
+  /* Change detection: most 5-minute ticks find nothing new, and on a 2 GB tablet the structured clone plus the
+     flash write are the expensive part. fingerprint() = native JSON.stringify + one flat hash loop (measured
+     about 2-3x cheaper than the clone itself, and the string is discarded straight away). If it matches what is
+     already stored, only the small snapmeta record is refreshed so the 30-day offline window keeps sliding.
+     Any doubt (no stored hash, other user, data JSON cannot express) falls back to the full save. */
+  function fingerprint(db, salt) {
+    const s = JSON.stringify(db);                                 // throws on cycles / BigInt -> caller saves in full
+    let a = 0x811c9dc5 | 0, b = 0x9747b28c | 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      a = Math.imul(a ^ c, 16777619);
+      b = (Math.imul(b, 0x2545F491) + c) | 0;
+    }
+    return (a >>> 0).toString(36) + '.' + (b >>> 0).toString(36) + '.' + s.length.toString(36) + '.' + String(salt || '');
+  }
+  let _lastHash = null;                                           // hash of what is currently stored on this device
+
   async function saveSnapshot() {
     try {
       if (typeof state === 'undefined' || !state.db || !state.currentUser) return false;
       if (state.offlineData || !navigator.onLine) return false;   // never overwrite good data with stale data
       if (unsavedCount() > 0) return false;                       // never store half-saved rows as "server truth"
+      const uid = state.currentUser.id;
+      let h = null;
+      try { h = fingerprint(state.db, uid); } catch (e) { h = null; }
+      if (h) {
+        if (!_lastHash) {                                         // first tick after a reload: compare with what is stored
+          try { const m = await kvGet('snapmeta'); if (m && m.userId === uid && m.hash) _lastHash = m.hash; } catch (e) { /* save normally */ }
+        }
+        if (h === _lastHash) {
+          await kvSet('snapmeta', { savedAt: Date.now(), userId: uid, hash: h });
+          return true;                                            // unchanged: no clone, no big write
+        }
+      }
       const savedAt = Date.now();
-      await kvSet('snapshot', { v: 1, savedAt, userId: state.currentUser.id, db: state.db });
-      await kvSet('snapmeta', { savedAt, userId: state.currentUser.id });
+      await kvSet('snapshot', { v: 1, savedAt, userId: uid, db: state.db });
+      await kvSet('snapmeta', { savedAt, userId: uid, hash: h });
+      _lastHash = h;
       return true;
     } catch (e) { console.warn('Could not save offline snapshot:', e); return false; }
   }
@@ -180,6 +210,7 @@
   /* Called when the user signs out. Wipes the device copy; keeps unsaved edits for the same user's next sign-in. */
   async function onLogout() {
     try {
+      _lastHash = null;                                   // the device copy is about to be deleted: next save must write in full
       const { n } = dirtyRows();
       if (n > 0) await persistPending(); else await kvDel('pending').catch(() => {});
       await kvDel('snapshot'); await kvDel('snapmeta'); await kvDel('identity');
@@ -303,6 +334,6 @@
   window.GargoOffline = {
     hasSnapshot, loadSnapshot, saveSnapshot, remember, offlineIdentity, afterLoad, onLogout,
     unsavedCount, refreshBanner,
-    _t: { dirtyRows, mergePending, persistPending, kvGet, kvSet, kvDel, onOnline },
+    _t: { dirtyRows, mergePending, persistPending, kvGet, kvSet, kvDel, onOnline, fingerprint },
   };
 })();
