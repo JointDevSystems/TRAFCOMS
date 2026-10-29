@@ -80,4 +80,49 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSearch(); });
     window.addEventListener('resize', function () { if (window.innerWidth > 900) closeSearch(); });
   });
+
+  /* ── Install button on tablets. The app only shows #installAppBtn when Chrome fires beforeinstallprompt, which
+     can fire before bootstrap.js is listening (or never, on some Android 8 builds). Capture it here, in <head>,
+     and keep the button visible on touch devices with working instructions when no one-tap prompt exists. ── */
+  var installEvt = null;
+  function standalone() {
+    return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  }
+  function showInstall(on) { var b = $('installAppBtn'); if (b) b.style.display = on ? 'flex' : 'none'; }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); installEvt = e;
+    if (!standalone()) showInstall(true);
+  });
+  window.addEventListener('appinstalled', function () {
+    installEvt = null; showInstall(false);
+    if (window.toast) window.toast('Gargo installed', 'success');
+  });
+  function installClick() {
+    if (installEvt) {
+      var ev = installEvt; installEvt = null;
+      ev.prompt();
+      if (ev.userChoice && ev.userChoice.then) ev.userChoice.then(function (r) {
+        if (r && r.outcome === 'accepted' && window.toast) window.toast('Installing Gargo\u2026', 'success');
+        else showInstall(true);                       /* dismissed: keep the button, the prompt is spent so fall back next time */
+      });
+      return;
+    }
+    if (/iPad|iPhone|iPod/.test(ua) && window.handleInstallClick) return window.handleInstallClick();   /* existing iOS steps */
+    if (!window.openModal) return;
+    window.openModal('Install Gargo',
+      '<div style="font-size:14px;line-height:1.7;color:var(--text-2)">' +
+      '<p style="margin-bottom:10px">Add Gargo to the tablet\u2019s home screen for one-tap, full-screen use:</p>' +
+      '<p style="margin:0 0 4px"><b>Chrome</b></p>' +
+      '<ol style="padding-left:20px;margin:0 0 12px"><li>Tap the <b>\u22EE</b> menu (top-right).</li>' +
+      '<li>Tap <b>Install app</b> or <b>Add to Home screen</b>.</li><li>Tap <b>Install</b>.</li></ol>' +
+      '<p style="margin:0 0 4px"><b>Samsung Internet</b></p>' +
+      '<ol style="padding-left:20px;margin:0 0 12px"><li>Tap the <b>\u2630</b> menu.</li><li>Tap <b>Add page to</b> \u2192 <b>Home screen</b>.</li></ol>' +
+      '<p style="margin:0;color:var(--text-3);font-size:12px">No install option? Update Chrome in Play Store, and make sure you opened the https:// address.</p></div>');
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var b = $('installAppBtn'); if (!b) return;
+    b.removeAttribute('onclick'); b.onclick = installClick;    /* replaces the inline handler from index.html */
+    if (standalone()) showInstall(false);
+    else if (touch || installEvt) showInstall(true);          /* touch devices always get the button */
+  });
 })();
