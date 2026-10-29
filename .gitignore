@@ -3,3 +3,7 @@ node_modules - Copy/
 node_modules - Copy (2)/
 js - Copy/
 js - Copy - Copy/
+node_modules/
+recovery-codes.txt
+.env
+.vercel/

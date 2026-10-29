@@ -1,0 +1,102 @@
+/* Gargo tablet layer. Loaded LAST (after mobile.css). Tuned for 7-11" tablets, down to Galaxy Tab A (2016):
+   800x1280 CSS px portrait / 1280x800 landscape, 2 GB RAM, Android 8.1 WebView. Colours still come from the theme variables. */
+
+/* ── 0. Old-WebView fallbacks ───────────────────────────────────────────────────────────── */
+@supports not (inset:0){                                  /* Chrome < 87: loader, login, modals would collapse */
+  .loader,#loginScreen,.modal-backdrop,.nxp,body::before,.set-slider{top:0;right:0;bottom:0;left:0}
+  .sidebar-backdrop{right:0;bottom:0;left:0}
+}
+@supports not (aspect-ratio:1/1){                         /* Chrome < 88: depot yard grid squares */
+  .yard-slot::before{content:"";display:block;padding-top:100%}
+}
+#gxLegacy{position:fixed;top:0;right:0;bottom:0;left:0;z-index:10001;display:flex;align-items:center;justify-content:center;
+  padding:24px;text-align:center;background:#06080F;color:#E8EAF0;font:16px/1.5 sans-serif}
+#gxLegacy h2{color:#C9A227;margin:0 0 12px}
+
+/* ── 1. Lite mode (auto on Android <= 9, <= 2 GB RAM, old Chrome) ──────────────────────── */
+html.gx-lite *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.gx-lite body{background:var(--bg)!important;background-attachment:scroll!important}   /* fixed multi-gradient = scroll jank */
+html.gx-lite #loginScreen{background:var(--bg)}
+html.gx-lite{                                             /* no blur behind panels, so make them solid enough to read */
+  --surface:rgba(11,14,24,.97);--surface-2:rgba(15,20,32,.97);--card:rgba(18,24,36,.96);--panel:rgba(18,24,36,.96);
+  --glass:rgba(18,24,36,.96);--glass-strong:rgba(6,8,15,.98);--rail-bg:rgba(11,14,24,.98);
+}
+html.gx-lite[data-theme="light"]{
+  --surface:rgba(255,255,255,.97);--surface-2:rgba(252,247,236,.98);--card:rgba(255,255,255,.97);--panel:rgba(255,255,255,.97);
+  --glass:rgba(255,255,255,.97);--glass-strong:rgba(255,255,255,.99);--rail-bg:rgba(255,255,255,.98);
+}
+html.gx-lite .section,html.gx-lite .modal-box,html.gx-lite .login-split,html.gx-lite #loginScreen .lg-card{animation:none!important}
+html.gx-lite .kpi-card,html.gx-lite .panel,html.gx-lite .form-card,html.gx-lite .truck-card{box-shadow:none!important}
+html.gx-lite .modal-backdrop{background:rgba(0,0,0,.78)}
+html.gx-lite .table-wrap tbody tr{content-visibility:auto;contain-intrinsic-size:auto 48px}   /* all widths, not just <= 900 */
+html.gx-lite .scroll-top-btn{transition:none}
+
+/* ── 2. Touch behaviour (any touch device) ─────────────────────────────────────────────── */
+@media (hover:none){
+  .kpi-card:hover,.truck-card:hover,.scroll-top-btn:hover{transform:none}                      /* no sticky hover after a tap */
+}
+html.gx-touch .table-wrap,html.gx-touch .content,html.gx-touch .modal-box{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+html.gx-touch .action-btn,html.gx-touch .filter-btn,html.gx-touch .modal-btn{min-height:40px}
+html.gx-touch .rail-alert-btn,html.gx-touch .rail-theme-btn{width:42px;height:42px}
+html.gx-touch .leaflet-bar a{width:38px;height:38px;line-height:38px}                          /* tracking map zoom buttons */
+html.gx-touch .leaflet-touch .leaflet-bar a{width:38px;height:38px;line-height:38px}
+
+/* ── 3. Tablet portrait (601-900px): drawer + bottom bar, but roomier than a phone ─────── */
+@media (min-width:601px) and (max-width:900px){
+  .section{padding:20px 22px}
+  .sec-title,.sec-title-admin{font-size:24px}
+  .kpi-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:15px!important}      /* 16px was an iPhone zoom guard */
+  .form-row-2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}                                /* two-up forms fit at 800px */
+  .mobile-nav-bar{left:24px;right:24px}
+  .mobile-nav-item{min-height:54px}
+  .mobile-nav-item .nav-icon{width:22px;height:22px}
+  .mobile-nav-item span{font-size:11px}
+  .table-wrap table{min-width:560px}
+}
+
+/* ── 4. Any tablet width: dialogs are centred cards, not full-width bottom sheets ─────── */
+@media (min-width:641px) and (max-width:1100px){
+  .modal-backdrop{align-items:center;padding:24px}
+  .modal-box{width:100%;max-width:720px;margin:auto;max-height:88vh;border-radius:24px;animation:none}
+}
+
+/* ── 5. Tablet landscape (901-1280px): desktop layout, but touch-sized and hover-proof ── */
+@media (min-width:901px) and (max-width:1280px){
+  .section{padding:18px 20px}
+  .kpi-row{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .dispatch-layout{grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:14px}
+  .search-wrap{max-width:260px}
+}
+@media (min-width:901px) and (hover:none){
+  .sidebar:hover{box-shadow:none}                                                               /* hover-expand is meaningless on touch */
+}
+
+/* ── 6. Small tablets / big phones in landscape: keep the top bar from overflowing ─────── */
+@media (max-height:520px) and (orientation:landscape){
+  .modal-box{max-height:94vh}
+  .mobile-nav-bar{padding-top:3px;padding-bottom:3px}
+  .mobile-nav-item{min-height:44px}
+  .mobile-nav-item span{display:none}
+}
+
+/* ── 7. Tablet search sheet (button + overlay; the inline box only exists >= 901px) ───── */
+.gx-search-btn,#gxSearchScrim,.gx-jump{display:none}
+@media (max-width:900px){
+  .gx-search-btn{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:40px;height:40px;margin-right:6px;
+    border:1px solid var(--border);border-radius:12px;background:transparent;color:var(--text-2);cursor:pointer}
+  .gx-search-btn:active{background:var(--hover);color:var(--gold)}
+  body.gx-search-open #gxSearchScrim{display:block;position:fixed;top:0;right:0;bottom:0;left:0;z-index:9490;background:rgba(0,0,0,.55)}
+  body.gx-search-open .search-wrap{display:block!important;position:fixed;z-index:9500;
+    top:calc(10px + env(safe-area-inset-top,0px));left:12px;right:12px;max-width:720px;margin:0 auto}
+  body.gx-search-open .search-input,body.gx-search-open .search-input:focus{width:100%;box-sizing:border-box;height:48px;
+    padding:0 120px 0 42px;font-size:16px!important;border-radius:14px;background:var(--surface-2)}
+  body.gx-search-open .search-icon{left:15px;width:17px;height:17px}
+  body.gx-search-open .gx-jump{display:block;position:absolute;right:6px;top:6px;height:36px;padding:0 12px;
+    border:1px solid var(--border-mid);border-radius:10px;background:var(--gold-dim);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer}
+  body.gx-search-open .search-results-panel{position:absolute;left:0;right:0;min-width:0;max-height:calc(100vh - 110px);overflow-y:auto;
+    -webkit-overflow-scrolling:touch;animation:none}
+  body.gx-search-open .search-result-item{padding:14px 16px;font-size:14px;min-height:48px}
+  body.gx-search-open .search-result-type{font-size:10px;padding:3px 7px}
+  body.gx-search-open .search-result-item .search-result-sub{font-size:11.5px}
+}

@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '4.4';
+const CACHE_VERSION = '4.6';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -16,6 +16,8 @@ const SHELL_FILES = [
   './nav-shell.css',
   './gargo-colors.css',
   './mobile.css',
+  './tablet.css',
+  './js/tablet.js',
   './js/branding.js',
   './js/core-state.js',
   './js/core-db.js',
