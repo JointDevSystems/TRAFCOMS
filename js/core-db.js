@@ -900,6 +900,7 @@ async function refreshFromServer(opts) {
         buildAlerts();
         renderSection(state.currentSection);
         startWialonPolling();
+        window._gargoLastRefresh = Date.now();   // lets the Refresh button report success honestly
       }
     } else if (tables.length) {
       const done = await _refreshTables(tables);

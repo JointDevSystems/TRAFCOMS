@@ -851,24 +851,24 @@ window.showAdminSection = function(sec, btn) {
 async function hardRefreshSystem() {
   const btn = document.getElementById('refreshAppBtn');
   const icon = document.getElementById('refreshIcon');
+  if (btn && btn.disabled) return;
+  if (!navigator.onLine) { toast('You are offline -- showing saved data. It refreshes by itself when the connection returns.', 'warning', 4500); return; }
+  if (document.getElementById('modalOverlay')?.classList.contains('active')) { toast('Close the open dialog first, then refresh.', 'warning', 3500); return; }
+  if (typeof _refreshInFlight !== 'undefined' && _refreshInFlight) { toast('Already refreshing...', 'info', 1800); return; }
+
   if (btn) btn.disabled = true;
   if (icon) icon.classList.add('spinning');
-  toast('Refreshing system…', 'info', 4000);
-
+  const before = window._gargoLastRefresh || 0;
   try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map(r => r.unregister()));
-    }
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
-    }
+    await refreshFromServer();                        // full data reload; re-renders the current section in place
+    if ((window._gargoLastRefresh || 0) > before) toast('Data refreshed', 'success', 1800);
+    else toast('Could not refresh -- check your connection', 'error', 4000);
+    // Quietly look for a newer app version; the existing update flow applies it once unsaved changes are synced.
+    try { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {}); } catch (e) {}
   } catch (e) {
-    console.warn('Could not clear cache/service worker during refresh:', e);
+    console.warn('Refresh failed:', e);
+    toast('Could not refresh -- check your connection', 'error', 4000);
+  } finally {
+    setTimeout(() => { if (btn) btn.disabled = false; if (icon) icon.classList.remove('spinning'); }, 400);
   }
-
-  const url = new URL(window.location.href);
-  url.searchParams.set('_refresh', Date.now());
-  window.location.replace(url.toString());
 }
