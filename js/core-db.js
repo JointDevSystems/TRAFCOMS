@@ -33,17 +33,30 @@ function operationalCutoffISO() {
 // then corrupts anything counting off the result (KPIs, unmapped-line
 // notices, etc). queryFactory(from, to) must return a fresh Supabase query
 // with .range(from, to) applied (ranges are inclusive on both ends).
-async function fetchAllPaginated(queryFactory, pageSize = 1000) {
+async function fetchAllPaginated(queryFactory, pageSize = 1000, concurrency = 4) {
+  /* PERF: pages used to be fetched one after another (12.5k rows = 13 round trips in a row).
+     Page 1 is still fetched alone (most tables fit in it: still exactly one request), then the remaining
+     pages go out `concurrency` at a time and are consumed IN ORDER, stopping at the first short page. */
   let all = [];
   let from = 0;
+  let first = true;
   for (;;) {
-    const { data, error } = await queryFactory(from, from + pageSize - 1);
-    if (error) return { data: all, error };
-    all = all.concat(data || []);
-    if (!data || data.length < pageSize) break;
-    from += pageSize;
+    const n = first ? 1 : concurrency;
+    const reqs = [];
+    for (let i = 0; i < n; i++) {
+      const f = from + i * pageSize;
+      reqs.push(Promise.resolve(queryFactory(f, f + pageSize - 1)));
+    }
+    const results = await Promise.all(reqs);
+    for (let i = 0; i < results.length; i++) {
+      const { data, error } = results[i];
+      if (error) return { data: all, error };
+      all = all.concat(data || []);
+      if (!data || data.length < pageSize) return { data: all, error: null };   // later pages in this batch are ignored
+    }
+    from += n * pageSize;
+    first = false;
   }
-  return { data: all, error: null };
 }
 
 
@@ -729,6 +742,62 @@ function queueLiveRefresh(table, delayMs) {
 
 function _runQueuedLiveRefresh() { return refreshFromServer({ queued: true }); }
 
+/* PERF: a realtime change to interchange or trips used to re-download the WHOLE table (13+ sequential requests) in
+   every open browser. Now only the changed rows are fetched and merged into state.db. Falls back to the full
+   table reload if: a burst touches more than PATCH_MAX rows (bulk import), the app is offline, or anything fails.
+   Rows with unsaved local edits (_dirty) are never overwritten. Existing objects are updated in place, so
+   anything holding a reference to a row (open forms, modals) keeps working. */
+const _PATCHABLE = {   // mappers are looked up lazily: those scripts load AFTER this one
+  interchange: { key: 'interchange', from: r => icFromRow(r) },
+  trips:       { key: 'trips',       from: r => tripFromRow(r) },
+};
+const PATCH_MAX = 25, PATCH_DELAY = 800;
+let _patchQ = {}, _patchTimer = null;
+
+function queueRowPatch(table, payload) {
+  const p = _PATCHABLE[table];
+  const ev = payload && payload.eventType;
+  const id = payload && ((payload.new && payload.new.id) || (payload.old && payload.old.id));
+  if (!p || !id || (ev !== 'INSERT' && ev !== 'UPDATE' && ev !== 'DELETE')) return false;
+  const b = _patchQ[table] || (_patchQ[table] = { ids: new Map(), full: false });
+  if (!b.full) { b.ids.set(id, ev === 'DELETE'); if (b.ids.size > PATCH_MAX) { b.full = true; b.ids.clear(); } }
+  clearTimeout(_patchTimer);
+  _patchTimer = setTimeout(_flushRowPatches, PATCH_DELAY);
+  return true;
+}
+
+async function _flushRowPatches() {
+  if (document.getElementById('modalOverlay')?.classList.contains('active')) { _patchTimer = setTimeout(_flushRowPatches, 1500); return; }
+  const q = _patchQ; _patchQ = {}; _patchTimer = null;
+  let changed = false;
+  for (const table of Object.keys(q)) {
+    const b = q[table], p = _PATCHABLE[table], arr = state.db && state.db[p.key];
+    if (b.full || !Array.isArray(arr) || !navigator.onLine) { queueLiveRefresh(table, 0); continue; }
+    try {
+      const upIds = [];
+      b.ids.forEach((isDel, id) => {
+        if (!isDel) { upIds.push(id); return; }
+        const i = arr.findIndex(r => r.id === id);
+        if (i > -1 && !arr[i]._dirty) { arr.splice(i, 1); changed = true; }
+      });
+      if (upIds.length) {
+        const { data, error } = await supabase.from(table).select('*').in('id', upIds);
+        if (error) throw error;
+        const at = new Map(arr.map((r, i) => [r.id, i]));
+        (data || []).forEach(row => {
+          const next = p.from(row), i = at.get(row.id);
+          if (i === undefined) { arr.unshift(next); changed = true; }              // lists are newest-first
+          else if (!arr[i]._dirty) { Object.assign(arr[i], next); changed = true; }
+        });
+      }
+    } catch (e) {
+      console.warn('Live sync row patch failed, reloading ' + table + ':', e);
+      queueLiveRefresh(table, 0);
+    }
+  }
+  if (changed) { buildBadges(); buildAlerts(); renderSection(state.currentSection); }
+}
+
 function subscribeLiveSync() {
   if (state._liveSyncChannel) return;
   const tables = Object.keys(LIVE_TABLE_LOADERS);
@@ -739,8 +808,9 @@ function subscribeLiveSync() {
       'postgres_changes', { event: '*', schema: 'public', table: t },
       (payload) => {
         if (_bulkWriteInProgress) return;
-
-        queueLiveRefresh((payload && payload.table) || t, 2000);
+        const table = (payload && payload.table) || t;
+        if (queueRowPatch(table, payload)) return;     // interchange / trips: fetch just the changed rows
+        queueLiveRefresh(table, 2000);
       }
     );
   });
