@@ -42,7 +42,10 @@ function renderInward() {
   renderInwardRecent();
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
-  clearInwardForm(true);
+  /* Realtime sync re-runs this renderer. It used to wipe whatever the clerk was typing in the gate-in form every time
+     any user changed any record. Only reset the form when it is empty or holds nothing the clerk typed. */
+  const typed = ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer'].some(id => { const el = document.getElementById(id); return el && el.value; });
+  if (!typed && !_inwardBooking) clearInwardForm(true);
 }
 
 function populateInwardSelects() {
@@ -274,8 +277,9 @@ async function _createInwardEntryInner() {
   addAudit(state.profile.username, 'Gate-In Recorded', `${cont} \u2014 awaiting survey`);
   refreshContainerHistory();
   clearInwardForm();
-  renderInterchange('all');
-  renderInwardRecent(); renderInwardAwaitingSurvey(); renderInwardStillInStorage(); renderInwardAwaitingGateIn();
+  if (state.currentSection === 'interchange') renderInterchange(_icFilter);   // PERF: was re-drawing the whole Interchange list while on the Inward screen
+  renderInwardRecent(); renderInwardAwaitingSurvey(); renderInwardStillInStorage();
+  if (booking) renderInwardAwaitingGateIn();                                 // only a booking gate-in changes that list (it re-queries the server)
   if (booking && typeof renderPublicBookings === 'function' && state.currentSection === 'publicbookings') renderPublicBookings();
 
   if (!booking) {
@@ -580,7 +584,7 @@ function previewInwardImg(e) {
   files.slice(0, room).forEach(file => {
     if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
     if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB`, 'error'); return; }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = ev => { _inwardImages.push(ev.target.result); renderInwardImgPreview(); };
     reader.readAsDataURL(file);
   });
@@ -1524,7 +1528,7 @@ function onSurveyImagesSelected(e) {
   files.slice(0, room).forEach(file => {
     if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
     if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB per photo`, 'error'); return; }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => { _surveyImages.push(reader.result); _renderSurveyPhotos(); };
     reader.readAsDataURL(file);
   });

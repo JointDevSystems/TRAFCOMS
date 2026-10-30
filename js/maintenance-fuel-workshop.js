@@ -59,7 +59,7 @@ function handleReceiptFileSelect(input, previewId, scope) {
   if (!file) return;
   if (!file.type || !file.type.startsWith('image/')) { toast('Please choose an image file', 'error'); input.value=''; return; }
   if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value=''; return; }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     _pendingReceiptImg[scope] = reader.result;
     const prev = document.getElementById(previewId);
@@ -856,7 +856,7 @@ function captureCRApprovalDoc(input) {
   const isPdf = file.type === 'application/pdf';
   if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
   if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
     window._pendingCRApprovalDocName = file.name;
@@ -938,7 +938,7 @@ function captureCRApprovalDoc2(input) {
   const isPdf = file.type === 'application/pdf';
   if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
   if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
     window._pendingCRApprovalDocName = file.name;
@@ -1031,7 +1031,7 @@ function uploadPostRepairPhoto(id) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { toast('Image too large \u2014 max 2MB', 'error'); return; }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => {
       c.postRepairPhotos = c.postRepairPhotos || [];
       c.postRepairPhotos.push(reader.result);

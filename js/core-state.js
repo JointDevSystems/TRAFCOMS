@@ -503,6 +503,42 @@ function adminDeleteBtn(table, id) {
   return '';
 }
 
+/* PERF: photos are stored as base64 text inside database rows, so a 2 MB phone photo makes every list load,
+   realtime refresh and render carry 2.7 MB of text. Shrink to max 1280px JPEG (~100-250 KB) before it is stored.
+   Falls back to the untouched file for PDFs/GIFs, small images, and old WebViews that ignore EXIF rotation. */
+function gxCompressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1280; quality = quality || 0.72;
+  return new Promise(function (resolve) {
+    var plain = function () { var fr = new FileReader(); fr.onload = function () { resolve(fr.result); }; fr.onerror = function () { resolve(''); }; fr.readAsDataURL(file); };
+    try {
+      if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || '') || !window.URL || !URL.createObjectURL) return plain();
+      if (!('imageOrientation' in document.documentElement.style)) return plain();   // Chrome < 81 would drop EXIF rotation
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, maxDim / Math.max(w, h));
+          if (!w || !h || (s === 1 && file.size < 250 * 1024)) { URL.revokeObjectURL(url); return plain(); }
+          var c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+          var out = c.toDataURL('image/jpeg', quality); URL.revokeObjectURL(url);
+          if (!out || out.length > file.size * 1.37) return plain();                  // never make a file bigger
+          resolve(out);
+        } catch (e) { try { URL.revokeObjectURL(url); } catch (e2) {} plain(); }
+      };
+      img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} plain(); };
+      img.src = url;
+    } catch (e) { plain(); }
+  });
+}
+/* Drop-in for `new FileReader()` at photo capture points: same .onload / .result / readAsDataURL contract, but compressed. */
+function gxImageReader() {
+  var r = { result: null, onload: null, onerror: null,
+    readAsDataURL: function (file) {
+      gxCompressImage(file).then(function (u) { r.result = u; if (r.onload) r.onload({ target: r }); }, function (e) { if (r.onerror) r.onerror(e); });
+    } };
+  return r;
+}
+
 function triggerImageUpload(table, id, field, afterFn) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -511,7 +547,7 @@ function triggerImageUpload(table, id, field, afterFn) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); return; }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => {
       const rec = state.db[table].find(r=>r.id===id);
       if (!rec) return;

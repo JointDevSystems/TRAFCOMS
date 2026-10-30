@@ -13,12 +13,13 @@ const ROLE_SIDEBAR = {
 
 function buildBadges() {
   const db=state.db;
+  const _gxToday = new Date().toDateString();   // PERF: once, not once per row
   const set=(id,val)=>{ const el=document.getElementById(id); if(el){ el.textContent=val||''; el.style.display=val?'inline':'none'; } };
   set('badge-trucks',       db.trucks.filter(t=>t.status==='breakdown').length);
   set('badge-drivers',      db.drivers.filter(d=>d.status==='on_trip').length);
   set('badge-trips',        db.trips.filter(t=>t.status==='active').length);
   set('badge-dispatch',     awaitingDispatchTrips().length);
-  set('badge-inward',       db.interchange.filter(i => (i.type==='Gate-In'||i.type==='Depot-In') && new Date(i.date).toDateString()===new Date().toDateString()).length);
+  set('badge-inward',       db.interchange.filter(i => (i.type==='Gate-In'||i.type==='Depot-In') && new Date(i.date).toDateString()===_gxToday).length);
   set('badge-allocation',   awaitingDispatchTrips().length);
   set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
   set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
@@ -27,7 +28,10 @@ function buildBadges() {
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-workshop',     (db.containerRepairs||[]).filter(c=>c.status==='awaiting_approval').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
-  set('badge-depotreport',  computeDepotReportDuplicates().length);
+  /* PERF: computeDepotReportDuplicates() is async and runs a server query (find_interchange_duplicates, which returns whole
+     interchange rows incl. photos). buildBadges() runs on every save / sync / navigation, and the Promise's .length was
+     always undefined anyway. Use the last scan; the Depot Report refreshes it whenever it is opened. */
+  set('badge-depotreport',  (typeof _depotReportDupes !== 'undefined' && _depotReportDupes) ? _depotReportDupes.length : 0);
   if (typeof refreshBookingBadge === 'function') refreshBookingBadge();
 }
 
@@ -146,7 +150,7 @@ const sectionRenderers = {
   dashboard:renderDashboard, trucks:()=>renderTrucks('all'), drivers:()=>renderDrivers('all'),
   trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
   inward: renderInward,
-  fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
+  fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange(typeof _icFilter!=='undefined'?_icFilter:'all'),
   prestaking:()=>renderPrestaking('staged'),
   depotreport: renderDepotReport,
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
@@ -243,9 +247,7 @@ function showAddDriverModal() {
   openModal('Add New Driver', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="nd_name" placeholder="John Doe"/></div><div class="fg"><label>Phone</label><input id="nd_phone" placeholder="+254 7XX XXX XXX"/></div></div><div class="form-row-2"><div class="fg"><label>Licence No.</label><input id="nd_lic" placeholder="DL-A0000"/></div><div class="fg"><label>Licence Expiry</label><input id="nd_licexp" type="date"/></div></div><div class="form-row-2"><div class="fg"><label>ID Number</label><input id="nd_idno" placeholder="ID number"/></div><div class="fg"><label>Rating</label><input id="nd_rating" type="number" placeholder="4.0" min="0" max="5" step="0.1"/></div></div><button class="submit-btn" onclick="saveDriver()">Add Driver →</button>`);
 }
 
-// Shipping-line Add / Edit modals live in interchange-shutouts.js (showAddLineModal, showEditLineModal,
-// applyOfficialLineDefaults) next to the rate-card code that reads their fields. They used to be duplicated
-// here with an old 3-rate form; because this file loads later it silently overrode the real ones.
+
 
 function openUnmappedVesselsModal() {
   const groups = _unmappedVesselGroups();
@@ -832,9 +834,7 @@ function startLivePulse() {
   }, 30000);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 37  ADMIN-ONLY SECTION GUARD (Invoicing, Settings, Finance, Admin)
-────────────────────────────────────────────────────────────────── */
+
 const ADMIN_ONLY_SECTIONS = ['invoicing', 'settings', 'usermgmt'];
 
 const origShowAdminSection = window.showAdminSection || showAdminSection;

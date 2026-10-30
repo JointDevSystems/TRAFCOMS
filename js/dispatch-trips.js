@@ -757,7 +757,7 @@ function previewContainerImgs(e) {
   files.forEach(file => {
     if (!file.type.startsWith('image/')) { toast(`${file.name} is not an image — skipped`, 'error'); return; }
     if (file.size > 2*1024*1024) { toast(`${file.name} is too large — max 2MB. Skipped.`, 'error'); return; }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = ev => {
       _dispatchContainerImages.push(ev.target.result);
       renderContainerImgGrid();

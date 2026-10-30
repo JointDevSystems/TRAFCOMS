@@ -28,10 +28,10 @@ function normContainerKey(c) { return String(c || '').toUpperCase().replace(/[^A
 function localContainerConflict(container, ignoreIcId) {
   const key = normContainerKey(container);
   if (!key) return null;
-  const rows = state.db.interchange || [];
-  const live = rows.find(i => i.id !== ignoreIcId && (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut
-    && normContainerKey(i.container) === key
-    && !rows.some(o => (o.type === 'Gate-Out' || o.type === 'Depot-Out') && normContainerKey(o.container) === key && new Date(o.date) >= new Date(i.date)));
+  // PERF: narrow to this container's own rows first (was a scan of every row inside a scan of every row)
+  const same = (state.db.interchange || []).filter(i => normContainerKey(i.container) === key);
+  const live = same.find(i => i.id !== ignoreIcId && (i.type === 'Gate-In' || i.type === 'Depot-In') && !i.dateOut
+    && !same.some(o => (o.type === 'Gate-Out' || o.type === 'Depot-Out') && new Date(o.date) >= new Date(i.date)));
   return live ? `${key} is already in the yard (received ${fmtDate(live.date)}). A container cannot be entered again until it has been gated out.` : null;
 }
 
@@ -129,7 +129,7 @@ function captureShutoutPhoto(input, boxId, key) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value = ''; return; }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     _pendingShutoutImg[key] = reader.result;
     const box = document.getElementById(boxId);
@@ -255,7 +255,12 @@ let _icFilter='all';
 
 function filterInterchange(f,btn){ _icFilter=f; document.querySelectorAll('#sec-interchange .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderInterchange(f); }
 
+const IC_PAGE = 40;            // PERF: cards drawn per page; the list used to draw every record (thousands of cards with inline photos)
+let _icShown = IC_PAGE, _icLastF = null;
+function icShowMore(all) { _icShown = all ? Infinity : _icShown + IC_PAGE; renderInterchange(_icFilter); }
+
 function renderInterchange(f){
+  if (f !== _icLastF) { _icShown = IC_PAGE; _icLastF = f; }          // new filter -> back to the first page; live refreshes keep your place
   const issued = issuedInterchanges();
   const waiting = (state.db.interchange || []).length - issued.length;
   let items = f==='all' ? issued
@@ -263,6 +268,8 @@ function renderInterchange(f){
     : issued.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
+  const _total = items.length;
+  items = items.map(i => [+new Date(i.date) || 0, i]).sort((a, b) => b[0] - a[0]).map(x => x[1]).slice(0, _icShown);   // newest first (new records are pushed to the end of the array)
   // Same "has this container left the yard?" logic as the Inward panels, computed once per render.
   const _icIdx = icOutIndex();
   const waitNote = waiting ? `<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0"><b>${waiting}</b> gated-in container${waiting === 1 ? ' is' : 's are'} waiting for survey. The interchange (EIR) is issued automatically when the survey is complete.</span></div>` : '';
@@ -271,8 +278,9 @@ function renderInterchange(f){
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
     const canQuickDispatch = icInYard(ic, _icIdx);
     const canSendToSurvey = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.surveyStatus;
-    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
-  }).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+    return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img loading="lazy" decoding="async" src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
+  }).join('')||'<div class="empty-state"><div class="empty-state-icon">\u{1F504}</div><div class="empty-state-label">No interchange records</div></div>';
+  if (_total > items.length) el.innerHTML += `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">Showing ${items.length} of ${_total} \u00b7 <button class="modal-btn ghost" onclick="icShowMore()">Show ${IC_PAGE} more</button> <button class="modal-btn ghost" onclick="icShowMore(true)">Show all</button></div>`;
 }
 
 async function sendToSurvey(id) {
@@ -1431,10 +1439,16 @@ function showContainerDetail(contRaw) {
   openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
 }
 
+/* PERF: this used to put EVERY container number ever seen (trips + shutouts + interchange: tens of thousands) into one <datalist>
+   and rebuild it after nearly every save. The browser re-filtered all of them on each keystroke in the container boxes.
+   Now the list is built lazily, cached until data changes, and only the best ~30 matches are shown once 2+ characters are typed. */
+let _chIndex = null;
 function refreshContainerHistory() {
+  _chIndex = null;                                           // data changed: rebuild on the next keystroke
   const dl = document.getElementById('containerHistory');
-  if (!dl) return;
-
+  if (dl && dl.firstChild) dl.innerHTML = '';
+}
+function _chBuild() {
   const labels = new Map();
   const tag = (c, label) => { if (c && !labels.has(c)) labels.set(c, label); };
   (state.db.trips||[]).forEach(t=>{
@@ -1443,8 +1457,22 @@ function refreshContainerHistory() {
   });
   (state.db.shutouts||[]).forEach(s=>{ tag(s.container, 'Shutout'); });
   (state.db.interchange||[]).forEach(i=>{ tag(i.container, 'Interchange'); });
-  dl.innerHTML = [...labels.keys()].sort().map(c=>`<option value="${c}">${labels.get(c)}</option>`).join('');
+  _chIndex = [...labels.keys()].sort().map(c => [c.toUpperCase(), c, labels.get(c)]);
 }
+function _chFill(q) {
+  const dl = document.getElementById('containerHistory');
+  if (!dl) return;
+  q = String(q || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (q.length < 2) { if (dl.firstChild) dl.innerHTML = ''; return; }
+  if (!_chIndex) _chBuild();
+  const starts = [], inside = [];
+  for (let k = 0; k < _chIndex.length && starts.length < 30; k++) {
+    const e = _chIndex[k], p = e[0].replace(/[^A-Z0-9]/g, '').indexOf(q);
+    if (p === 0) starts.push(e); else if (p > 0 && inside.length < 30) inside.push(e);
+  }
+  dl.innerHTML = starts.concat(inside).slice(0, 30).map(e => `<option value="${esc(e[1])}">${esc(e[2])}</option>`).join('');
+}
+document.addEventListener('input', e => { const el = e.target; if (el && el.getAttribute && el.getAttribute('list') === 'containerHistory') _chFill(el.value); }, true);
 
 function resolveBookingShippingLineId(booking) {
   if (!booking) return null;

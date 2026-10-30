@@ -26,17 +26,9 @@ function operationalCutoffISO() {
   return d.toISOString();
 }
 
-// Fetches every row matching a filtered query, in fixed-size pages, instead
-// of a single request with a hard .limit(). A hard limit silently truncates
-// once a table (or a bulk import) grows past that number — e.g. a 5000-row
-// cap will quietly drop to 5000 even when 8,000+ rows actually match, which
-// then corrupts anything counting off the result (KPIs, unmapped-line
-// notices, etc). queryFactory(from, to) must return a fresh Supabase query
-// with .range(from, to) applied (ranges are inclusive on both ends).
+
 async function fetchAllPaginated(queryFactory, pageSize = 1000, concurrency = 4) {
-  /* PERF: pages used to be fetched one after another (12.5k rows = 13 round trips in a row).
-     Page 1 is still fetched alone (most tables fit in it: still exactly one request), then the remaining
-     pages go out `concurrency` at a time and are consumed IN ORDER, stopping at the first short page. */
+  
   let all = [];
   let from = 0;
   let first = true;
@@ -121,40 +113,29 @@ async function saveDirty(table, rows, toRowFn) {
   const dirty = (rows || []).filter(r => r._dirty);
   if (!dirty.length) return null;
   let failure = await upsertRowsChunked(table, dirty.map(toRowFn));
-  // Invoices gained a line_items column (rate-schedule breakdown) — if the
-  // Supabase table hasn't been migrated yet, drop the field and retry once
-  // rather than losing the whole invoice save.
+
   if (failure && table === 'invoices' && /line_items/i.test(failure.error?.message || '')) {
     console.warn('invoices.line_items column not found — saving without it. Run: alter table invoices add column if not exists line_items jsonb default \'[]\'::jsonb;');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.line_items; return row; }));
   }
-  // Invoices gained currency / client_address / terms columns (billing
-  // format update — USD by default, KES for PIL, full "Bill To" address,
-  // payment terms). Retry without whichever column isn't migrated yet.
+  
   for (const col of ['currency', 'client_address', 'terms']) {
     if (failure && table === 'invoices' && new RegExp(`\\b${col}\\b`, 'i').test(failure.error?.message || '')) {
       console.warn(`invoices.${col} column not found — saving without it. Run: alter table invoices add column if not exists ${col} text default '';`);
       failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row[col]; return row; }));
     }
   }
-  // Shutouts gained an img column (photo upload) — if the Supabase table
-  // hasn't been migrated yet, drop the field and retry once rather than
-  // losing the whole shutout save (the photo itself just won't persist
-  // until the column is added).
+
   if (failure && table === 'shutouts' && /\bimg\b/i.test(failure.error?.message || '')) {
     console.warn('shutouts.img column not found — saving without it. Run: alter table shutouts add column if not exists img text default \'\';');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.img; return row; }));
   }
-  // Fuel logs gained a total_paid column (actual amount paid). Retry without it if the table
-  // hasn't been migrated yet so fill-ups still save (the total just falls back to litres x price).
+
   if (failure && table === 'fuel_logs' && /total_paid/i.test(failure.error?.message || '')) {
     console.warn('fuel_logs.total_paid column not found — saving without it. Run: alter table fuel_logs add column if not exists total_paid numeric;');
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.total_paid; return row; }));
   }
-  // Interchange gained iso_code / trailer_no / gross_weight / manufacture_date
-  // (full EIR slip). If any of them isn't migrated yet, drop just those columns
-  // and retry so the rest of the record still saves. Run
-  // supabase_interchange_eir_migration.sql to persist the new fields.
+  
   if (failure && table === 'interchange') {
     const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date', 'clerk_name', 'storage_zone', 'storage_block', 'storage_slot'];
     const dropped = [];
@@ -172,8 +153,6 @@ async function saveDirty(table, rows, toRowFn) {
   return null;
 }
 
-// Returns true only if every step succeeded, so the caller knows whether it
-// is safe to remember these links as saved.
 async function syncInvoiceTrips(invoices) {
   let ok = true;
   const invoiceIds = invoices.map(i => i.id);
@@ -190,22 +169,7 @@ async function syncInvoiceTrips(invoices) {
   return ok;
 }
 
-// ── Change detection for tables that have no per-row _dirty flag ─────
-// shipping_lines, trucks, drivers, billing_rates, allocation_rules,
-// invoice_trips and app_settings used to be re-written in full on every
-// save (trucks included their base64 photo). Many places mutate those
-// arrays directly, so instead of flagging rows at each mutation site we
-// remember what the database last held for each row (as JSON) and send
-// only rows that differ.
-//
-// Safety rules:
-//  * A row missing from the snapshot is always sent.
-//  * A missing/invalidated snapshot means "unknown" -> send everything,
-//    which is the old behaviour.
-//  * Snapshots are only advanced after the write succeeded, so a failed
-//    save is retried on the next one.
-//  * Anything that wipes tables or swaps in a whole new dataset must call
-//    invalidateSaveSnapshots() (clearAllTables and importData do).
+
 const SAVE_SNAP_SPECS = {
   shippingLines:   { rows: db => (db.shippingLines || []).map(lineToRow),  id: r => r.id },
   trucks:          { rows: db => (db.trucks || []).map(truckToRow),        id: r => r.id },
@@ -214,7 +178,7 @@ const SAVE_SNAP_SPECS = {
   billingRates:    { rows: db => Object.entries(db.billingRates || {}).map(([ctype, v]) => ({ ctype, base: v.base, per_km: v.perKm })), id: r => r.ctype },
 };
 
-// Which snapshot to refresh when a realtime table is re-fetched.
+
 const SAVE_SNAP_FOR_TABLE = {
   shipping_lines: ['shippingLines'], trucks: ['trucks'], drivers: ['drivers'],
   allocation_rules: ['allocationRules'], invoices: ['invoiceTrips'],
@@ -226,10 +190,7 @@ function _invoiceTripsMap(db) {
   return new Map((db.invoices || []).map(i => [i.id, JSON.stringify([...(i.trips || [])].sort())]));
 }
 
-// Record the current state.db contents as "what the database holds".
-// app_settings is deliberately not snapshotted here: loadDB() substitutes
-// defaults when the row is missing, so it is only remembered after a
-// successful save.
+
 function snapshotSaved(names) {
   if (!state.db) return;
   const list = names || [...Object.keys(SAVE_SNAP_SPECS), 'invoiceTrips'];
@@ -287,12 +248,7 @@ async function loadDB() {
     ] = await Promise.all([
       supabase.from('trucks').select('*'),
       supabase.from('drivers').select('*'),
-      // Operational window, not the full table: any trip that's still open
-      // (not completed) regardless of age, PLUS anything from the last
-      // OPERATIONAL_WINDOW_DAYS days so recent completed trips still show
-      // up in Dispatch/Dashboard history. Older completed trips are fetched
-      // on demand (see ensureTripsLoaded) or browsed via Trip Reports, which
-      // already queries Supabase directly with its own date range.
+
       fetchAllPaginated((from, to) =>
         supabase.from('trips').select('*')
           .or(`status.neq.completed,start_time.gte.${operationalCutoffISO()}`)
@@ -300,21 +256,16 @@ async function loadDB() {
           .range(from, to)
       ),
       supabase.from('maintenance').select('*'),
-      // Paginated: the bulk trip-fuel import can take this table well past the 1,000-row API cap.
+      
       fetchAllPaginated((from, to) => supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to)),
       supabase.from('shipping_lines').select('*'),
       supabase.from('shutouts').select('*'),
-      // Same idea for interchange: keep everything still actionable
-      // (pending/approved, not yet reconciled) plus a recent window for the
-      // Interchange Management screen and day-to-day Depot Report browsing.
-      // The full register is only ever needed for the duplicate scan, which
-      // now runs server-side via find_interchange_duplicates() instead of
-      // requiring the whole table in the browser.
+      
       fetchAllPaginated((from, to) =>
         supabase.from('interchange').select('*')
           .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
           .order('date', { ascending: false })
-          .order('id', { ascending: false })   // tiebreaker: matches idx_interchange_date_id_desc, stable paging
+          .order('id', { ascending: false })   
           .range(from, to)
       ),
       supabase.from('requisitions').select('*'),
@@ -624,14 +575,13 @@ async function clearAllTables() {
 async function initDB() {
   let loaded = await loadDB();
   if (!loaded && window.GargoOffline) {
-    // Offline or server unreachable: open from the copy saved on this device.
+   
     const snap = await GargoOffline.loadSnapshot();
     if (snap) { loaded = snap.db; state.offlineData = true; console.warn('Opened from offline snapshot'); }
   }
   if (loaded) {
     state.db = loaded;
-    // Taken before the defaults below are applied, so defaults that are not
-    // yet in the database still count as changes and get saved.
+  
     snapshotSaved();
   } else {
    
@@ -683,15 +633,7 @@ let _liveSyncDebounce = null;
 
 let _bulkWriteInProgress = false;
 
-// ── Targeted live sync ───────────────────────────────────────────────
-// A realtime event used to trigger loadDB() — every table, ~21 queries —
-// in every connected browser. Now each event only marks the table that
-// changed, and only that slice of state.db is re-fetched.
-//
-// Each loader returns the already-mapped array for its state.db key and
-// throws on error, so a failed fetch leaves the existing data in place
-// instead of wiping it. Queries mirror loadDB() — if you change the
-// operational window or ordering there, change it here too.
+
 const _liveRows = async (q) => { const { data, error } = await q; if (error) throw error; return data || []; };
 const _livePaged = async (factory) => { const { data, error } = await fetchAllPaginated(factory); if (error) throw error; return data || []; };
 
@@ -742,11 +684,7 @@ function queueLiveRefresh(table, delayMs) {
 
 function _runQueuedLiveRefresh() { return refreshFromServer({ queued: true }); }
 
-/* PERF: a realtime change to interchange or trips used to re-download the WHOLE table (13+ sequential requests) in
-   every open browser. Now only the changed rows are fetched and merged into state.db. Falls back to the full
-   table reload if: a burst touches more than PATCH_MAX rows (bulk import), the app is offline, or anything fails.
-   Rows with unsaved local edits (_dirty) are never overwritten. Existing objects are updated in place, so
-   anything holding a reference to a row (open forms, modals) keeps working. */
+
 const _PATCHABLE = {   // mappers are looked up lazily: those scripts load AFTER this one
   interchange: { key: 'interchange', from: r => icFromRow(r) },
   trips:       { key: 'trips',       from: r => tripFromRow(r) },
@@ -862,9 +800,7 @@ async function _refreshTables(tables) {
   return done;
 }
 
-// Called with no arguments (e.g. the auto-refresh timer in admin-ui-shell.js)
-// it does a full reload exactly as before. Realtime events call it via
-// _runQueuedLiveRefresh and only refresh the tables that changed.
+
 async function refreshFromServer(opts) {
   if (!(opts && opts.queued)) _livePendingFull = true;
   if (!navigator.onLine) return;   // stays queued; offline.js refreshes after it reconnects
@@ -872,12 +808,7 @@ async function refreshFromServer(opts) {
   const modalOpen = document.getElementById('modalOverlay')?.classList.contains('active');
   if (modalOpen) { _liveSyncDebounce = setTimeout(_runQueuedLiveRefresh, 1500); return; }
 
-  // A burst of realtime events (e.g. a bulk import writing hundreds of rows)
-  // can re-trigger this faster than one reload completes. Overlapping reloads
-  // stack up parallel queries and exhaust Supabase's connection pool, which
-  // makes every query on every table time out. Coalesce instead: if a refresh
-  // is already running, remember to run one more after it finishes. Pending
-  // tables are kept in _livePendingTables so nothing is lost meanwhile.
+ 
   if (_refreshInFlight) { _refreshQueuedAgain = true; return; }
   _refreshInFlight = true;
 
