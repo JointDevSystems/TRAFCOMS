@@ -38,7 +38,7 @@ let _inwardImages = [];
 
 function renderInward() {
   populateInwardSelects();
-  renderInwardAwaitingGateIn();
+  renderInwardAwaitingGateIn({ cached: true });
   renderInwardRecent();
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
@@ -57,10 +57,16 @@ function renderInwardRecent() {
   const el   = document.getElementById('inwardRecentList');
   const meta = document.getElementById('inwardRecentMeta');
   if (!el) return;
-  const items = state.db.interchange
-    .filter(i => i.type === 'Gate-In' || i.type === 'Depot-In')
-    .sort((a,b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 8);
+  const top = [];   // newest 8 inward records, found in one pass (no full sort of the whole table)
+  for (const i of state.db.interchange) {
+    if (i.type !== 'Gate-In' && i.type !== 'Depot-In') continue;
+    const t = +new Date(i.date) || 0;
+    if (top.length < 8 || t > top[top.length - 1][0]) {
+      let k = top.length; while (k > 0 && top[k - 1][0] < t) k--;
+      top.splice(k, 0, [t, i]); if (top.length > 8) top.pop();
+    }
+  }
+  const items = top.map(x => x[1]);
   const _idx = icOutIndex();
   if (meta) meta.textContent = `${items.length} shown`;
   el.innerHTML = items.map(ic => `<div class="dispatch-queue-item" onclick="showSection('interchange', document.querySelector('[data-section=&quot;interchange&quot;]'))">
@@ -88,7 +94,9 @@ function renderInwardStillInStorage() {
   const _idx = icOutIndex();
   const items = state.db.interchange
     .filter(i => icInYard(i, _idx))
-    .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
+    .map(i => [+new Date(i.date) || 0, i])
+    .sort((a, b) => a[0] - b[0])                 // oldest first (each date parsed once)
+    .map(x => x[1]);
 
   if (meta) {
     meta.textContent = items.length
@@ -429,38 +437,85 @@ async function createDepotBookingFromInterchange(ic) {
 }
 
 /* ── Awaiting Gate-In: confirmed bookings (website / customer accounts) that have not arrived yet ── */
-async function renderInwardAwaitingGateIn() {
+/* PERF: this used to download EVERY confirmed booking (select '*', no limit) and then every guarantee-form
+   document for all of them in one giant .in() query, on every visit to the section. Now:
+   - only the first GATEIN_PAGE bookings are fetched (the header still shows the true total),
+   - documents are fetched for just those rows, and the list is drawn first without waiting for them,
+   - opening the section re-uses what was fetched in the last GATEIN_TTL ms (call with {cached:true});
+     every other caller (after a booking is received / cancelled / created) passes no args and gets fresh data. */
+const GATEIN_PAGE = 50, GATEIN_TTL = 30000;
+let _gateInCache = null;      // { at, list, total, docs }
+let _gateInInFlight = null;
+
+function _gateInCards(list, docs) {   // docs === null while the document lookup is still running
+  return list.map(b => {
+      const hasG = ((docs || {})[b.id] || []).some(d => d.doc_type === 'guarantee_form');
+  return `<div class="dispatch-queue-item" style="align-items:center;gap:10px">
+    <div class="dqi-ref">${esc(b.container || 'No container no.')}</div>
+    <div class="dqi-route" style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(b.company || b.full_name || '—')}</div>
+      <div style="font-size:10px;color:var(--text-3)">${esc(b.reference || b.id.slice(0, 8))}${b.bulk_ref ? ' · ' + esc(b.bulk_ref) : ''}${b.cargo_type ? ' · ' + esc(b.cargo_type) : ''}${b.pickup_date ? ' · expected ' + fmtDate(b.pickup_date) : ''}</div>
+      <div style="margin-top:3px">${docs === null ? '' : (hasG ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>')}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <button class="modal-btn primary" onclick="startInwardFromBooking('${b.id}')">Confirmed In →</button>
+      <button class="modal-btn ghost" onclick="cancelPublicBooking('${b.id}','cancelled')">Cancel</button>
+    </div>
+  </div>`;
+  }).join('');
+}
+
+function _paintAwaitingGateIn(c) {
   const wrap = document.getElementById('inwardAwaitingGateInList');
   const meta = document.getElementById('inwardAwaitingGateInMeta');
+  if (!wrap || !c) return;
+  if (meta) meta.textContent = c.total ? `${c.total} expected${c.total > c.list.length ? ` \u00b7 showing oldest ${c.list.length}` : ''}` : '';
+  if (!c.list.length) { wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No confirmed bookings are waiting to arrive</div></div>'; return; }
+  const more = c.total > c.list.length
+    ? `<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">${c.total - c.list.length} more expected -- they appear here as the earlier ones are received.</div>`
+    : '';
+  wrap.innerHTML = _gateInCards(c.list, c.docs) + more;
+}
+
+async function renderInwardAwaitingGateIn(opts) {
+  const wrap = document.getElementById('inwardAwaitingGateInList');
   if (!wrap) return;
-  try {
-    const { data, error } = await supabase.from('public_bookings').select('*').eq('status', 'confirmed')
-      .order('confirmed_at', { ascending: true, nullsFirst: false });
-    if (error) throw error;
-    const list = data || [];
-    if (meta) meta.textContent = list.length ? `${list.length} expected` : '';
-    if (!list.length) { wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No confirmed bookings are waiting to arrive</div></div>'; return; }
-    let docs = {};
-    try { if (window.bookingDocs) docs = await window.bookingDocs.documentsForBookings(list.map(b => b.id)); } catch (e) { /* best effort */ }
-    wrap.innerHTML = list.map(b => {
-      const hasG = (docs[b.id] || []).some(d => d.doc_type === 'guarantee_form');
-      return `<div class="dispatch-queue-item" style="align-items:center;gap:10px">
-        <div class="dqi-ref">${esc(b.container || 'No container no.')}</div>
-        <div class="dqi-route" style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(b.company || b.full_name || '—')}</div>
-          <div style="font-size:10px;color:var(--text-3)">${esc(b.reference || b.id.slice(0, 8))}${b.bulk_ref ? ' · ' + esc(b.bulk_ref) : ''}${b.cargo_type ? ' · ' + esc(b.cargo_type) : ''}${b.pickup_date ? ' · expected ' + fmtDate(b.pickup_date) : ''}</div>
-          <div style="margin-top:3px">${hasG ? '<span class="sbadge s-approved">Guarantee form ✓</span>' : '<span class="sbadge s-pending">No guarantee form</span>'}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          <button class="modal-btn primary" onclick="startInwardFromBooking('${b.id}')">Confirmed In →</button>
-          <button class="modal-btn ghost" onclick="cancelPublicBooking('${b.id}','cancelled')">Cancel</button>
-        </div>
-      </div>`;
-    }).join('');
-  } catch (e) {
-    console.warn('Awaiting gate-in load failed:', e);
-    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Could not load bookings — check your connection</div></div>';
+  const cachedOk = !!(opts && opts.cached);
+
+  if (cachedOk && _gateInCache) {
+    _paintAwaitingGateIn(_gateInCache);                                   // instant
+    if (Date.now() - _gateInCache.at < GATEIN_TTL) return;                // fresh enough: no network at all
   }
+  if (_gateInInFlight) {
+    if (cachedOk) return;                                                 // a fetch is already running
+    return _gateInInFlight.then(() => renderInwardAwaitingGateIn());      // a change just happened: run once more after it
+  }
+
+  _gateInInFlight = (async () => {
+    try {
+      const { data, error, count } = await supabase.from('public_bookings').select('*', { count: 'exact' })
+        .eq('status', 'confirmed')
+        .order('confirmed_at', { ascending: true, nullsFirst: false })
+        .range(0, GATEIN_PAGE - 1);
+      if (error) throw error;
+      const list = data || [];
+      const entry = { at: Date.now(), list, total: (typeof count === 'number' ? count : list.length), docs: null };
+      _gateInCache = entry;
+      _paintAwaitingGateIn(entry);                                        // draw now; guarantee badges follow
+      if (list.length && window.bookingDocs) {
+        try {
+          entry.docs = await window.bookingDocs.documentsForBookings(list.map(b => b.id));
+          if (_gateInCache === entry) _paintAwaitingGateIn(entry);
+        } catch (e) { /* best effort */ }
+      }
+    } catch (e) {
+      console.warn('Awaiting gate-in load failed:', e);
+      if (!_gateInCache) wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Could not load bookings -- check your connection</div></div>';
+    } finally {
+      _gateInInFlight = null;
+    }
+  })();
+  return _gateInInFlight;
 }
 
 // "40ft Standard", "20' High Cube", "Reefer 40ft" ... -> one of CONTAINER_TYPE_OPTIONS (or null)
