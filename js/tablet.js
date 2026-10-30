@@ -27,6 +27,13 @@
   var syntaxOld = false, canAsync = true;
   try { new Function('var a={};return a?.b??1'); } catch (e) { syntaxOld = (e instanceof SyntaxError); }   /* a blocked eval is NOT "old" */
   try { new Function('return async function(){}'); } catch (e) { canAsync = false; }
+
+  /* A modern engine that landed in /legacy/ (old bookmark / installed home-screen icon): go back to the main app.
+     Add ?legacy=1 to the URL to stay in /legacy/ for testing. No loop: the main app only redirects when syntaxOld is true. */
+  if (inLegacy && !syntaxOld && !/[?&]legacy=1/.test(location.search)) {
+    try { location.replace('../' + location.search + location.hash); } catch (e) {}
+  }
+
   if (syntaxOld && !inLegacy) {
     d.className += ' gx-legacy';
     /* Only act if the app really failed to start. client-auth.js defines showLoginScreen; if the engine could not
