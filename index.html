@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script src="js/tablet.js"></script>
-    <script src="js/blackbox.js"></script>
     <title>Gargo · Fleet Operations</title>
     <script>
       (function(){
@@ -37,21 +36,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Fonts. Lite mode (set by js/tablet.js on old / low-memory tablets) loads only what the pages actually render:
-         Manrope 400-700, Bodoni Moda 500/600 (no optical-size axis), Cormorant Garamond 700 (logo letters), and loads
-         them without blocking first paint. Outfit and DM Mono are never rendered (royal.css overrides them). -->
-    <script>
-      (function () {
-        var full = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Manrope:wght@400;500;600;700;800&display=swap";
-        var lite = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@700&family=Bodoni+Moda:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap";
-        if (/(^|\s)gx-lite(\s|$)/.test(document.documentElement.className)) {
-          document.write('<link rel="stylesheet" href="' + lite + '" media="print" onload="this.media=\'all\'" />');
-        } else {
-          document.write('<link rel="stylesheet" href="' + full + '" />');
-        }
-      })();
-    </script>
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Manrope:wght@400;500;600;700;800&display=swap" /></noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="royal.css" />
     <link rel="stylesheet" href="glass.css" />

@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '5.1';
+const CACHE_VERSION = '4.9';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -18,7 +18,6 @@ const SHELL_FILES = [
   './mobile.css',
   './tablet.css',
   './js/tablet.js',
-  './js/blackbox.js',
   './js/branding.js',
   './js/core-state.js',
   './js/core-db.js',
@@ -50,7 +49,6 @@ const SHELL_FILES = [
   './js/erp-hub.js',
   './js/finance-corp.js',
   './js/finance-billing.js',
-  './js/hr-users.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -95,8 +93,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keep = new Set([SHELL_CACHE, RUNTIME_CACHE, TILE_CACHE]);
     const keys = await caches.keys();
-    const isUpgrade = keys.some((k) => !keep.has(k));
-    await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
+    const isUpgrade = keys.some((k) => !keep.has(k) && k.indexOf('gargo-legacy') !== 0);
+    await Promise.all(keys.filter((k) => !keep.has(k) && k.indexOf('gargo-legacy') !== 0).map((k) => caches.delete(k)));
     await self.clients.claim();
     if (isUpgrade) {
       const clients = await self.clients.matchAll({ type: 'window' });
@@ -171,6 +169,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (NEVER_HOST.test(url.hostname)) return;                 // live data: always straight to the network
+  if (url.origin === self.location.origin && url.pathname.indexOf('/legacy/') === 0) return;   // legacy-bypass: the compatibility build has its own worker
 
   if (url.origin === self.location.origin) {
     if (req.mode === 'navigate') { event.respondWith(networkFirstNav(req)); return; }
