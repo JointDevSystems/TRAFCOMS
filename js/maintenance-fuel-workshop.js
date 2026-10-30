@@ -559,10 +559,12 @@ function renderFuel() {
 }
 
 function renderFuelTable() {
-  const logs = [...state.db.fuel].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const tbody = document.getElementById('fuelTableBody');
   if (!tbody) return;
-  tbody.innerHTML = logs.slice(0, 200).map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${esc(fuelTruckLabel(f))}</td><td>${esc(fuelDriverLabel(f))}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td><td>${canEditFuel()?`<button class="tbl-btn" onclick="showEditFuelModal('${esc(f.id)}')">Edit</button>`:''}</td></tr>`).join('') || `<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>`;
+  const _all = state.db.fuel.map(f => [+new Date(f.date) || 0, f]).sort((a, b) => b[0] - a[0]).map(x => x[1]);   // each date parsed once
+  const logs = _all.slice(0, gxPageLimit('fuel', 'all', 100, renderFuelTable));                                   // was a hard cap of 200 with no way to see older logs
+  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${esc(fuelTruckLabel(f))}</td><td>${esc(fuelDriverLabel(f))}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(fuelLogTotal(f))}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td><td>${f.receiptImg?`<img src="${f.receiptImg}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox('${f.receiptImg}')"/>`:`<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload('fuel','${f.id}','receiptImg',()=>renderFuelTable())">Attach</button>`}</td><td>${canEditFuel()?`<button class="tbl-btn" onclick="showEditFuelModal('${esc(f.id)}')">Edit</button>`:''}</td></tr>`).join('') || `<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>`;
+  if (_all.length > logs.length) tbody.innerHTML += gxPageFooter('fuel', logs.length, _all.length, 9);
 }
 
 function renderFuelSummary() {

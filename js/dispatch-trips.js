@@ -78,7 +78,11 @@ function renderTrips(f){
   else if(f!=='all') trips=trips.filter(t=>t.status===f);
   const el=document.getElementById('tripsList');
   if(!el) return;
+  const _total = trips.length;
+  // PERF: newest first, one page at a time (completed/all used to draw every trip in the 90-day window)
+  trips = trips.map(t=>[+new Date(t.startTime)||0,t]).sort((a,b)=>b[0]-a[0]).map(x=>x[1]).slice(0, gxPageLimit('trips', f, 40, ()=>renderTrips(_tripFilter)));
   el.innerHTML=trips.map(t=>`<div class="trip-card status-${t.status}" onclick="showTripDetail('${t.id}')"><div class="trip-card-head"><div class="trip-route">${t.origin}<span class="arrow">→</span>${t.dest}</div>${sbadge(t.status)}${t.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((t.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div class="trip-meta"><span>🚛 ${truckName(t.truckId)}</span><span>👤 ${driverName(t.driverId)}</span><span class="mono" style="font-size:10.5px;color:var(--gold)">${t.container}</span><span>${t.ctype} · ${t.workType}${t.outwardType ? ' · ' + sanitize(t.outwardType) : ''}</span><span>🕐 Started ${timeAgo(t.startTime)} · ETA ${fmtTime(t.eta)}</span><span>${t.distance}km · ${sbadge(t.priority.toLowerCase())}</span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🗺️</div><div class="empty-state-label">No trips in this filter</div></div>';
+  el.innerHTML += gxPageFooter('trips', trips.length, _total);
 }
 
 function showTripDetail(id) {

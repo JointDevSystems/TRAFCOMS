@@ -503,6 +503,31 @@ function adminDeleteBtn(table, id) {
   return '';
 }
 
+/* PERF: shared "show a page, then more" helper for long lists (Trips, Outward Trips, Fuel, Trip Reports).
+   gxPageLimit(key, sig, size, rerender) -> how many rows to draw now. `sig` identifies the current filter/query:
+   when it changes the list goes back to page 1; live refreshes keep your place.
+   gxPageFooter(key, shown, total[, colspan]) -> the "Showing X of Y / Show more" bar (a table row when colspan is given). */
+const _gxPages = {};
+function gxPageLimit(key, sig, size, rerender) {
+  const p = _gxPages[key] || (_gxPages[key] = { shown: size, sig: undefined, size: size });
+  if (p.sig !== sig) { p.sig = sig; p.shown = size; }
+  p.size = size; p.rerender = rerender;
+  return p.shown;
+}
+function gxPageMore(key, all) {
+  const p = _gxPages[key]; if (!p) return;
+  p.shown = all ? Infinity : p.shown + p.size;
+  if (p.rerender) p.rerender();
+}
+function gxPageFooter(key, shown, total, colspan) {
+  if (total <= shown) return '';
+  const p = _gxPages[key] || { size: 50 };
+  const btn = (label, arg) => `<button type="button" class="modal-btn ghost" onclick="gxPageMore('${key}'${arg ? ',true' : ''})">${label}</button>`;
+  const inner = `Showing ${shown} of ${total} \u00b7 ${btn('Show ' + p.size + ' more')}${total <= 1000 ? ' ' + btn('Show all', true) : ''}`;
+  const style = 'padding:14px;text-align:center;font-size:12px;color:var(--text-3)';
+  return colspan ? `<tr><td colspan="${colspan}" style="${style}">${inner}</td></tr>` : `<div style="grid-column:1/-1;${style}">${inner}</div>`;
+}
+
 /* PERF: photos are stored as base64 text inside database rows, so a 2 MB phone photo makes every list load,
    realtime refresh and render carry 2.7 MB of text. Shrink to max 1280px JPEG (~100-250 KB) before it is stored.
    Falls back to the untouched file for PDFs/GIFs, small images, and old WebViews that ignore EXIF rotation. */

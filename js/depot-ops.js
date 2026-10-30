@@ -2592,12 +2592,14 @@ async function renderDepOpsOutwardTrips() {
   }
 
   if (!wrap) return;
-  const trips = state.db.trips.filter(t => t.workType === 'Depot → Port');
+  const allOut = state.db.trips.filter(t => t.workType === 'Depot → Port');
+  const trips = allOut.map(t => [+new Date(t.startTime) || 0, t]).sort((a, b) => b[0] - a[0]).map(x => x[1])
+    .slice(0, gxPageLimit('outTrips', 'all', 25, renderDepOpsOutwardTrips));   // PERF: newest 25; docs are looked up for those only (was one query with every trip id)
   if (!trips.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No outward/repatriation trips yet</div></div>'; return; }
   wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
   try {
     const docsByTrip = await window.bookingDocs.documentsForTrips(trips.map(t => t.id));
-    wrap.innerHTML = trips.map(t => depOpsOutwardTripCard(t, docsByTrip[t.id] || [])).join('');
+    wrap.innerHTML = trips.map(t => depOpsOutwardTripCard(t, docsByTrip[t.id] || [])).join('') + gxPageFooter('outTrips', trips.length, allOut.length);
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }

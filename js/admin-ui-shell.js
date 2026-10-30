@@ -148,7 +148,7 @@ function renderSection(sec) {
 
 const sectionRenderers = {
   dashboard:renderDashboard, trucks:()=>renderTrucks('all'), drivers:()=>renderDrivers('all'),
-  trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
+  trips:()=>renderTrips(typeof _tripFilter!=='undefined'?_tripFilter:'active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
   inward: renderInward,
   fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange(typeof _icFilter!=='undefined'?_icFilter:'all'),
   prestaking:()=>renderPrestaking('staged'),

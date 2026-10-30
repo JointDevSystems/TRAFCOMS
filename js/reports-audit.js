@@ -263,13 +263,7 @@ async function trcRunTripReport() {
       return q.order('start_time', { ascending: false });
     };
 
-    // Uses the same fetchAllPaginated helper as loadDB() (core-db.js) so a
-    // wide date range can't silently truncate the report at a fixed row
-    // count — the summary and export should always reflect every matching
-    // trip, not just the first page of them. Each page rebuilds the query
-    // from scratch rather than re-ranging one shared builder, since a
-    // Supabase query builder shouldn't be re-awaited after it has already
-    // been sent once.
+
     const { data, error } = await fetchAllPaginated((from, to) => buildQuery().range(from, to));
     if (error) throw error;
 
@@ -312,7 +306,8 @@ function trcRenderTripTable(rows) {
   if (meta) meta.textContent = `${rows.length} record(s)${rows.length===5000 ? ' (capped at 5000 — narrow your range)' : ''}`;
   const body = document.getElementById('trcTripBody');
   if (!body) return;
-  body.innerHTML = rows.map(t=>`<tr onclick="showTripDetail('${t.id}')">
+  const shown = rows.slice(0, gxPageLimit('trcTrips', rows, 100, () => trcRenderTripTable(rows)));   // PERF: up to 5,000 rows used to be drawn at once
+  body.innerHTML = shown.map(t=>`<tr onclick="showTripDetail('${t.id}')">
     <td class="mono" style="color:var(--gold)">${t.container}</td>
     <td>${truckName(t.truckId)}</td>
     <td>${driverName(t.driverId)}</td>
@@ -325,6 +320,7 @@ function trcRenderTripTable(rows) {
     <td class="mono" style="font-size:10.5px">${fmtTime(t.startTime)} · ${fmtDate(t.startTime)}</td>
     <td class="mono" style="font-size:10.5px">${fmtTime(t.eta)}</td>
   </tr>`).join('') || '';
+  body.innerHTML += gxPageFooter('trcTrips', shown.length, rows.length, 11);
 }
 
 function trcExportTripsCSV() {
@@ -408,12 +404,14 @@ function trcRenderAuditTable(rows) {
   if (meta) meta.textContent = `${rows.length} record(s)${rows.length===2000 ? ' (capped at 2000 — narrow your range)' : ''}`;
   const body = document.getElementById('trcAuditBody');
   if (!body) return;
-  body.innerHTML = rows.map(a=>`<tr>
+  const shown = rows.slice(0, gxPageLimit('trcAudit', rows, 100, () => trcRenderAuditTable(rows)));
+  body.innerHTML = shown.map(a=>`<tr>
     <td class="mono" style="font-size:10.5px;white-space:nowrap">${fmtTime(a.time)} · ${fmtDate(a.time)}</td>
     <td>${a.user}</td>
     <td style="font-weight:600;color:var(--text)">${a.action}</td>
     <td style="color:var(--text-2)">${a.detail||''}</td>
   </tr>`).join('');
+  body.innerHTML += gxPageFooter('trcAudit', shown.length, rows.length, 4);
 }
 
 function trcExportAuditCSV() {
