@@ -301,6 +301,7 @@ async function loadDB() {
         supabase.from('interchange').select('*')
           .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
           .order('date', { ascending: false })
+          .order('id', { ascending: false })   // tiebreaker: matches idx_interchange_date_id_desc, stable paging
           .range(from, to)
       ),
       supabase.from('requisitions').select('*'),
@@ -696,7 +697,7 @@ const LIVE_TABLE_LOADERS = {
   interchange:       { key: 'interchange',      load: async () => (await _livePaged((from, to) =>
                         supabase.from('interchange').select('*')
                           .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
-                          .order('date', { ascending: false }).range(from, to))).map(icFromRow) },
+                          .order('date', { ascending: false }).order('id', { ascending: false }).range(from, to))).map(icFromRow) },
   requisitions:      { key: 'requisitions',     load: async () => (await _liveRows(supabase.from('requisitions').select('*'))).map(reqFromRow) },
   workshop_jobs:     { key: 'workshop',         load: async () => (await _liveRows(supabase.from('workshop_jobs').select('*'))).map(wsFromRow) },
   invoices:          { key: 'invoices',         load: async () => {
