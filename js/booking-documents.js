@@ -94,13 +94,7 @@
       .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
     if (uploadErr) throw new Error(uploadErr.message || 'Upload failed — please try again');
 
-    // autoVerify is for documents captured by depot staff at the point of
-    // physical handling (e.g. a guarantee form scanned in at gate entry, or
-    // a release order scanned in at dispatch) — those never need to sit in
-    // the DepOps review queue since someone already checked the physical
-    // copy when they recorded the movement. Documents coming in through the
-    // public booking portal always go through the normal pending_review
-    // queue since nobody at the depot has laid eyes on them yet.
+
     const insertPayload = {
       booking_id: bookingId || null,
       trip_id: tripId || null,
@@ -634,14 +628,21 @@
       throw new Error('condition_status must be one of: ' + CONDITION_STATUSES.join(', '));
     }
 
-    const { data: sessionData } = await client().auth.getSession();
-    const userId = sessionData && sessionData.session ? sessionData.session.user.id : null;
+    // An expired login makes the insert go out as the anonymous role and the database answers 401, so refresh it first.
+    let { data: sessionData } = await client().auth.getSession();
+    let session = sessionData && sessionData.session;
+    if (navigator.onLine !== false && (!session || (session.expires_at && session.expires_at * 1000 - Date.now() < 60000))) {
+      const refreshed = await client().auth.refreshSession().catch(() => null);
+      session = refreshed && refreshed.data && refreshed.data.session;
+      if (!session) throw new Error('Your login has expired, so the survey could not be saved. Sign out and sign in again, then save it again.');
+    }
+    const userId = session ? session.user.id : null;
 
     const isHeavilyDamaged = (payload.conditionStatus === 'heavily_damaged');
 
     const { data, error } = await client()
       .from('depot_surveys')
-      .insert({
+      .insert(Object.assign({
         booking_id: payload.bookingId || null,
         trip_id: payload.tripId || null,
         container: payload.container || null,
@@ -678,7 +679,7 @@
         tariff_material: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].material) || null,
         escalated: isHeavilyDamaged,
         surveyed_by: userId,
-      })
+      }, (window.GargoForms && window.GargoForms.surveyOut) ? window.GargoForms.surveyOut(payload.custom) : {}))
       .select('*')
       .single();
     if (error) throw new Error(error.message || 'Could not save survey');

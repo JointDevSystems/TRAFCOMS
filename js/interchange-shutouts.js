@@ -275,7 +275,7 @@ function renderInterchange(f){
   const waitNote = waiting ? `<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0"><b>${waiting}</b> gated-in container${waiting === 1 ? ' is' : 's are'} waiting for survey. The interchange (EIR) is issued automatically when the survey is complete.</span></div>` : '';
   el.innerHTML=waitNote+items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
-    const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · KSh ${Number(ic.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
+    const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · ${GargoMoney.fmt(ic.repairTotal||0, GargoMoney.itemsCur(ic.repairs))}</div>` : '';
     const canQuickDispatch = icInYard(ic, _icIdx);
     const canSendToSurvey = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.surveyStatus;
     return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img loading="lazy" decoding="async" src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
@@ -350,7 +350,7 @@ function printInterchangeList() {
     <td>${fmtDate(ic.date)}</td><td>${sanitize(ic.container || '—')}</td><td>${sanitize(ic.eirNumber || '—')}</td><td>${sanitize(ic.type || '—')}</td>
     <td>${sanitize(lineName(ic.line))}</td><td>${sanitize(ic.condition || '—')}</td>
     <td>${sanitize(truckName(ic.truck))}</td><td>${sanitize(driverName(ic.driver))}</td>
-    <td>${ic.repairTotal ? 'KSh ' + Number(ic.repairTotal).toLocaleString(undefined,{minimumFractionDigits:2}) : '—'}</td><td>${sanitize((ic.status || '').toUpperCase())}</td>
+    <td>${ic.repairTotal ? GargoMoney.fmt(ic.repairTotal, GargoMoney.itemsCur(ic.repairs)) : '—'}</td><td>${sanitize((ic.status || '').toUpperCase())}</td>
   </tr>`).join('');
   const w = window.open('', '_blank');
   w.document.write(`<html><head><title>Interchange Records</title><style>
@@ -695,7 +695,7 @@ function buildInterchangeSlip(icId) {
   if (repairs.length) {
     repairs.forEach(r => {
       const hrs = Number(r.hours || 0);
-      const labour = hrs * REPAIR_LABOUR_RATE_PER_HOUR;
+      const labour = hrs * GargoMoney.labourRate(GargoMoney.itemCur(r));
       const material = Number(r.material || 0);
       totHrs += hrs; totLabour += labour; totMaterial += material;
       const lines = doc.splitTextToSize(String(r.item || '—'), cols[1].w - 3);
@@ -721,7 +721,7 @@ function buildInterchangeSlip(icId) {
   // totals row
   doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
   cols.forEach(c => doc.rect(c.x, y, c.w, 7.5));
-  doc.text('Totals :   KSh', cols[1].x + cols[1].w - 1.5, y + 5, { align: 'right' });
+  doc.text('Totals :   ' + GargoMoney.sym(GargoMoney.itemsCur(repairs)), cols[1].x + cols[1].w - 1.5, y + 5, { align: 'right' });
   put(3, totHrs.toFixed(2), y + 5);
   put(4, money(totLabour), y + 5);
   put(5, money(totMaterial), y + 5);
@@ -798,7 +798,7 @@ async function buildInspectionReport(surveyId) {
   }
 
   const repairs = s.tariff_items || [];
-  const damageTotal = repairs.reduce((sum, r) => sum + (Number(r.price) || Number(r.material) || (Number(r.hours||0) * REPAIR_LABOUR_RATE_PER_HOUR) || 0), 0);
+  const damageTotal = repairs.reduce((sum, r) => sum + (Number(r.price) || Number(r.material) || (Number(r.hours||0) * GargoMoney.labourRate(GargoMoney.itemCur(r))) || 0), 0);
   const now = new Date();
   const reportId = `REP-INS-${String(s.id).replace(/-/g,'').slice(0,8).toUpperCase()}`;
 
@@ -880,7 +880,7 @@ async function buildInspectionReport(surveyId) {
   const stripW = CONTENT_W / 3 - 3;
   [
     { label: 'DAMAGE REPORTS', value: String(repairs.length) },
-    { label: 'EST. REPAIR COST', value: `KSh ${damageTotal.toLocaleString(undefined,{minimumFractionDigits:2})}` },
+    { label: 'EST. REPAIR COST', value: GargoMoney.fmt(damageTotal, GargoMoney.itemsCur(repairs)) },
     { label: 'CONDITION', value: conditionStatusLabel(s.condition_status).toUpperCase() },
   ].forEach((box, i) => {
     const bx = MARGIN + i * (stripW + 4.5);
@@ -934,7 +934,7 @@ async function buildInspectionReport(surveyId) {
   } else {
     repairs.forEach(r => {
       y = ensureSpace(y, 30);
-      const price = Number(r.price) || Number(r.material) || (Number(r.hours||0) * REPAIR_LABOUR_RATE_PER_HOUR) || 0;
+      const price = Number(r.price) || Number(r.material) || (Number(r.hours||0) * GargoMoney.labourRate(GargoMoney.itemCur(r))) || 0;
       doc.setDrawColor(210); doc.setLineWidth(0.3); doc.roundedRect(MARGIN, y, CONTENT_W, 26, 1.5, 1.5, 'S');
       doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(20);
       doc.text(`${r.item || r.category || 'Damage Item'}`, MARGIN + 3, y + 6);
@@ -944,7 +944,7 @@ async function buildInspectionReport(surveyId) {
       doc.setTextColor(20);
       kv(MARGIN + 3, y + 15, 'Location', r.side || '—');
       kv(MARGIN + 63, y + 15, 'Damage / Repair Code', r.code || '—');
-      kv(MARGIN + 126, y + 15, 'Tariff / Repair Price', `KSh ${price.toLocaleString(undefined,{minimumFractionDigits:2})}`, [200,60,60]);
+      kv(MARGIN + 126, y + 15, 'Tariff / Repair Price', GargoMoney.fmt(price, GargoMoney.itemCur(r)), [200,60,60]);
       y += 30;
     });
   }
@@ -1416,7 +1416,7 @@ function showContainerDetail(contRaw) {
   const interchangeHtml = interchange.length ? `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Interchange History (${interchange.length})</div>` +
     interchange.map(i=>{
       const meta = [i.eirNumber ? `EIR ${i.eirNumber}` : null, (i.vessel || i.voyage) ? `${i.vessel||'—'} / ${i.voyage||'—'}` : null].filter(Boolean).join(' · ');
-      const repairBadge = (i.repairs && i.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${i.repairs.length} damage item${i.repairs.length>1?'s':''} · KSh ${Number(i.repairTotal||0).toLocaleString(undefined,{minimumFractionDigits:2})}</div>` : '';
+      const repairBadge = (i.repairs && i.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${i.repairs.length} damage item${i.repairs.length>1?'s':''} · ${GargoMoney.fmt(i.repairTotal||0, GargoMoney.itemsCur(i.repairs))}</div>` : '';
       const thumb = i.img ? `<img src="${i.img}" style="width:44px;height:44px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="showContainerPhotos('${i.id}')" />` : `<div style="width:44px;height:44px;border-radius:5px;border:1px dashed var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:16px">📦</div>`;
       return `<div class="activity-row" style="align-items:flex-start;gap:10px">${thumb}<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div>${sbadge(i.status)}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)} · ${fmtDate(i.date)}</div>${meta?`<div style="font-size:10px;color:var(--text-3);margin-top:2px">${meta}</div>`:''}${repairBadge}${i.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:3px">${i.notes}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${(i.surveyId || i.img)?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="showContainerPhotos('${i.id}')">📷 Photos</button>`:''}${i.surveyId?`<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInspectionReport('${i.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInspectionReport('${i.surveyId}')" title="Print">🖨 Print Report</button>`:''}<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInterchangeSlip('${i.id}')">⬇ Slip</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInterchangeSlip('${i.id}')" title="Print">🖨 Print</button></div></div></div>`;
     }).join('') : '';
@@ -1495,7 +1495,7 @@ const REPAIR_LABOUR_RATE_PER_HOUR = 300;
 function repairItemsFor(prefix) { return window._repairItems[prefix] || (window._repairItems[prefix] = []); }
 
 function repairItemsTotal(items) {
-  return (items || []).reduce((sum, r) => sum + (Number(r.hours || 0) * REPAIR_LABOUR_RATE_PER_HOUR) + Number(r.material || 0), 0);
+  return (items || []).reduce((sum, r) => sum + (Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r))) + Number(r.material || 0), 0);
 }
 
 function tariffPickerHtml(prefix) {
@@ -1520,7 +1520,7 @@ function tariffPickerHtml(prefix) {
     </div>
     <div class="form-row-2">
       <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" min="0" placeholder="0" /></div>
-      <div class="fg"><label>Material (KSh)</label><input id="${prefix}_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>
+      <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="${prefix}">USD</span>)</label><input id="${prefix}_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>
     </div>
     ${canSave ? `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="${prefix}_tsavecat" /> Also save this to the tariff catalog for next time</label>` : ''}
     <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem('${prefix}')">+ Add item</button>
@@ -1592,7 +1592,7 @@ function addRepairItem(prefix) {
   if (!item) { toast('Add a description for this item', 'error'); return; }
   const hours = Math.max(0, parseFloat(val('thours')) || 0);
   const material = Math.max(0, parseFloat(val('tmaterial')) || 0);
-  const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours, material };
+  const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours, material, currency: GargoMoney.curFor(prefix) };
   const picked = _tariffRows(cat)[val('tcode')];
   if (!picked) entry.custom = true;
   repairItemsFor(prefix).push(entry);
@@ -1614,16 +1614,17 @@ function removeRepairItem(prefix, i) {
 function renderRepairItemsList(prefix) {
   const el = document.getElementById(`${prefix}_repairList`);
   if (!el) return;
+  GargoMoney.refreshLabels();
   const items = repairItemsFor(prefix);
   if (!items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added — container will be logged as good condition.</div>'; return; }
   const rows = items.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">
     <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">${esc(r.code)}</span> — ${esc(r.item)}${r.side ? ` <span style="color:var(--text-3)">(${esc(r.side)})</span>` : ''}${r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : ''}</div>
-    <div style="font-size:11px;color:var(--text-2)">${esc(r.hours)}h · KSh ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
+    <div style="font-size:11px;color:var(--text-2)">${esc(r.hours)}h · ${GargoMoney.sym(GargoMoney.itemCur(r))} ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
   </div>`).join('');
   const total = repairItemsTotal(items);
   el.innerHTML = rows + `<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">
-    <span>Total (labour @ KSh ${REPAIR_LABOUR_RATE_PER_HOUR}/hr + material)</span><span>KSh ${total.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-  </div>`;
+    <span>Total (labour @ ${GargoMoney.sym(GargoMoney.itemsCur(items))} ${GargoMoney.labourRate(GargoMoney.itemsCur(items))}/hr + material)</span><span>${GargoMoney.fmt(total, GargoMoney.itemsCur(items))}</span>
+  </div>${GargoMoney.labourWarning(items)}`;
 }
 
 function _tripToInterchangeReportRow(t) {

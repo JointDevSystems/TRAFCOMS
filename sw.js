@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '5.1';
+const CACHE_VERSION = '5.2';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -49,6 +49,10 @@ const SHELL_FILES = [
   './js/erp-hub.js',
   './js/finance-corp.js',
   './js/finance-billing.js',
+  './js/hr-users.js',
+  './js/ic-remote.js',
+  './js/form-designer.js',
+  './js/survey-currency.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

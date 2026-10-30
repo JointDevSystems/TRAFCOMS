@@ -743,7 +743,7 @@ function renderContainerRepairs(f) {
       ? `<img src="${c.gateInPhoto}" style="width:100%;height:100%;object-fit:cover" />`
       : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
     const itemsCount = (c.repairs || []).length;
-    const damageLine = itemsCount ? `${itemsCount} damage item${itemsCount > 1 ? 's' : ''} \u00b7 KSh ${Number(c.repairTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'No itemised damage on file';
+    const damageLine = itemsCount ? `${itemsCount} damage item${itemsCount > 1 ? 's' : ''} \u00b7 ${GargoMoney.fmt(c.repairTotal || 0, GargoMoney.itemsCur(c.repairs))}` : 'No itemised damage on file';
     const approvalLine = c.approvalDoc
       ? `\u2713 Shipping line approval on file${c.approvalReference ? ` \u00b7 Ref ${esc(c.approvalReference)}` : ''}`
       : '\u26a0 Awaiting shipping line approval document';

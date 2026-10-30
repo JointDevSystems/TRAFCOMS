@@ -1568,6 +1568,7 @@ async function saveSurvey(bookingId) {
   if (need(cg('survey.requireManufactureDate') && !val('sv_dom'), 'Date of manufacture is required')) return;
   if (need(cg('survey.requireCargoStatus') && !val('sv_cargo'), 'Cargo status is required')) return;
   if (need(_surveyImages.length < (Number(cg('survey.minPhotos')) || 0), `At least ${cg('survey.minPhotos')} survey photo${Number(cg('survey.minPhotos')) === 1 ? '' : 's'} required`)) return;
+  if (window.GargoForms) { const formErr = GargoForms.validate('survey'); if (formErr) { toast(formErr, 'error'); return; } }   // Form Designer rules
   const repairItems = repairItemsFor('sv');
   const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
   if (container) {
@@ -1612,6 +1613,7 @@ async function saveSurvey(bookingId) {
       remarks: val('sv_remarks'),
       photos: _surveyImages,
       tariffItems: repairItems,
+      custom: window.GargoForms ? GargoForms.collect('survey') : null,   // Form Designer fields (incl. Currency)
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
 
@@ -2165,7 +2167,7 @@ async function renderDepOpsReports() {
       <td>${ic.truck ? sanitize(truckName(ic.truck)) : '—'}</td>
       <td>${ic.driver ? sanitize(driverName(ic.driver)) : '—'}</td>
       <td>${sbadge(ic.status)}</td>
-      <td class="mono">${ic.repairTotal ? fmtKsh(ic.repairTotal) : '—'}</td>
+      <td class="mono">${ic.repairTotal ? GargoMoney.fmt(ic.repairTotal, GargoMoney.itemsCur(ic.repairs)) : '—'}</td>
     </tr>`).join('') : `<tr><td colspan="10" class="empty-td">No interchange records match these filters</td></tr>`;
   }
 
@@ -2182,7 +2184,7 @@ async function renderDepOpsReports() {
         ${reportRow('Pending', rows.filter(i => i.status === 'pending').length)}
         ${reportRow('Approved', rows.filter(i => i.status === 'approved').length)}
         ${reportRow('Reconciled', rows.filter(i => i.status === 'reconciled').length)}
-        ${reportRow('Repair Costs Total', fmtKsh(repairTotal))}
+        ${reportRow('Repair Costs Total', GargoMoney.fmtMixed(rows.map(ic => ({ amount: ic.repairTotal || 0, cur: GargoMoney.itemsCur(ic.repairs) }))))}
       </div>
       <div class="report-block">
         <h3>By Shipping Line</h3>
