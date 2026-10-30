@@ -1,5 +1,6 @@
 'use strict';
 
+
 const OUTWARD_TYPES = ['Repatriation to Port', 'Shippers/Export', 'Sale units'];
 
 const ZONE_LOOKUP_INTERVAL_MS = 60000;
@@ -76,21 +77,30 @@ function renderInwardRecent() {
 }
 
 
+/* FIX: capped at LIMIT cards. Previously drew every inward container with no recorded
+   exit (12k+ DOM cards), which froze the browser when the section was opened. */
 function renderInwardStillInStorage() {
   const wrap = document.getElementById('inwardStillInStorageList');
   const meta = document.getElementById('inwardStillInStorageMeta');
   if (!wrap) return;
+
+  const LIMIT = 50;   // cards actually drawn; the count in the header is always the true total
   const _idx = icOutIndex();
   const items = state.db.interchange
     .filter(i => icInYard(i, _idx))
     .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first
 
-  if (meta) meta.textContent = items.length ? `${items.length} without a recorded exit` : '';
+  if (meta) {
+    meta.textContent = items.length
+      ? `${items.length} without a recorded exit${items.length > LIMIT ? ` · showing oldest ${LIMIT}` : ''}`
+      : '';
+  }
   if (!items.length) {
     wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Everything logged has a recorded exit</div></div>';
     return;
   }
-  wrap.innerHTML = items.map(ic => `<div class="dispatch-queue-item">
+
+  const cards = items.slice(0, LIMIT).map(ic => `<div class="dispatch-queue-item">
       <div class="dqi-ref">${esc(ic.container)}</div>
       <div class="dqi-route">
         <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(ic.ctype || '—')} · ${esc(lineName(ic.line))}</div>
@@ -101,19 +111,31 @@ function renderInwardStillInStorage() {
         <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
       </div>
     </div>`).join('');
+
+  const more = items.length > LIMIT
+    ? `<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">${items.length - LIMIT} more not shown — use the Reports tab (Status: Still In Storage) to search and export the full list.</div>`
+    : '';
+  wrap.innerHTML = cards + more;
 }
 
 
+/* FIX: capped at LIMIT rows (also keeps the guarantee-form .in() id list short enough for the URL). */
 async function renderInwardAwaitingSurvey() {
   const wrap = document.getElementById('inwardAwaitingSurveyList');
   const meta = document.getElementById('inwardAwaitingSurveyMeta');
   if (!wrap) return;
 
-  const items = state.db.interchange
+  const LIMIT = 100;
+  const all = state.db.interchange
     .filter(i => i.surveyStatus === 'awaiting_survey')
     .sort((a,b) => new Date(a.date) - new Date(b.date)); // oldest first — the ones waiting longest surface first
+  const items = all.slice(0, LIMIT);
 
-  if (meta) meta.textContent = items.length ? `${items.length} waiting` : '';
+  if (meta) {
+    meta.textContent = all.length
+      ? `${all.length} waiting${all.length > LIMIT ? ` · showing oldest ${LIMIT}` : ''}`
+      : '';
+  }
 
   if (!items.length) {
     wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Nothing awaiting survey</div></div>';
@@ -129,7 +151,7 @@ async function renderInwardAwaitingSurvey() {
     }
   } catch (e) { /* guarantee-form status is best-effort — list still renders without it */ }
 
-  wrap.innerHTML = items.map(ic => {
+  const cards = items.map(ic => {
     const hasGuarantee = (docsByIc[ic.id] || []).some(d => d.doc_type === 'guarantee_form') || (docsByBooking[ic.bookingId] || []).some(d => d.doc_type === 'guarantee_form');
     return `<div class="dispatch-queue-item">
       <div class="dqi-ref">${esc(ic.container)}</div>
@@ -144,6 +166,11 @@ async function renderInwardAwaitingSurvey() {
       <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="startSurveyForInterchange('${ic.id}')">Start Survey →</button>
     </div>`;
   }).join('');
+
+  const more = all.length > LIMIT
+    ? `<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">${all.length - LIMIT} more waiting — they appear here as the oldest ones are surveyed.</div>`
+    : '';
+  wrap.innerHTML = cards + more;
 }
 
 function markInwardSurveyed(id) {
