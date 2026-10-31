@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '5.2';
+const CACHE_VERSION = '5.3';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -39,6 +39,7 @@ const SHELL_FILES = [
   './js/nav-shell.js',
   './js/bootstrap.js',
   './js/ghd-tariff-schedule.js',
+  './js/pil-tariff-schedule.js',
   './js/service-rate-schedule.js',
   './js/booking-documents.js',
   './js/clerk-tools.js',
