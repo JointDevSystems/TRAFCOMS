@@ -579,16 +579,16 @@ async function startInwardFromBooking(bookingId) {
 function previewInwardImg(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
-  const room = 6 - _inwardImages.length;
-  if (room <= 0) { toast('Maximum 6 photos — remove one to add another', 'error'); e.target.value = ''; return; }
+  const room = GX_MAX_PHOTOS - _inwardImages.length;
+  if (room <= 0) { toast(`Maximum ${GX_MAX_PHOTOS} photos — remove one to add another`, 'error'); e.target.value = ''; return; }
   files.slice(0, room).forEach(file => {
-    if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
-    if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB`, 'error'); return; }
+    const problem = gxPhotoProblem(file);
+    if (problem) { toast(`${file.name} skipped — ${problem}`, 'error'); return; }
     const reader = gxImageReader();
-    reader.onload = ev => { _inwardImages.push(ev.target.result); renderInwardImgPreview(); };
+    reader.onload = ev => { if (_inwardImages.length >= GX_MAX_PHOTOS) return; _inwardImages.push(ev.target.result); renderInwardImgPreview(); };
     reader.readAsDataURL(file);
   });
-  if (files.length > room) toast(`Only ${room} more photo${room===1?'':'s'} could be added (max 6)`, 'warning');
+  if (files.length > room) toast(`Only ${room} more photo${room===1?'':'s'} could be added (max ${GX_MAX_PHOTOS})`, 'warning');
   e.target.value = '';
 }
 
@@ -945,8 +945,9 @@ function _depotReportOutwardEntries() {
   const fromInterchange = state.db.interchange
     .filter(ic => OUTWARD_IC_TYPES.includes(ic.type))
     .map(ic => ({ ...ic, _reportSource: 'interchange' }));
+  const outIds = gxOutIcIds();   // trips that already issued their own Gate-Out interchange are not shown twice
   const fromTrips = state.db.trips
-    .filter(t => isOutwardWorkType(t.workType))
+    .filter(t => isOutwardWorkType(t.workType) && !outIds.has(gxOutwardIcId(t.id)))
     .map(_tripToDepotReportRecord);
   return [...fromInterchange, ...fromTrips]
     .filter(_depotReportLineMatch)
@@ -1495,7 +1496,7 @@ async function openSurveyModal(bookingId) {
 
     ${tariffPickerHtml('sv')}
 
-    <div class="fg"><label>Survey Photos <span class="label-optional">(up to 6)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
+    <div class="fg"><label>Survey Photos <span class="label-optional">(up to 10)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
     <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>
     <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(x.notes || '')}</textarea></div>
     <button class="submit-btn" onclick="saveSurvey('${bookingId}')">${ic ? 'Save Survey &amp; Complete Depot-In' : 'Save Survey'} →</button>
@@ -1523,16 +1524,16 @@ function onSurveyConditionChange() {
 
 function onSurveyImagesSelected(e) {
   const files = Array.from(e.target.files || []);
-  const room = 6 - _surveyImages.length;
-  if (room <= 0) { toast('Maximum 6 photos — remove one to add another', 'error'); e.target.value = ''; return; }
+  const room = GX_MAX_SURVEY_PHOTOS - _surveyImages.length;
+  if (room <= 0) { toast(`Maximum ${GX_MAX_SURVEY_PHOTOS} photos — remove one to add another`, 'error'); e.target.value = ''; return; }
   files.slice(0, room).forEach(file => {
-    if (!file.type.startsWith('image/')) { toast(`${file.name} skipped — not an image`, 'error'); return; }
-    if (file.size > 2*1024*1024) { toast(`${file.name} skipped — max 2MB per photo`, 'error'); return; }
+    const problem = gxPhotoProblem(file);
+    if (problem) { toast(`${file.name} skipped — ${problem}`, 'error'); return; }
     const reader = gxImageReader();
-    reader.onload = () => { _surveyImages.push(reader.result); _renderSurveyPhotos(); };
+    reader.onload = () => { if (_surveyImages.length >= GX_MAX_SURVEY_PHOTOS) return; _surveyImages.push(reader.result); _renderSurveyPhotos(); };
     reader.readAsDataURL(file);
   });
-  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max 6)`, 'warning');
+  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max ${GX_MAX_SURVEY_PHOTOS})`, 'warning');
   e.target.value = '';
 }
 
@@ -2135,9 +2136,10 @@ async function renderDepOpsReports() {
   const to = document.getElementById('depopsRptTo')?.value || '';
 
  
+  const outIds = gxOutIcIds();   // trips that already issued their own Gate-Out interchange are not shown twice
   let rows = [
     ...(state.db.interchange || []).map(i => ({ ...i, _reportSource: 'interchange' })),
-    ...(state.db.trips || []).map(_tripToInterchangeReportRow),
+    ...(state.db.trips || []).filter(t => !(isOutwardWorkType(t.workType) && outIds.has(gxOutwardIcId(t.id)))).map(_tripToInterchangeReportRow),
   ];
   if (lineId === '__unmapped__') rows = rows.filter(i => !i.line);
   else if (lineId) rows = rows.filter(i => i.line === lineId);

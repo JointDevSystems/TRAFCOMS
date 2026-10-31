@@ -58,7 +58,8 @@ function handleReceiptFileSelect(input, previewId, scope) {
   const file = input.files && input.files[0];
   if (!file) return;
   if (!file.type || !file.type.startsWith('image/')) { toast('Please choose an image file', 'error'); input.value=''; return; }
-  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value=''; return; }
+  const problem = gxPhotoProblem(file);
+  if (problem) { toast('Image ' + problem, 'error'); input.value=''; return; }
   const reader = gxImageReader();
   reader.onload = () => {
     _pendingReceiptImg[scope] = reader.result;
@@ -857,7 +858,7 @@ function captureCRApprovalDoc(input) {
   if (!file) return;
   const isPdf = file.type === 'application/pdf';
   if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
-  if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
+  if (isPdf ? file.size > 4 * 1024 * 1024 : file.size > GX_PHOTO_RAW_MAX) { toast(isPdf ? 'File too large \u2014 max 4MB' : 'Image too large \u2014 max 25 MB before compression', 'error'); input.value = ''; return; }
   const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
@@ -939,7 +940,7 @@ function captureCRApprovalDoc2(input) {
   if (!file) return;
   const isPdf = file.type === 'application/pdf';
   if (!isPdf && !(file.type || '').startsWith('image/')) { toast('Choose an image or PDF file', 'error'); input.value = ''; return; }
-  if (file.size > 4 * 1024 * 1024) { toast('File too large \u2014 max 4MB', 'error'); input.value = ''; return; }
+  if (isPdf ? file.size > 4 * 1024 * 1024 : file.size > GX_PHOTO_RAW_MAX) { toast(isPdf ? 'File too large \u2014 max 4MB' : 'Image too large \u2014 max 25 MB before compression', 'error'); input.value = ''; return; }
   const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
@@ -1024,7 +1025,7 @@ function advanceContainerRepair(id, status) {
 function uploadPostRepairPhoto(id) {
   const c = state.db.containerRepairs.find(x => x.id === id);
   if (!c) return;
-  if ((c.postRepairPhotos || []).length >= 8) { toast('Maximum 8 post-repair photos per job', 'error'); return; }
+  if ((c.postRepairPhotos || []).length >= GX_MAX_PHOTOS) { toast(`Maximum ${GX_MAX_PHOTOS} post-repair photos per job`, 'error'); return; }
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
@@ -1032,7 +1033,8 @@ function uploadPostRepairPhoto(id) {
   input.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { toast('Image too large \u2014 max 2MB', 'error'); return; }
+    const problem = gxPhotoProblem(file);
+    if (problem) { toast('Image ' + problem, 'error'); return; }
     const reader = gxImageReader();
     reader.onload = () => {
       c.postRepairPhotos = c.postRepairPhotos || [];

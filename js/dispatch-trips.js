@@ -118,6 +118,73 @@ function canUpdateTripStatus(t) {
   return false;
 }
 
+/* ── Automatic outward interchange ─────────────────────────────────────────────
+   Completing an outward dispatch (Depot → Port) issues its Gate-Out interchange (EIR) straight away, carrying the
+   dispatch details and the container photos. The record's id is DERIVED from the trip id, so it can exist only once:
+   saving the same dispatch again, completing the trip later, or a retry all find it and stop. */
+function gxOutwardIcId(tripId) {
+  const s = String(tripId || '').toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return null;
+  return (15 - parseInt(s.charAt(0), 16)).toString(16) + s.slice(1);
+}
+function gxOutIcIds() {
+  const set = new Set();
+  (state.db.interchange || []).forEach(i => { if (/Out$/.test(i.type || '')) set.add(String(i.id).toLowerCase()); });
+  return set;
+}
+const _outIcBusy = new Set();
+
+async function ensureOutwardInterchange(t) {
+  if (!t || !isOutwardWorkType(t.workType) || !t.container) return { skipped: true };
+  const id = gxOutwardIcId(t.id);
+  if (!id || _outIcBusy.has(id)) return { skipped: true };
+  _outIcBusy.add(id);
+  const cont = String(t.container).trim().toUpperCase();
+  try {
+    if (gxOutIcIds().has(id)) return { exists: true };
+    if (navigator.onLine) {                                   // interchange rows are loaded on demand, so ask the database too
+      const { data } = await supabase.from('interchange').select('id').eq('id', id).maybeSingle();
+      if (data) return { exists: true };
+    }
+    const date = t.dateOut || new Date().toISOString();
+    if (findDuplicateInterchange(cont, 'Gate-Out', date)) return { exists: true, manual: true };   // a clerk already logged this exit by hand
+    const photos = (t.containerImages || []).slice(0, GX_MAX_PHOTOS);
+    const line = t.shippingLine || '';
+    const eirNumber = sanitize(t.eirNumber || '') || await nextEirNumber('Gate-Out', line);
+    const rec = {
+      id, container: cont, type: 'Gate-Out', ctype: t.ctype || '', line, condition: 'Good',
+      truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '', driverIdNumber: '', transporter: '', trailerNo: '',
+      eirNumber, blNumber: '', guaranteeNo: '', clerkName: (state.profile && state.profile.name) || '',
+      vessel: t.vessel || '', voyage: t.voyage || '', deliveringParty: '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
+      isoCode: '', grossWeight: '', manufactureDate: '', cargoStatus: '',
+      repairs: [], repairTotal: 0,
+      notes: `Auto-issued when outward dispatch ${t.ref || String(t.id).slice(0, 8)} (${t.origin || '—'} → ${t.dest || '—'}) was completed.${t.notes ? ' ' + t.notes : ''}`,
+      date, status: 'pending', img: photos[0] || '', photos,
+      _dirty: true,
+    };
+    const saved = await persistNewInterchange(rec);
+    if (!saved.ok) return { error: saved.message };
+    addAudit(state.profile.username, 'Outward Interchange Auto-Issued', `${cont} · ${eirNumber}`);
+    try { buildBadges(); } catch (e) {}
+    return { created: rec };
+  } catch (e) {
+    console.error('Auto outward interchange failed:', e && e.message, e);
+    return { error: (e && e.message) || 'unknown error' };
+  } finally {
+    _outIcBusy.delete(id);
+  }
+}
+
+function gxReportOutwardIc(r, cont) {
+  if (!r) return;
+  if (r.created) {
+    toast(`Outward interchange issued — ${r.created.eirNumber}`, 'success', 5000);
+    try { if (state.currentSection === 'interchange') renderInterchange(_icFilter || 'all'); } catch (e) {}
+  } else if (r.error) {
+    toast(`Dispatch saved, but the outward interchange for ${cont} could not be created (${r.error}). Create it from Interchange → New.`, 'warning', 9000);
+  }
+}
+
 async function applyTripStatus(t, status, actorLabel) {
   if (!canUpdateTripStatus(t)) return { ok:false, reason:'permission' };
   if (!canTransitionTripStatus(t.status, status)) return { ok:false, reason:'transition', from:t.status };
@@ -194,6 +261,8 @@ async function applyTripStatus(t, status, actorLabel) {
       toast(`Trip completed, but couldn't auto-release depot storage — release it manually from DepOps (${(e && e.message) || 'error'})`, 'warning', 6000);
     }
   }
+
+  if (status === 'completed' && isOutwardWorkType(t.workType)) gxReportOutwardIc(await ensureOutwardInterchange(t), t.container);
 
   return { ok:true, old, status };
 }
@@ -720,6 +789,11 @@ async function createDispatch() {
     }
   }
 
+  if (newTripId) {
+    const savedTrip = state.db.trips.find(x => x.id === newTripId);
+    if (savedTrip && isOutwardWorkType(savedTrip.workType)) gxReportOutwardIc(await ensureOutwardInterchange(savedTrip), cont);
+  }
+
   clearContainerImgs();
   clearDispatchReleaseFile();
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
@@ -758,16 +832,20 @@ function switchDispatchTab(tab, btn) {
 function previewContainerImgs(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
-  files.forEach(file => {
-    if (!file.type.startsWith('image/')) { toast(`${file.name} is not an image — skipped`, 'error'); return; }
-    if (file.size > 2*1024*1024) { toast(`${file.name} is too large — max 2MB. Skipped.`, 'error'); return; }
+  const room = GX_MAX_PHOTOS - _dispatchContainerImages.length;
+  if (room <= 0) { toast(`Maximum ${GX_MAX_PHOTOS} photos — remove one to add another`, 'error'); e.target.value = ''; return; }
+  files.slice(0, room).forEach(file => {
+    const problem = gxPhotoProblem(file);
+    if (problem) { toast(`${file.name} skipped — ${problem}`, 'error'); return; }
     const reader = gxImageReader();
     reader.onload = ev => {
+      if (_dispatchContainerImages.length >= GX_MAX_PHOTOS) return;
       _dispatchContainerImages.push(ev.target.result);
       renderContainerImgGrid();
     };
     reader.readAsDataURL(file);
   });
+  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max ${GX_MAX_PHOTOS})`, 'warning');
   e.target.value = ''; 
 }
 

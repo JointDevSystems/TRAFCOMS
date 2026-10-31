@@ -128,7 +128,8 @@ let _pendingShutoutImg = { sh: '', dp: '' };
 function captureShutoutPhoto(input, boxId, key) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); input.value = ''; return; }
+  const problem = gxPhotoProblem(file);
+  if (problem) { toast('Image ' + problem, 'error'); input.value = ''; return; }
   const reader = gxImageReader();
   reader.onload = () => {
     _pendingShutoutImg[key] = reader.result;

@@ -528,25 +528,52 @@ function gxPageFooter(key, shown, total, colspan) {
   return colspan ? `<tr><td colspan="${colspan}" style="${style}">${inner}</td></tr>` : `<div style="grid-column:1/-1;${style}">${inner}</div>`;
 }
 
+/* Photo rules live here, in one place.
+   Phone photos up to GX_PHOTO_RAW_MAX are accepted and shrunk before they are stored, so the old "max 2 MB" no longer
+   applies to the file the user picks, only to what ends up in the database. */
+var GX_PHOTO_RAW_MAX = 25 * 1024 * 1024;       // biggest original file we will try to open
+var GX_PHOTO_TARGET = 450 * 1024;              // shrink until the stored text is about this size (~330 KB of image)
+var GX_PHOTO_STORED_MAX = 2.8 * 1024 * 1024;   // if an image still is not smaller than this after shrinking, refuse it
+var GX_MAX_PHOTOS = 6;                         // every photo section except surveys
+var GX_MAX_SURVEY_PHOTOS = 10;                 // survey photos
+
+/* '' = usable; otherwise the reason this file cannot be used as a photo */
+function gxPhotoProblem(file) {
+  if (!file) return 'no file chosen';
+  var isImg = /^image\//i.test(file.type || '') || (!file.type && /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name || ''));
+  if (!isImg) return 'not an image';
+  if (file.size > GX_PHOTO_RAW_MAX) return 'too large (max ' + Math.round(GX_PHOTO_RAW_MAX / 1048576) + ' MB before compression)';
+  return '';
+}
+
 /* PERF: photos are stored as base64 text inside database rows, so a 2 MB phone photo makes every list load,
-   realtime refresh and render carry 2.7 MB of text. Shrink to max 1280px JPEG (~100-250 KB) before it is stored.
-   Falls back to the untouched file for PDFs/GIFs, small images, and old WebViews that ignore EXIF rotation. */
+   realtime refresh and render carry 2.7 MB of text. Shrink to a JPEG of about GX_PHOTO_TARGET before it is stored:
+   first 1280 px, then smaller and lighter steps until it fits. Falls back to the untouched file for PDFs/GIFs and
+   small images. Old WebViews (Chrome < 81) ignore EXIF rotation, so small files are left alone there, but a big
+   photo is still shrunk: an unrotated small photo is better than an 8 MB one. */
 function gxCompressImage(file, maxDim, quality) {
   maxDim = maxDim || 1280; quality = quality || 0.72;
   return new Promise(function (resolve) {
     var plain = function () { var fr = new FileReader(); fr.onload = function () { resolve(fr.result); }; fr.onerror = function () { resolve(''); }; fr.readAsDataURL(file); };
     try {
       if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || '') || !window.URL || !URL.createObjectURL) return plain();
-      if (!('imageOrientation' in document.documentElement.style)) return plain();   // Chrome < 81 would drop EXIF rotation
+      if (!('imageOrientation' in document.documentElement.style) && file.size <= 2 * 1024 * 1024) return plain();
       var url = URL.createObjectURL(file), img = new Image();
       img.onload = function () {
         try {
-          var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, maxDim / Math.max(w, h));
-          if (!w || !h || (s === 1 && file.size < 250 * 1024)) { URL.revokeObjectURL(url); return plain(); }
-          var c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
-          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
-          var out = c.toDataURL('image/jpeg', quality); URL.revokeObjectURL(url);
-          if (!out || out.length > file.size * 1.37) return plain();                  // never make a file bigger
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h || (Math.min(1, maxDim / Math.max(w, h)) === 1 && file.size < 250 * 1024)) { URL.revokeObjectURL(url); return plain(); }
+          var steps = [[maxDim, quality], [1024, 0.6], [800, 0.5], [640, 0.45]], out = '', i, c, x, s;
+          for (i = 0; i < steps.length; i++) {
+            s = Math.min(1, steps[i][0] / Math.max(w, h));
+            c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+            x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+            out = c.toDataURL('image/jpeg', steps[i][1]);
+            c.width = 1; c.height = 1;                                              // release the bitmap (2 GB tablets)
+            if (out && out.length <= GX_PHOTO_TARGET) break;
+          }
+          URL.revokeObjectURL(url);
+          if (!out || out.length > file.size * 1.37) return plain();                // never make a file bigger
           resolve(out);
         } catch (e) { try { URL.revokeObjectURL(url); } catch (e2) {} plain(); }
       };
@@ -555,11 +582,20 @@ function gxCompressImage(file, maxDim, quality) {
     } catch (e) { plain(); }
   });
 }
-/* Drop-in for `new FileReader()` at photo capture points: same .onload / .result / readAsDataURL contract, but compressed. */
+/* Drop-in for `new FileReader()` at photo capture points: same .onload / .result / readAsDataURL contract, but compressed.
+   An image that still cannot be made small enough (e.g. an iPhone HEIC the browser cannot decode) is refused with a message. */
 function gxImageReader() {
   var r = { result: null, onload: null, onerror: null,
     readAsDataURL: function (file) {
-      gxCompressImage(file).then(function (u) { r.result = u; if (r.onload) r.onload({ target: r }); }, function (e) { if (r.onerror) r.onerror(e); });
+      var fail = function (msg) {
+        if (typeof toast === 'function') toast((file && file.name ? file.name + ': ' : '') + msg, 'error', 6000);
+        if (r.onerror) r.onerror(new Error(msg));
+      };
+      gxCompressImage(file).then(function (u) {
+        if (!u) return fail('could not read this file');
+        if (/^image\//i.test((file && file.type) || '') && u.length > GX_PHOTO_STORED_MAX) return fail('could not be compressed enough. Choose a JPEG or PNG photo');
+        r.result = u; if (r.onload) r.onload({ target: r });
+      }, function (e) { if (r.onerror) r.onerror(e); });
     } };
   return r;
 }
@@ -571,7 +607,8 @@ function triggerImageUpload(table, id, field, afterFn) {
   input.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); return; }
+    const problem = gxPhotoProblem(file);
+    if (problem) { toast('Image ' + problem, 'error'); return; }
     const reader = gxImageReader();
     reader.onload = () => {
       const rec = state.db[table].find(r=>r.id===id);
