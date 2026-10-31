@@ -512,7 +512,7 @@ function showAddInterchangeModal() {
       <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="ic_transporter" placeholder="Transporting company"/></div>
       <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="ic_dom" placeholder="MM/YYYY" maxlength="7"/></div>
     </div>
-    <div class="fg"><label>Overall Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>
+    <div class="fg"><label>Container Status</label><select id="ic_cond"><option>Repat</option><option>Sale</option><option>Shipper</option></select></div>
     ${tariffPickerHtml('ic')}
     <div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div>
     <button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);

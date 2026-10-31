@@ -132,6 +132,48 @@ function gxOutIcIds() {
   (state.db.interchange || []).forEach(i => { if (/Out$/.test(i.type || '')) set.add(String(i.id).toLowerCase()); });
   return set;
 }
+/* ── Inward EIR lookup ───────────────────────────────────────────────────────
+   The newest inward interchange (Gate-In / Depot-In) that has an EIR number for a container. Interchange rows are loaded
+   on demand, so ask the database when the container is not already in memory. */
+async function gxInwardEirFor(container) {
+  const key = normContainerKey(container);
+  if (!key) return null;
+  let rows = (state.db.interchange || []).filter(i => normContainerKey(i.container) === key);
+  if (!rows.some(i => isInwardMovement(i.type) && i.eirNumber) && window.ICR && ICR.enabled && navigator.onLine) {
+    try { rows = rows.concat(await ICR.byContainer(String(container).trim().toUpperCase())); } catch (e) { /* offline or not found: carry on without it */ }
+  }
+  const inward = rows.filter(i => isInwardMovement(i.type) && i.eirNumber).sort((a, b) => new Date(b.date) - new Date(a.date));
+  return inward[0] || null;
+}
+
+/* Dispatch console: when the container already has an inward EIR, load what that EIR knows into the form.
+   The outward EIR number is NOT copied: the outward EIR gets its own number when the dispatch completes.
+   soft = true (editing an existing trip): only fill fields that are still empty. */
+async function dispatchPrefillFromEir(soft) {
+  const input = document.getElementById('d_container'), box = document.getElementById('d_eir_info');
+  if (!input) return;
+  const hide = () => { if (box) { box.style.display = 'none'; box.innerHTML = ''; } };
+  const cont = input.value.trim().toUpperCase();
+  if (cont.length < 10) { hide(); return; }
+  if (input.dataset.eirFor === cont && soft !== true) return;      // already loaded for this container (blur fires after change)
+  const ic = await gxInwardEirFor(cont);
+  if (input.value.trim().toUpperCase() !== cont) return;           // the clerk kept typing while we looked it up
+  input.dataset.eirFor = cont;
+  if (!ic) { hide(); return; }
+  const el = id => document.getElementById(id);
+  const empty = id => { const e = el(id); return !!e && !String(e.value || '').trim(); };
+  const setIf = (id, val) => { const e = el(id); if (e && val && (soft !== true || empty(id))) e.value = val; };
+  if (ic.ctype && soft !== true) populateSizeTypeSelects('d_size', 'd_type', ic.ctype);
+  if (ic.line && el('d_line') && [...el('d_line').options].some(o => o.value === ic.line) && (soft !== true || empty('d_line'))) el('d_line').value = ic.line;
+  setIf('d_vessel', ic.vessel);
+  setIf('d_voyage', ic.voyage);
+  setIf('d_ref', ic.guaranteeNo || ic.blNumber);
+  if (box) {
+    box.style.display = 'flex';
+    box.innerHTML = `<span style="flex:1;min-width:0"><strong>Inward EIR ${esc(ic.eirNumber)}</strong> found for ${esc(cont)} (${esc(ic.type)}, ${esc(fmtDate(ic.date))}${ic.condition ? ', ' + esc(ic.condition) : ''}). Size/type, shipping line, vessel, voyage and B/L were filled in from it. The outward EIR is issued automatically when this dispatch is completed.</span>`;
+  }
+}
+
 const _outIcBusy = new Set();
 
 async function ensureOutwardInterchange(t) {
@@ -149,16 +191,18 @@ async function ensureOutwardInterchange(t) {
     const date = t.dateOut || new Date().toISOString();
     if (findDuplicateInterchange(cont, 'Gate-Out', date)) return { exists: true, manual: true };   // a clerk already logged this exit by hand
     const photos = (t.containerImages || []).slice(0, GX_MAX_PHOTOS);
-    const line = t.shippingLine || '';
+    const inw = await gxInwardEirFor(cont);                   // the container's inward EIR, if it has one
+    const line = t.shippingLine || (inw && inw.line) || '';
+    const outStatus = outwardTypeLabel(t.outwardType);        // Repat / Sale / Shipper
     const eirNumber = sanitize(t.eirNumber || '') || await nextEirNumber('Gate-Out', line);
     const rec = {
-      id, container: cont, type: 'Gate-Out', ctype: t.ctype || '', line, condition: 'Good',
+      id, container: cont, type: 'Gate-Out', ctype: t.ctype || (inw && inw.ctype) || '', line, condition: outStatus || 'Good',
       truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '', driverIdNumber: '', transporter: '', trailerNo: '',
-      eirNumber, blNumber: '', guaranteeNo: '', clerkName: (state.profile && state.profile.name) || '',
-      vessel: t.vessel || '', voyage: t.voyage || '', deliveringParty: '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
-      isoCode: '', grossWeight: '', manufactureDate: '', cargoStatus: '',
+      eirNumber, blNumber: (inw && inw.blNumber) || '', guaranteeNo: (inw && inw.guaranteeNo) || '', clerkName: (state.profile && state.profile.name) || '',
+      vessel: t.vessel || (inw && inw.vessel) || '', voyage: t.voyage || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
+      isoCode: (inw && inw.isoCode) || '', grossWeight: (inw && inw.grossWeight) || '', manufactureDate: (inw && inw.manufactureDate) || '', cargoStatus: (inw && inw.cargoStatus) || '',
       repairs: [], repairTotal: 0,
-      notes: `Auto-issued when outward dispatch ${t.ref || String(t.id).slice(0, 8)} (${t.origin || '—'} → ${t.dest || '—'}) was completed.${t.notes ? ' ' + t.notes : ''}`,
+      notes: `Auto-issued when outward dispatch ${t.ref || String(t.id).slice(0, 8)} (${t.origin || '—'} → ${t.dest || '—'}) was completed.${outStatus ? ' Status: ' + outStatus + '.' : ''}${inw ? ' Inward EIR ' + inw.eirNumber + (inw.condition ? ' (' + inw.condition + ')' : '') + '.' : ''}${t.notes ? ' ' + t.notes : ''}`,
       date, status: 'pending', img: photos[0] || '', photos,
       _dirty: true,
     };
@@ -634,6 +678,7 @@ function loadTripIntoDispatchForm(tripId) {
   const dateOutEl = document.getElementById('d_dateout'); if (dateOutEl) dateOutEl.value = '';
 
   renderContainerImgGrid();
+  dispatchPrefillFromEir(true);
 
   const banner = document.getElementById('dispatchEditBanner');
   if (banner) banner.style.display = 'flex';
@@ -650,6 +695,7 @@ function cancelDispatchEdit() {
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeSel = document.getElementById('d_outwardtype');
   if (outwardTypeSel) outwardTypeSel.value = '';
+  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; }
   toggleDispatchOutwardType();
   populateDispatchSelects();
   const banner = document.getElementById('dispatchEditBanner');
@@ -711,7 +757,7 @@ async function createDispatch() {
   const outwardTypeSel = document.getElementById('d_outwardtype');
   const outwardType = isOutwardWorkType(workType) ? (outwardTypeSel ? outwardTypeSel.value : '') : null;
   if (isOutwardWorkType(workType) && !OUTWARD_TYPES.includes(outwardType)) {
-    toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error');
+    toast('Select an outward type — Repat, Sale or Shipper', 'error');
     return;
   }
 
@@ -799,6 +845,7 @@ async function createDispatch() {
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeResetSel = document.getElementById('d_outwardtype');
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
+  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; }
   toggleDispatchOutwardType();
   renderDispatch();
   refreshAwaitingDispatchUI();
@@ -953,7 +1000,7 @@ async function processBulkDispatch() {
   const OUTWARDTYPE_ALIASES = {
     'repatriationtoport':'Repatriation to Port', 'repatriation':'Repatriation to Port',
     'shippersexport':'Shippers/Export', 'export':'Shippers/Export', 'shippers':'Shippers/Export',
-    'saleunits':'Sale units', 'sale':'Sale units',
+    'saleunits':'Sale units', 'sale':'Sale units', 'repat':'Repatriation to Port', 'shipper':'Shippers/Export',
   };
 
   const btn = document.getElementById('bulkDispatchSubmitBtn');

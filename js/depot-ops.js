@@ -2,6 +2,12 @@
 
 
 const OUTWARD_TYPES = ['Repatriation to Port', 'Shippers/Export', 'Sale units'];
+/* Stored values stay as they are (existing trips, reports and filters keep working); people see the short names. */
+const OUTWARD_LABELS = { 'Repatriation to Port': 'Repat', 'Shippers/Export': 'Shipper', 'Sale units': 'Sale' };
+function outwardTypeLabel(v) { return OUTWARD_LABELS[v] || v || ''; }
+function outwardTypeOptionsHtml(selected) { return OUTWARD_TYPES.map(w => `<option value="${w}"${w === selected ? ' selected' : ''}>${OUTWARD_LABELS[w]}</option>`).join(''); }
+/* Gate-In container status (set at the gate; the survey result replaces it later). */
+const GATE_IN_STATUSES = ['Available', 'Food Grade', 'Damage'];
 
 const ZONE_LOOKUP_INTERVAL_MS = 60000;
 
@@ -244,7 +250,7 @@ async function _createInwardEntryInner() {
   const bk = booking || {};   // the interchange (EIR) number is issued when the survey is complete, not at the gate
 
   const icRecord = {
-    id: icId, container: cont, type, ctype, line: lineId, condition: 'Good',
+    id: icId, container: cont, type, ctype, line: lineId, condition: (GATE_IN_STATUSES.includes(val('iw_status')) ? val('iw_status') : 'Available'),
     truck: truck ? truck.id : '', driver: driver ? driver.id : '',
     truckRegText: truck ? '' : sanitize(truckVal), driverNameText: driver ? '' : sanitize(driverVal),
     driverIdNumber: sanitize(driverIdVal), trailerNo: sanitize(val('iw_trailer')),
@@ -341,6 +347,7 @@ function finalizeDepotIn(ic) {
 
 function clearInwardForm(skipRepopulate) {
   ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const iwSt = document.getElementById('iw_status'); if (iwSt) iwSt.value = 'Available';
   _inwardBooking = null;
   const bn = document.getElementById('inwardBookingBanner'); if (bn) { bn.style.display = 'none'; bn.innerHTML = ''; }
   _inwardImages = [];
@@ -702,7 +709,7 @@ async function processBulkInward() {
     'gateout':'Gate-Out', 'gate-out':'Gate-Out', 'depotout':'Depot-Out', 'depot-out':'Depot-Out'
   };
   const defaultType = direction === 'out' ? 'Gate-Out' : 'Gate-In';
-  const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair'];
+  const VALID_COND  = ['Good','Damaged','Dirty','Needs Repair','Available','Food Grade','Damage','Repat','Sale','Shipper'];
 
   // Duplicate control: a container already in the system is never imported a second time.
   let serverConflicts = {};
@@ -913,7 +920,7 @@ function _tripToDepotReportRecord(t) {
   const outward = isOutwardWorkType(t.workType);
   return {
     id: t.id, container: t.container,
-    type: outward ? (t.outwardType || 'Dispatch (Depot → Port)') : 'Inward (Port → Depot)',
+    type: outward ? (outwardTypeLabel(t.outwardType) || 'Dispatch (Depot → Port)') : 'Inward (Port → Depot)',
     line: t.shippingLine || '', condition: '',
     truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '',
     eirNumber: t.eirNumber || '', vessel: t.vessel || '', voyage: t.voyage || '',
@@ -2479,7 +2486,7 @@ async function renderDepOpsEligible() {
 function depOpsEligibleCard(b, zoneMap) {
   const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
   const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
-  const outwardTypeOptions = OUTWARD_TYPES.map(w => `<option value="${sanitize(w)}">${sanitize(w)}</option>`).join('');
+  const outwardTypeOptions = outwardTypeOptionsHtml();
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
     <div><strong>${sanitize(b.container) || 'No container on file'}</strong> <span style="font-size:11px;color:var(--text-3)">· ${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</span></div>
     <div style="font-size:10.5px;color:var(--text-3);margin-top:2px">Booking ${b.id.slice(0,8)} · Currently in ${sanitize(zoneName)}</div>
@@ -2500,7 +2507,7 @@ async function depOpsCreateOutwardFromBooking(bookingId) {
   const dest = destEl ? destEl.value : '';
   const outwardType = outwardTypeEl ? outwardTypeEl.value : '';
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
-  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repat, Sale or Shipper', 'error'); return; }
 
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
@@ -2547,7 +2554,7 @@ async function depOpsCreateManualOutward() {
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
   if (!lineId) { toast('Select the shipping line — without it this container won\u2019t show up under any line\u2019s account', 'error'); return; }
-  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repatriation to Port, Shippers/Export, or Sale units', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repat, Sale or Shipper', 'error'); return; }
   const dupTrip = findLiveTripByContainer(container);
   if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
 
@@ -2578,7 +2585,7 @@ async function renderDepOpsOutwardTrips() {
       const zoneOptions = zones.map(z => `<option value="${z.id}">${sanitize(z.zone_name)}</option>`).join('');
       const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
       const lineOptions = state.db.shippingLines.filter(l=>l.active).map(l => `<option value="${l.id}">${sanitize(l.code)} — ${sanitize(l.name)}</option>`).join('');
-      const outwardTypeOptions = OUTWARD_TYPES.map(w => `<option value="${sanitize(w)}">${sanitize(w)}</option>`).join('');
+      const outwardTypeOptions = outwardTypeOptionsHtml();
       formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
         <div class="panel-head"><span class="panel-title">Add Outward Container Manually</span></div>
         <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end">
@@ -2618,7 +2625,7 @@ function depOpsOutwardTripCard(t, docs) {
     ? (t.storageReleased ? '<span class="sbadge s-approved">storage released</span>' : `<span class="sbadge s-pending">${t.storageTeu || '?'} TEU pending release</span>`)
     : '';
   const outwardTypeBlock = t.outwardType
-    ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--gold-border);color:var(--gold);background:var(--gold-dim)">${sanitize(t.outwardType)}</span>`
+    ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--gold-border);color:var(--gold);background:var(--gold-dim)">${sanitize(outwardTypeLabel(t.outwardType))}</span>`
     : '';
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">

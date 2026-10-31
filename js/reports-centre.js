@@ -65,7 +65,7 @@
   const repairText = ic => {
     const r = (ic.repairs || []).map(x => up(x.item || x.code)).filter(Boolean);
     if (r.length) return r.join(', ');
-    return ic.condition && !/^good$/i.test(ic.condition) ? up(ic.condition) : '';
+    return ic.condition && !/^(good|available|food grade|repat|sale|shipper)$/i.test(ic.condition) ? up(ic.condition) : '';
   };
   const domText = d => { if (!d) return ''; const s = String(d); if (/^\d{4}-\d{2}/.test(s)) return s.slice(5, 7) + '/' + s.slice(0, 4); return up(s); };
 
@@ -288,7 +288,7 @@
     C('dest', 'Final Destination', r => r.dest, { on: 1 }), C('transporter', 'Transporter', r => r.transporter, { on: 1 }), C('lorry', 'Lorry No', r => r.lorry, { on: 1 }),
     C('driver', 'Driver', r => r.driver, { on: 1 }), C('remarks', 'Remarks', r => r.remarks, { on: 1, wrap: 1 }),
     C('time', 'Time Out', r => ft(r.at)), C('line', 'Line', r => lineLabel(r.line)), C('size', 'Size', r => r.size), C('type', 'Type', r => r.type), C('clerk', 'Clerk', r => r.clerk),
-    C('days', 'Days in Yard', r => r.days, { num: 1 }), C('outtype', 'Outward Type', r => up(r.trip && r.trip.outwardType)), C('source', 'Source', r => (r.synth ? 'DISPATCH TRIP' : 'GATE-OUT')),
+    C('days', 'Days in Yard', r => r.days, { num: 1 }), C('outtype', 'Outward Type', r => up(outwardTypeLabel(r.trip && r.trip.outwardType))), C('source', 'Source', r => (r.synth ? 'DISPATCH TRIP' : 'GATE-OUT')),
   ];
   function dailyBuild(isIn) {
     return function (f, ctx) {
@@ -570,7 +570,7 @@
     C('date', 'Date Out', r => fd(r.at, r.sty), { on: 1 }), C('container', 'Container No.', r => r.container, { on: 1 }), C('size', 'Size', r => r.size, { on: 1 }), C('type', 'Type', r => r.type, { on: 1 }),
     C('line', 'Line', r => lineLabel(r.line), { on: 1 }), C('dest', 'Destination', r => r.dest, { on: 1 }), C('party', 'Receiving Party', r => r.party, { on: 1 }), C('ref', 'Release Order', r => r.ref, { on: 1 }),
     C('vessel', 'Vessel', r => r.vessel, { on: 1 }), C('voyage', 'Voy', r => r.voyage, { on: 1 }), C('lorry', 'Truck', r => r.lorry, { on: 1 }), C('driver', 'Driver', r => r.driver, { on: 1 }),
-    C('status', 'Status', r => r.status, { on: 1 }), C('eir', 'EIR No.', r => r.eir), C('outtype', 'Outward Type', r => up(r.trip && r.trip.outwardType)), C('remarks', 'Notes', r => r.remarks, { wrap: 1 }),
+    C('status', 'Status', r => r.status, { on: 1 }), C('eir', 'EIR No.', r => r.eir), C('outtype', 'Outward Type', r => up(outwardTypeLabel(r.trip && r.trip.outwardType))), C('remarks', 'Notes', r => r.remarks, { wrap: 1 }),
   ];
   function dispatchBuild(f, ctx) {
     const a = dayStart(f.from), b = dayEnd(f.to), s = sty(f, 'dmy'); let rows = [];

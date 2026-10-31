@@ -531,13 +531,14 @@
                                             <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" /></div>
+                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" onchange="dispatchPrefillFromEir()" onblur="dispatchPrefillFromEir()" /></div>
                                             <div class="fg"><label>Size</label><select id="d_size" onchange="refreshTypeSelectForSize('d_size','d_type')"></select></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Type</label><select id="d_type"></select></div>
-                                            <div class="fg"><label>EIR No.</label><input id="d_eir" placeholder="Exit EIR / reference no." /></div>
+                                            <div class="fg"><label>EIR No. <span class="label-optional">(outward EIR is issued automatically)</span></label><input id="d_eir" placeholder="Exit EIR / reference no." /></div>
                                         </div>
+                                        <div class="ops-notice" id="d_eir_info" style="display:none;margin-bottom:12px;font-size:11.5px"></div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Date Out <span class="label-optional">(optional, defaults to now)</span></label><input id="d_dateout" type="datetime-local" /></div>
                                             <div class="fg"><label>Receiving Party</label><input id="d_receiving" placeholder="Consignee / receiving party" /></div>
@@ -567,7 +568,7 @@
                                                 <label>Outward Type</label>
                                                 <select id="d_outwardtype">
                                                     <option value="">Select…</option>
-                                                    <option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option>
+                                                    <option value="Repatriation to Port">Repat</option><option value="Sale units">Sale</option><option value="Shippers/Export">Shipper</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -635,7 +636,7 @@
                                             </div>
                                             <div class="fg" id="bd_bulk_outwardtype_row">
                                                 <label>Outward Type <span class="label-optional">(used when a row has none of its own)</span></label>
-                                                <select id="bd_bulk_outwardtype"><option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option></select>
+                                                <select id="bd_bulk_outwardtype"><option value="Repatriation to Port">Repat</option><option value="Sale units">Sale</option><option value="Shippers/Export">Shipper</option></select>
                                             </div>
                                         </div>
                                         <div class="fg" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -689,6 +690,10 @@
                                         <div class="form-row-2">
                                             <div class="fg"><label>Size</label><select id="iw_size" onchange="refreshTypeSelectForSize('iw_size','iw_type')"></select></div>
                                             <div class="fg"><label>Type</label><select id="iw_type"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Container Status</label><select id="iw_status"><option>Available</option><option>Food Grade</option><option>Damage</option></select></div>
+                                            <div></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Driver Name</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" oninput="iwDriverPicked(this)" onchange="iwDriverPicked(this)" /></div>
@@ -1209,7 +1214,7 @@
                             </div>
                         </div>
                         <div class="panel" style="margin-top:14px">
-                            <div class="panel-head"><span class="panel-title">Outward Trips by Type</span><span class="panel-meta">Repatriation to Port · Shippers/Export · Sale units</span></div>
+                            <div class="panel-head"><span class="panel-title">Outward Trips by Type</span><span class="panel-meta">Repat · Sale · Shipper</span></div>
                             <div id="waOutwardChart" class="wt-bars-grid"></div>
                         </div>
                     </section>
@@ -1264,7 +1269,7 @@
                                     <div class="fg" style="margin:0"><label>Driver</label><select id="trcDriver"><option value="">All Drivers</option></select></div>
                                     <div class="fg" style="margin:0"><label>Status</label><select id="trcStatus"><option value="">All Statuses</option></select></div>
                                     <div class="fg" style="margin:0"><label>Work Type</label><select id="trcWorkType"><option value="">All Types</option></select></div>
-                                    <div class="fg" style="margin:0"><label>Outward Type</label><select id="trcOutwardType"><option value="">All Outward Types</option><option>Repatriation to Port</option><option>Shippers/Export</option><option>Sale units</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Outward Type</label><select id="trcOutwardType"><option value="">All Outward Types</option><option value="Repatriation to Port">Repat</option><option value="Sale units">Sale</option><option value="Shippers/Export">Shipper</option></select></div>
                                 </div>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                                     <button class="action-btn" onclick="trcRunTripReport()">▶ Run Report</button>

@@ -50,7 +50,7 @@ function renderWorkAnalysis(period, btn) {
   const outwardMax = Math.max(...Object.values(outwardTypeCounts), 1);
   const outwardChart = document.getElementById('waOutwardChart');
   if (outwardChart) {
-    outwardChart.innerHTML = Object.entries(outwardTypeCounts).sort((a,b)=>b[1]-a[1]).map(([wt,cnt])=>`<div class="wt-bar-item"><div class="wt-bar-label" title="${sanitize(wt)}">${sanitize(wt)}</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:${Math.round(cnt/outwardMax*100)}%"></div></div><div class="wt-bar-count">${cnt}</div></div>`).join('') || '<div style="padding:12px;color:var(--text-3)">No outward trips for this period</div>';
+    outwardChart.innerHTML = Object.entries(outwardTypeCounts).sort((a,b)=>b[1]-a[1]).map(([wt,cnt])=>`<div class="wt-bar-item"><div class="wt-bar-label" title="${sanitize(outwardTypeLabel(wt))}">${sanitize(outwardTypeLabel(wt))}</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:${Math.round(cnt/outwardMax*100)}%"></div></div><div class="wt-bar-count">${cnt}</div></div>`).join('') || '<div style="padding:12px;color:var(--text-3)">No outward trips for this period</div>';
   }
 }
 
@@ -312,7 +312,7 @@ function trcRenderTripTable(rows) {
     <td>${truckName(t.truckId)}</td>
     <td>${driverName(t.driverId)}</td>
     <td>${t.workType}</td>
-    <td>${t.outwardType || '—'}</td>
+    <td>${outwardTypeLabel(t.outwardType) || '—'}</td>
     <td style="font-size:11px">${t.origin} → ${t.dest}</td>
     <td>${sbadge(t.status)}</td>
     <td>${t.priority ? sbadge(t.priority.toLowerCase()) : '—'}</td>
@@ -329,7 +329,7 @@ function trcExportTripsCSV() {
   const lines = [headers.join(',')];
   trc.tripRows.forEach(t=>{
     lines.push([
-      t.id, t.container, t.ctype, truckName(t.truckId), driverName(t.driverId), t.workType, t.outwardType || '',
+      t.id, t.container, t.ctype, truckName(t.truckId), driverName(t.driverId), t.workType, outwardTypeLabel(t.outwardType),
       t.origin, t.dest, lineName(t.shippingLine), t.status, t.priority, t.distance,
       t.startTime, t.eta, t.ref,
     ].map(csvEscape).join(','));
