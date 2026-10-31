@@ -121,8 +121,7 @@ async function trim(cacheName, max) {
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);
 }
 
-// Re-request cross-origin files in CORS mode: the stored copy is a normal response, not an "opaque" one
-// (opaque responses are padded to several MB each against the storage quota). Falls back to a plain fetch.
+
 async function corsFetch(req) {
   try {
     const res = await fetch(req.url, { mode: 'cors', credentials: 'omit' });
