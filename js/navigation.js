@@ -272,19 +272,20 @@
 
   /* ───────────── related pages bar ───────────── */
   const RELATED = {
-    dashboard: ['depops', 'inward', 'interchange', 'trips', 'trucks', 'finance'],
-    trucks: ['drivers', 'trips', 'maintenance', 'fuel', 'livetracking'], drivers: ['trucks', 'trips', 'dispatch', 'people'],
+    dashboard: ['reportcentre', 'depops', 'inward', 'interchange', 'trips', 'trucks', 'finance'],
+    trucks: ['drivers', 'trips', 'maintenance', 'fuel', 'livetracking', 'reportcentre'], drivers: ['trucks', 'trips', 'dispatch', 'people'],
     trips: ['dispatch', 'trucks', 'drivers', 'invoicing', 'livetracking'], dispatch: ['trips', 'trucks', 'drivers', 'inward', 'shippinglines'],
     inward: ['interchange', 'depops', 'allocation', 'shutout', 'shippinglines', 'depotreport'],
     maintenance: ['trucks', 'workshop', 'fuel', 'requisitions'], fuel: ['trucks', 'requisitions', 'maintenance', 'finance'],
     shutout: ['interchange', 'inward', 'shippinglines'], interchange: ['inward', 'depops', 'shutout', 'allocation', 'depotreport', 'shippinglines', 'invoicing'],
-    prestaking: ['shippinglines', 'interchange', 'depops', 'allocation'], depotreport: ['interchange', 'inward', 'depops', 'reports', 'invoicing'],
+    prestaking: ['shippinglines', 'interchange', 'depops', 'allocation'], depotreport: ['reportcentre', 'interchange', 'inward', 'depops', 'reports', 'invoicing'],
     shippinglines: ['interchange', 'invoicing', 'allocation', 'prestaking', 'shutout'], requisitions: ['approvals', 'finance', 'fuel', 'workshop'],
-    workshop: ['maintenance', 'trucks', 'requisitions', 'finance'], invoicing: ['finance', 'trips', 'shippinglines', 'reports'],
-    allocation: ['depops', 'inward', 'interchange', 'shippinglines', 'prestaking'], workanalysis: ['reports', 'trips', 'drivers', 'trucks'],
-    reports: ['tripreports', 'workanalysis', 'depotreport', 'invoicing', 'finance'], tripreports: ['trips', 'reports', 'drivers', 'trucks'],
-    livetracking: ['trucks', 'trips', 'drivers'], finance: ['approvals', 'invoicing', 'requisitions', 'hr'], approvals: ['finance', 'requisitions', 'hr'],
-    hr: ['people', 'finance', 'drivers'], people: ['hr', 'drivers', 'usermgmt'], usermgmt: ['people', 'settings', 'hr'], settings: ['usermgmt', 'reports'],
+    workshop: ['maintenance', 'trucks', 'requisitions', 'finance'], invoicing: ['finance', 'trips', 'shippinglines', 'reports', 'reportcentre'],
+    allocation: ['depops', 'inward', 'interchange', 'shippinglines', 'prestaking'], workanalysis: ['reports', 'reportcentre', 'trips', 'drivers', 'trucks'],
+    reports: ['reportcentre', 'workanalysis', 'depotreport', 'invoicing', 'finance', 'tripreports'], reportcentre: ['reports', 'workanalysis', 'depotreport', 'invoicing', 'finance', 'tripreports'],
+    tripreports: ['reportcentre', 'reports', 'usermgmt', 'settings'],
+    livetracking: ['trucks', 'trips', 'drivers'], finance: ['approvals', 'invoicing', 'requisitions', 'hr', 'reportcentre'], approvals: ['finance', 'requisitions', 'hr'],
+    hr: ['people', 'finance', 'drivers', 'reportcentre'], people: ['hr', 'drivers', 'usermgmt'], usermgmt: ['people', 'settings', 'hr'], settings: ['usermgmt', 'reports', 'reportcentre'],
     publicbookings: ['depops', 'inward', 'invoicing', 'shippinglines'], depops: ['inward', 'interchange', 'allocation', 'publicbookings', 'depotreport', 'shutout', 'prestaking'],
   };
 

@@ -47,7 +47,7 @@
     { id: 'finance', label: 'Finance & HR', short: 'Finance', blurb: 'Money, approvals and people', hue: '#22C55E', icon: IC.finance,
       groups: [['Finance', ['finance', 'approvals']], ['People', ['hr', 'people']]] },
     { id: 'insights', label: 'Insights', short: 'Insights', blurb: 'Allocation, analysis and reports', hue: '#A78BFA', icon: IC.insights,
-      groups: [['', ['allocation', 'workanalysis', 'reports', 'tripreports']]] },
+      groups: [['', ['allocation', 'workanalysis', 'reports', 'reportcentre', 'tripreports']]] },
     { id: 'platform', label: 'Platform', short: 'Platform', blurb: 'Users and system settings', hue: '#8A92A8', icon: IC.platform, bottom: true,
       groups: [['', ['usermgmt', 'settings']]] },
   ];
@@ -80,7 +80,8 @@
     allocation: 'Match waiting containers to trucks',
     workanalysis: 'Work done, by type',
     reports: 'Operational and financial reports',
-    tripreports: 'Trip reports and the audit centre',
+    reportcentre: 'Depot, fleet, finance and HR reports in one place',
+    tripreports: 'Who did what, and when (administrators)',
     usermgmt: 'Staff accounts, roles and access',
     settings: 'System settings and thresholds',
   };
@@ -88,7 +89,7 @@
     interchange: 'gate in out eir receipt', inward: 'receive arrival gate in', shutout: 'refused rejected', trips: 'journey haulage',
     livetracking: 'map gps position wialon', finance: 'receipts bills expenses suppliers money', hr: 'leave payroll attendance staff',
     people: 'employees staff', invoicing: 'billing rates customers', approvals: 'inbox pending authorise', trucks: 'vehicles fleet',
-    drivers: 'licence duty', dispatch: 'assign allocate', depops: 'yard zones surveys master', reports: 'analytics export', settings: 'configuration admin',
+    drivers: 'licence duty', dispatch: 'assign allocate', depops: 'yard zones surveys master', reports: 'analytics export', reportcentre: 'data hub stock advising daily in out lift yard fleet payroll', settings: 'configuration admin',
     usermgmt: 'accounts roles access passwords', requisitions: 'requests purchase', workshop: 'repairs survey', allocation: 'engine auto',
   };
 

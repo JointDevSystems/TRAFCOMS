@@ -98,7 +98,7 @@ const SECTION_META = {
   shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
   workshop:['Compliance','Workshop'], invoicing:['Finance','Invoicing'],
   allocation:['Intelligence','Allocation'], workanalysis:['Intelligence','Work Analysis'],
-  reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
+  reports:['Intelligence','Reports'], tripreports:['Intelligence','Audit Log'],
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
   finance:['Finance','Finance Hub'], hr:['Human Resources','HR Hub'],

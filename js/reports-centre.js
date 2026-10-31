@@ -614,9 +614,25 @@
     filters: ['line', 'container', 'q', 'vessel', 'voyage', 'lorry', 'driver', 'status', 'reason'], cols: SO_COLS, sorts: SORT_OPTS.slice(0, 3), groups: grpOpts(['none', 'line', 'status', 'reason', 'date', 'vessel']), defGroup: 'none', build: shutoutsBuild });
   def('flagged', { g: 'Exceptions', label: 'Flagged / Duplicate Records', desc: 'Records the system flagged for review or marked as duplicates.', needs: 'range',
     filters: ['line', 'size', 'type', 'container', 'q', 'eir', 'vessel', 'clerk', 'move'], cols: FL_COLS, sorts: SORT_OPTS.slice(0, 5), groups: grpOpts(['none', 'line', 'move', 'date']), defGroup: 'none', build: flaggedBuild });
-  def('dispatch', { g: 'Dispatch', label: 'Outward Dispatch Trips', desc: 'Depot → Port trips: truck, driver, destination, release order and status.', needs: 'all',
+  def('dispatch', { g: 'Trips & dispatch', label: 'Outward Dispatch Trips', desc: 'Depot → Port trips: truck, driver, destination, release order and status.', needs: 'all',
     filters: BASE.concat(['vessel', 'voyage', 'party', 'lorry', 'driver', 'ref', 'status']), cols: DP_COLS, sorts: SORT_OPTS.slice(0, 6), groups: grpOpts(['none', 'status', 'line', 'date', 'vessel', 'party']), defGroup: 'none', build: dispatchBuild });
-  const ORDER = ['Depot registers', 'Yard', 'Movements', 'Survey & repairs', 'Exceptions', 'Dispatch'];
+  const ORDER = ['Overview', 'Depot registers', 'Yard', 'Movements', 'Survey & repairs', 'Exceptions', 'Trips & dispatch', 'Fleet & drivers', 'Maintenance & fuel', 'Finance', 'People (HR)'];
+  /* who may open a report: everyone except drivers; a report with roles[] is for those roles and administrators */
+  const ROLE = () => (state.profile && state.profile.role) || (state.currentUser && state.currentUser.role) || '';
+  const canSee = rep => { if (!rep) return false; const r = ROLE(); if (r === 'driver') return false; if (!rep.roles || r === 'admin') return true; return rep.roles.indexOf(r) > -1; };
+  /* first preview puts the shipping line first: reports that can be grouped by line open grouped by line */
+  const defGroupOf = rep => { const g = (rep.groups || []).find(x => /(^|\.)line$/.test(x[0])); return g ? g[0] : rep.defGroup; };
+  /* reports that read well after this one; they open with the same shipping line and dates */
+  const RELATED = {
+    daily_in: ['yard', 'stock', 'lift', 'movements', 'survey'], daily_out: ['dispatch', 'lift', 'stock', 'movements'], lift: ['daily_out', 'daily_in', 'stock', 'summary'],
+    stock: ['yard', 'daily_in', 'daily_out', 'dwell', 'summary'], yard: ['stock', 'dwell', 'daily_in', 'survey'], dwell: ['yard', 'stock', 'summary'],
+    movements: ['daily_in', 'daily_out', 'history', 'summary'], history: ['movements', 'survey', 'dispatch'], summary: ['stock', 'movements', 'lift'], survey: ['yard', 'daily_in', 'flagged'],
+    shutouts: ['prestaking', 'movements', 'dispatch'], flagged: ['dupes', 'movements'], dispatch: ['daily_out', 'trips', 'prestaking'], trips: ['dispatch', 'fleet', 'drivers', 'fuel', 'maintenance'],
+    prestaking: ['dispatch', 'shutouts', 'daily_out'], fleet: ['maintenance', 'workshop', 'fleetcost', 'trips'], drivers: ['trips', 'fuel', 'fleet'], maintenance: ['workshop', 'fleetcost', 'fleet'],
+    workshop: ['maintenance', 'requisitions', 'fleetcost'], requisitions: ['workshop', 'fuel', 'fin_summary'], fuel: ['fleetcost', 'trips', 'fin_summary'], fleetcost: ['fuel', 'maintenance', 'fin_summary'],
+    receivables: ['fin_summary', 'daily_out', 'lift'], fin_summary: ['receivables', 'hr_payroll', 'fleetcost'], hr_staff: ['hr_leave', 'hr_attendance', 'hr_payroll'], hr_leave: ['hr_staff', 'hr_attendance'],
+    hr_attendance: ['hr_staff', 'hr_leave'], hr_payroll: ['hr_staff', 'fin_summary'], snapshot: ['stock', 'pipeline', 'yard', 'trips', 'fleet'], pipeline: ['yard', 'stock', 'snapshot'], dupes: ['flagged', 'movements'],
+  };
 
   /* ───────────────────────── filter widgets ───────────────────────── */
   const lineOpts = () => lines().map(l => [l.id, l.code + (l.name && l.name !== l.code ? ' — ' + l.name : '')]).concat([['__none__', '⚠ No line assigned']]);
@@ -637,7 +653,7 @@
     basis: { l: 'Amount per container uses', k: 'select', o: [['lolo', 'LOLO (lift on / off)'], ['serviceCharge', 'Service charge'], ['loloBatch6', 'Batch of 6 moves'], ['transport', 'Transport'], ['reefer', 'Reefer handling']] },
     minor: { l: 'MINOR repair = up to (labour hrs)', k: 'number', def: 4 }, buckets: { l: 'Day bands (upper limits)', k: 'text', def: '7,14,30,60,90' },
     dwby: { l: 'Break down by', k: 'select', o: [['line', 'Shipping line'], ['sizetype', 'Size & type'], ['vessel', 'Vessel'], ['party', 'Party']] },
-    by: { l: 'Summarise by', k: 'select', o: [['date', 'Day'], ['week', 'Week'], ['month', 'Month'], ['line', 'Shipping line'], ['sizetype', 'Size & type'], ['transporter', 'Transporter'], ['vessel', 'Vessel'], ['party', 'Party']] },
+    by: { l: 'Summarise by', k: 'select', o: [['line', 'Shipping line'], ['date', 'Day'], ['week', 'Week'], ['month', 'Month'], ['sizetype', 'Size & type'], ['transporter', 'Transporter'], ['vessel', 'Vessel'], ['party', 'Party']] },
     no: { l: 'Report No.', k: 'text', ph: 'printed on the report' }, cc: { l: 'CC', k: 'text', ph: 'printed on the stock report' },
     dfmt: { l: 'Date style', k: 'select', o: [['auto', 'As the old system'], ['dmy', 'DD/MM/YYYY'], ['mdy', 'MM/DD/YYYY'], ['mon', 'Mon DD YYYY']] },
     orient: { l: 'Paper', k: 'select', o: [['auto', 'Automatic'], ['portrait', 'Portrait'], ['landscape', 'Landscape']] },
@@ -645,6 +661,443 @@
   const optsOf = d => (typeof d.o === 'function' ? d.o() : d.o || []);
   const defOf = d => (d.k === 'multi' ? [] : (d.k === 'select' ? (optsOf(d)[0] || [''])[0] : (d.def != null ? d.def : '')));
   const optLabel = (d, v) => { const o = optsOf(d).find(x => String(x[0]) === String(v)); return o ? o[1] : v; };
+  /* ═══════════════════════════════════════════════════════════════════════════════════════
+     DATA HUB: whole-system reports (fleet, drivers, trips, maintenance, fuel, finance, HR).
+     Same engine as the depot reports: filters, grouping, column picker, print, Excel, CSV.
+     Each report says who may see it (roles) and loads only when it is run.
+     ═══════════════════════════════════════════════════════════════════════════════════════ */
+  const A = x => (Array.isArray(x) ? x : []);
+  const nz = v => Number(v) || 0;
+  const ucw = s => String(s == null ? '' : s).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const isoRx = /^\d{4}-\d{2}-\d{2}$/;
+  const tsx = v => (isoRx.test(String(v || '')) ? new Date(v + 'T12:00:00').getTime() : ts(v));   // date-only values are read at noon so time zones cannot move the day
+  const fdx = (v, st) => (!v ? '' : (isoRx.test(String(v)) ? fIso(v, st) : fd(v, st)));
+  const daysTo = v => { if (!v) return null; const t = tsx(v); return isNaN(t) ? null : Math.ceil((t - Date.now()) / DAY); };
+  const monthOf = v => { const t = tsx(v); if (isNaN(t)) return '(no date)'; const x = new Date(t); return x.getFullYear() + '-' + pad(x.getMonth() + 1); };
+  const dayOf = v => { const t = tsx(v); return isNaN(t) ? '(no date)' : fd(t, 'dmy'); };
+  const optsFrom = (list, fn, lab) => { const s = new Set(); A(list).forEach(x => { const v = fn(x); if (v != null && v !== '') s.add(String(v)); }); return [...s].sort().map(v => [v, lab ? lab(v) : ucw(v)]); };
+  const inSet = (arr, v) => !arr || !arr.length || arr.indexOf(String(v)) > -1;
+  const txtOk = (needle, v) => !needle || String(v == null ? '' : v).toLowerCase().indexOf(String(needle).toLowerCase()) > -1;
+  const money = (v, cur) => N(v, (cur ? sym(cur) + ' ' : '') + num2(v));
+  const kpiTable = pairs => ({ head: pairs.map(p => p[0]), align: pairs.map(() => 'n'), numbered: false, box: true, groups: [{ label: '', rows: [pairs.map(p => p[1])] }] });
+  const kvTable = (title, head, rows, extra) => Object.assign({ title, head, align: head.map((h, i) => (i ? 'n' : '')), numbered: false, groups: [{ label: '', rows }], empty: 'Nothing to show for these filters.' }, extra || {});
+  const sumBy = (rs, fnCur, fnVal) => { const by = {}; rs.forEach(r => { const c = fnCur(r); by[c] = (by[c] || 0) + nz(fnVal(r)); }); return by; };
+  const rpcOrThrow = async (name, args) => {
+    if (typeof supabase === 'undefined') throw new Error('Not connected to the database');
+    const { data, error } = await supabase.rpc(name, args);
+    if (error) throw new Error(error.message || 'The server could not build this report');
+    return data;
+  };
+
+  Object.assign(F, {
+    truck: { l: 'Truck', k: 'multi', o: () => A(state.db.trucks).slice().sort((a, b) => String(a.reg).localeCompare(String(b.reg))).map(t => [t.id, up(t.reg)]), all: 'All trucks' },
+    tkstatus: { l: 'Truck status', k: 'multi', o: () => optsFrom(state.db.trucks, t => t.status), all: 'All statuses' },
+    dstatus: { l: 'Driver status', k: 'multi', o: () => optsFrom(state.db.drivers, d => d.status), all: 'All statuses' },
+    tstatus: { l: 'Trip status', k: 'multi', o: () => (typeof TRIP_ALL_STATUSES !== 'undefined' && TRIP_ALL_STATUSES.length ? TRIP_ALL_STATUSES.map(s => [s, ucw(s)]) : optsFrom(state.db.trips, t => t.status)), all: 'All statuses' },
+    wtype: { l: 'Work type', k: 'multi', o: () => optsFrom(state.db.trips, t => t.workType, x => x), all: 'All work types' },
+    otype: { l: 'Outward type', k: 'multi', o: () => (typeof OUTWARD_TYPES !== 'undefined' ? OUTWARD_TYPES : []).map(x => [x, (typeof outwardTypeLabel === 'function' ? outwardTypeLabel(x) : x)]), all: 'All outward types' },
+    mstatus: { l: 'Status', k: 'multi', o: () => optsFrom(state.db.maintenance, m => m.status), all: 'All statuses' },
+    wsstatus: { l: 'Status', k: 'multi', o: () => optsFrom(state.db.workshop, m => m.status), all: 'All statuses' },
+    rqstatus: { l: 'Status', k: 'multi', o: () => optsFrom(state.db.requisitions, m => m.status), all: 'All statuses' },
+    psstatus: { l: 'Status', k: 'multi', o: () => optsFrom(state.db.vesselPrestaking, m => m.status), all: 'All statuses' },
+    within: { l: 'Due / expiring within (days)', k: 'number', ph: 'e.g. 30 (includes overdue)' },
+    fkind: { l: 'Entry kind', k: 'select', o: [['all', 'Pump fills and trip payments'], ['fills', 'Pump fills only (litres recorded)'], ['trips', 'Trip payments only']] },
+    invstatus: { l: 'Invoice status', k: 'multi', o: () => optsFrom(state.db.invoices, i => i.status), all: 'All statuses' },
+    curr: { l: 'Currency', k: 'multi', o: () => optsFrom(state.db.invoices, i => i.currency, x => x), all: 'All currencies' },
+    invview: { l: 'Show', k: 'select', o: [['all', 'All invoices'], ['open', 'Unpaid balances only'], ['overdue', 'Overdue only']] },
+    fdept: { l: 'Department / cost centre', k: 'select', o: () => [['', 'All departments']].concat((typeof HR_DEPTS !== 'undefined' ? HR_DEPTS : []).map(d => [d, d])) },
+    fcat: { l: 'Expense category', k: 'select', o: () => [['', 'All categories']].concat(A(window.GARGO_FIN && GARGO_FIN.FIN_CATS).map(d => [d, d])) },
+    fscope: { l: 'Show', k: 'select', o: [['full', 'Full summary'], ['revenue', 'Revenue & VAT'], ['payroll', 'Payroll'], ['expenses', 'Expenses'], ['payables', 'Payables'], ['ops', 'Workshop, requisitions, fuel']] },
+    dept: { l: 'Department', k: 'multi', o: () => (typeof HR_DEPTS !== 'undefined' ? HR_DEPTS : []).map(d => [d, d]), all: 'All departments' },
+    hrstatus: { l: 'Employment status', k: 'multi', o: [['active', 'Active'], ['exited', 'Exited']], all: 'All' },
+    lstatus: { l: 'Leave status', k: 'multi', o: [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected']], all: 'All statuses' },
+    ltype: { l: 'Leave type', k: 'multi', o: ['Annual', 'Sick', 'Maternity', 'Paternity', 'Compassionate', 'Study', 'Unpaid'].map(x => [x, x]), all: 'All types' },
+    astatus: { l: 'Attendance status', k: 'multi', o: ['present', 'late', 'absent', 'leave', 'off'].map(x => [x, ucw(x)]), all: 'All statuses' },
+    pstatus: { l: 'Payslip status', k: 'multi', o: ['draft', 'approved', 'paid'].map(x => [x, ucw(x)]), all: 'All statuses' },
+  });
+
+  /* A list report in a few lines. o.load(f) returns plain row objects; the engine filters, sorts, groups and prints them. */
+  function sysRep(id, o) {
+    const gl = [['none', 'No grouping']], keys = {};
+    A(o.groups).forEach(g => { GRP[id + '.' + g[0]] = { l: g[1], fn: g[2], ord: g[3] }; gl.push([id + '.' + g[0], g[1]]); });
+    A(o.sorts).forEach(s => { keys[s[0]] = s[2]; });
+    def(id, Object.assign({ needs: 'none', noCtx: true }, o, {
+      sorts: A(o.sorts).map(s => [s[0], s[1]]), groups: o.groups ? gl : [], defGroup: o.defGroup && o.defGroup !== 'none' ? id + '.' + o.defGroup : 'none',
+      build: async function (f) {
+        const rep = REP[id], st = sty(f, 'dmy');
+        let rows = A(await o.load(f));
+        if (o.dateOf) { const a = dayStart(f.from), b = dayEnd(f.to); rows = rows.filter(r => { const t = tsx(o.dateOf(r)); return t >= a && t <= b; }); }
+        if (o.pass) rows = rows.filter(r => o.pass(f, r));
+        rows.forEach(r => { r.sty = st; });
+        if (f.q) { const q = String(f.q).toLowerCase(); rows = rows.filter(r => (r._h || (r._h = o.cols.map(c => String(txt(c.get(r)) == null ? '' : txt(c.get(r)))).join(' ').toLowerCase())).indexOf(q) > -1); }
+        if (A(o.sorts).length) rows = sortRows(rows, f, keys, o.defSort || o.sorts[0][0]);
+        const grouped = f.group && f.group !== 'none', tables = [];
+        if (o.kpis) { const k = o.kpis(rows, f); if (k && k.length) tables.push(kpiTable(k)); }
+        tables.push(makeList(rows, pickCols(rep, f), {
+          group: f.group, foot: grouped ? (l, rs) => ({ text: 'Sub-total : ' + rs.length + (o.sum ? '    ' + o.sum(rs) : '') }) : null,
+          grand: rs => ({ text: 'Total ' + (o.noun || 'records') + ' : ' + rs.length + (o.sum && rs.length ? '    ' + o.sum(rs) : '') }), empty: o.empty,
+        }));
+        const hdr = (o.dateOf || o.range) ? [['From Date', fIso(f.from, st)], ['To Date', fIso(f.to, st)], ['Report No', f.no || '']] : [['As at', fIso(todayIso(), st)], ['Report No', f.no || '']];
+        return { title: o.title || o.label, count: rows.length, landscape: o.landscape !== false, hdr: hdr.filter(p => p[1]), tables, notes: o.notes };
+      },
+    }));
+  }
+
+  /* ───────── FLEET & DRIVERS ───────── */
+  sysRep('fleet', {
+    g: 'Fleet & drivers', label: 'Fleet Register & Service Due', desc: 'Every truck with status, driver, fuel level, mileage and when it is next due for service.', noRange: true,
+    main: ['q', 'tkstatus', 'within'], filters: ['q', 'tkstatus', 'within'], noun: 'trucks',
+    cols: [
+      C('reg', 'Truck', r => r.reg, { on: 1 }), C('make', 'Make', r => up(r.make), { on: 1 }), C('type', 'Type', r => up(r.type), { on: 1 }), C('year', 'Year', r => r.year, { on: 1 }), C('status', 'Status', r => ucw(r.status), { on: 1 }),
+      C('driver', 'Driver', r => up(r.driver), { on: 1 }), C('fuel', 'Fuel %', r => (r.fuel == null ? '' : N(r.fuel, Math.round(nz(r.fuel)) + '%')), { on: 1, num: 1 }), C('mileage', 'Mileage (km)', r => N(r.mileage, Math.round(r.mileage).toLocaleString('en-US')), { on: 1, num: 1 }),
+      C('trips', 'Trips', r => r.trips, { on: 1, num: 1 }), C('last', 'Last service', r => fdx(r.last, r.sty), { on: 1 }), C('next', 'Next service', r => fdx(r.next, r.sty), { on: 1 }),
+      C('days', 'Service in (days)', r => (r.days == null ? '' : r.days), { on: 1, num: 1 }), C('vin', 'VIN', r => r.vin), C('notes', 'Notes', r => r.notes, { wrap: 1 }),
+    ],
+    sorts: [['reg', 'Truck', r => r.reg], ['status', 'Status', r => r.status], ['mileage', 'Mileage', r => r.mileage], ['fuel', 'Fuel %', r => nz(r.fuel)], ['next', 'Next service', r => (r.days == null ? 1e9 : r.days)], ['trips', 'Trips', r => r.trips]],
+    groups: [['status', 'Status', r => ucw(r.status) || '(none)'], ['make', 'Make', r => up(r.make) || '(none)']], defGroup: 'none',
+    load: async () => {
+      const dr = new Map(), tc = {};
+      A(state.db.drivers).forEach(d => { if (d.truckId) dr.set(d.truckId, d.name); });
+      A(state.db.trips).forEach(t => { tc[t.truckId] = (tc[t.truckId] || 0) + 1; });
+      return A(state.db.trucks).map(t => ({ reg: up(t.reg), make: t.make || '', type: t.type || '', year: t.year || '', status: t.status || '', driver: dr.get(t.id) || '', fuel: t.fuelPct, mileage: nz(t.mileage), trips: tc[t.id] || 0, last: t.lastService, next: t.nextService, vin: up(t.vin), notes: t.notes || '', days: daysTo(t.nextService) }));
+    },
+    pass: (f, r) => inSet(f.tkstatus, r.status) && (!numOk(f.within) || (r.days != null && r.days <= Number(f.within))),
+  });
+
+  sysRep('drivers', {
+    g: 'Fleet & drivers', label: 'Driver Register & Licences', desc: 'Drivers with phone, licence number and expiry, assigned truck and trips. Find licences about to expire.', noRange: true,
+    main: ['q', 'dstatus', 'within'], filters: ['q', 'dstatus', 'within'], noun: 'drivers',
+    cols: [
+      C('name', 'Driver', r => up(r.name), { on: 1 }), C('phone', 'Phone', r => r.phone, { on: 1 }), C('idno', 'ID No.', r => r.idNo, { on: 1 }), C('status', 'Status', r => ucw(r.status), { on: 1 }), C('truck', 'Truck', r => r.truck, { on: 1 }),
+      C('licence', 'Licence No.', r => up(r.licence), { on: 1 }), C('exp', 'Licence expiry', r => fdx(r.exp, r.sty), { on: 1 }), C('days', 'Days left', r => (r.days == null ? '' : r.days), { on: 1, num: 1 }),
+      C('state', 'Licence', r => (r.days == null ? 'NO EXPIRY ON FILE' : r.days < 0 ? 'EXPIRED' : r.days <= 30 ? 'EXPIRES SOON' : 'VALID'), { on: 1 }), C('trips', 'Trips', r => r.trips, { on: 1, num: 1 }), C('rating', 'Rating', r => (r.rating == null ? '' : r.rating)),
+    ],
+    sorts: [['name', 'Driver', r => r.name], ['status', 'Status', r => r.status], ['days', 'Licence expiry', r => (r.days == null ? 1e9 : r.days)], ['trips', 'Trips', r => r.trips]], defSort: 'name',
+    groups: [['status', 'Status', r => ucw(r.status) || '(none)'], ['truck', 'Truck', r => r.truck || '(unassigned)']], defGroup: 'none',
+    load: async () => {
+      const tc = {}; A(state.db.trips).forEach(t => { tc[t.driverId] = (tc[t.driverId] || 0) + 1; });
+      return A(state.db.drivers).map(d => ({ name: d.name || '', phone: d.phone || '', idNo: d.idNo || '', status: d.status || '', truck: up(d.truckId ? regOf(d.truckId) : ''), licence: d.licence || '', exp: d.licenceExp, days: daysTo(d.licenceExp), trips: tc[d.id] || 0, rating: d.rating }));
+    },
+    pass: (f, r) => inSet(f.dstatus, r.status) && (!numOk(f.within) || (r.days != null && r.days <= Number(f.within))),
+  });
+
+  /* ───────── TRIPS ───────── */
+  async function loadTrips(f) {
+    const mem = () => A(state.db.trips);
+    if (!navigator.onLine || typeof fetchAllPaginated !== 'function' || typeof supabase === 'undefined' || typeof tripFromRow !== 'function') return mem();
+    try {
+      const a = new Date(dayStart(f.from)).toISOString(), b = new Date(dayEnd(f.to)).toISOString();
+      const build = () => {
+        let q = supabase.from('trips').select('*').gte('start_time', a).lte('start_time', b);
+        if (f.truck && f.truck.length) q = q.in('truck_id', f.truck);
+        if (f.tstatus && f.tstatus.length) q = q.in('status', f.tstatus);
+        if (f.wtype && f.wtype.length) q = q.in('work_type', f.wtype);
+        if (f.otype && f.otype.length) q = q.in('outward_type', f.otype);
+        return q.order('start_time', { ascending: false });
+      };
+      const { data, error } = await fetchAllPaginated((from, to) => build().range(from, to));
+      if (error) throw error;
+      return (data || []).map(tripFromRow);
+    } catch (x) {
+      console.warn('Data Hub: trip query failed, using the trips already loaded', x);
+      if (typeof toast === 'function') toast('Could not reach the server. Showing the trips already on this device.', 'error', 5000);
+      return mem();
+    }
+  }
+  sysRep('trips', {
+    g: 'Trips & dispatch', label: 'Trip Report', desc: 'Every trip in the period: truck, driver, work type, route, status and distance. Reads the full history from the server.',
+    main: ['line', 'truck', 'tstatus', 'wtype', 'otype', 'container', 'q'], filters: ['line', 'truck', 'tstatus', 'wtype', 'otype', 'container', 'driver', 'q'], noun: 'trips',
+    cols: [
+      C('date', 'Started', r => fdx(r.t.startTime, r.sty) + ' ' + ft(r.t.startTime), { on: 1 }), C('container', 'Container No.', r => r.container, { on: 1 }), C('ctype', 'Size / type', r => up(r.t.ctype), { on: 1 }),
+      C('truck', 'Truck', r => r.truck, { on: 1 }), C('driver', 'Driver', r => r.driver, { on: 1 }), C('work', 'Work type', r => r.work, { on: 1 }), C('otype', 'Outward type', r => (typeof outwardTypeLabel === 'function' ? outwardTypeLabel(r.otype) : r.otype), { on: 1 }),
+      C('route', 'Route', r => r.route, { on: 1, wrap: 1 }), C('status', 'Status', r => ucw(r.t.status), { on: 1 }), C('prio', 'Priority', r => ucw(r.t.priority), { on: 1 }), C('dist', 'Distance (km)', r => N(r.t.distance, String(nz(r.t.distance))), { on: 1, num: 1 }),
+      C('eta', 'ETA', r => ft(r.t.eta)), C('line', 'Line', r => lineLabel(r.t.shippingLine)), C('ref', 'Reference', r => up(r.t.ref || r.t.releaseOrderNo)), C('vessel', 'Vessel', r => up(r.t.vessel)), C('notes', 'Notes', r => up(r.t.notes), { wrap: 1 }),
+    ],
+    sorts: [['date', 'Start time', r => r.at], ['container', 'Container No.', r => r.container], ['truck', 'Truck', r => r.truck], ['driver', 'Driver', r => r.driver], ['status', 'Status', r => r.t.status || ''], ['dist', 'Distance', r => nz(r.t.distance)]], defSort: 'date', defDir: 'desc',
+    groups: [['line', 'Shipping line', r => lineLabel(r.t.shippingLine)], ['status', 'Status', r => ucw(r.t.status) || '(none)'], ['work', 'Work type', r => r.work || '(none)'], ['truck', 'Truck', r => r.truck || '(none)'], ['driver', 'Driver', r => r.driver || '(none)'],
+      ['day', 'Day', r => dayOf(r.at), (a, b) => a[1][0].at - b[1][0].at], ['month', 'Month', r => monthOf(r.at)]], defGroup: 'none',
+    dateOf: r => r.at,
+    load: async f => (await loadTrips(f)).map(t => ({ t, at: tsx(t.startTime), container: up(t.container), truckId: t.truckId, truck: up(regOf(t.truckId)), driver: up(t.driverId ? drvOf(t.driverId) : ''), work: t.workType || '', otype: t.outwardType || '', route: (up(t.origin) + ' → ' + up(t.dest)).trim() })),
+    pass: (f, r) => inSet(f.truck, r.truckId) && inSet(f.tstatus, r.t.status) && inSet(f.wtype, r.work) && inSet(f.otype, r.otype) && txtOk(f.driver, r.driver) &&
+      (!f.line || !f.line.length || f.line.some(l => (l === '__none__' ? !r.t.shippingLine : r.t.shippingLine === l))) && (!f._tok.length || f._tok.some(k => key(r.container).indexOf(k) > -1)),
+    kpis: rows => [['Trips', rows.length], ['Completed', rows.filter(r => r.t.status === 'completed').length], ['Active', rows.filter(r => r.t.status === 'active').length], ['Delayed / breakdown', rows.filter(r => r.t.status === 'delayed' || r.t.status === 'breakdown').length], ['Distance (km)', Math.round(rows.reduce((s, r) => s + nz(r.t.distance), 0)).toLocaleString('en-US')]],
+    sum: rs => 'Distance : ' + Math.round(rs.reduce((s, r) => s + nz(r.t.distance), 0)).toLocaleString('en-US') + ' km',
+  });
+
+  /* ───────── MAINTENANCE, WORKSHOP, REQUISITIONS, FUEL, FLEET COST ───────── */
+  sysRep('maintenance', {
+    g: 'Maintenance & fuel', label: 'Maintenance Log', desc: 'Breakdowns and servicing by truck: type, priority, status, technician and cost.',
+    main: ['lorry', 'mstatus', 'q'], filters: ['lorry', 'mstatus', 'q'], noun: 'issues',
+    cols: [
+      C('date', 'Date', r => fdx(r.m.date, r.sty), { on: 1 }), C('truck', 'Truck', r => r.truck, { on: 1 }), C('type', 'Type', r => ucw(r.m.type), { on: 1 }), C('desc', 'Description', r => r.m.desc || '', { on: 1, wrap: 1 }),
+      C('prio', 'Priority', r => ucw(r.m.priority), { on: 1 }), C('status', 'Status', r => ucw(r.m.status), { on: 1 }), C('tech', 'Technician', r => r.m.tech || '', { on: 1 }), C('cost', 'Cost (KSh)', r => N(r.m.cost), { on: 1, num: 1 }), C('resolved', 'Resolved', r => fdx(r.m.resolvedDate, r.sty), { on: 1 }),
+    ],
+    sorts: [['date', 'Date', r => r.at], ['truck', 'Truck', r => r.truck], ['status', 'Status', r => r.m.status || ''], ['cost', 'Cost', r => nz(r.m.cost)]], defSort: 'date', defDir: 'desc',
+    groups: [['truck', 'Truck', r => r.truck || '(none)'], ['status', 'Status', r => ucw(r.m.status) || '(none)'], ['type', 'Type', r => ucw(r.m.type) || '(none)'], ['month', 'Month', r => monthOf(r.m.date)]], defGroup: 'none',
+    dateOf: r => r.m.date,
+    load: async () => A(state.db.maintenance).map(m => ({ m, at: tsx(m.date), truckId: m.truckId, truck: up(regOf(m.truckId)) })),
+    pass: (f, r) => inSet(f.mstatus, r.m.status) && txtOk(f.lorry, r.truck),
+    sum: rs => 'Cost : KSh ' + num2(rs.reduce((s, r) => s + nz(r.m.cost), 0)),
+  });
+
+  sysRep('workshop', {
+    g: 'Maintenance & fuel', label: 'Workshop Jobs', desc: 'Truck workshop jobs with diagnosis, parts, labour and total cost.',
+    main: ['lorry', 'wsstatus', 'q'], filters: ['lorry', 'wsstatus', 'q'], noun: 'jobs',
+    cols: [
+      C('date', 'Reported', r => fdx(r.w.reported, r.sty), { on: 1 }), C('truck', 'Truck', r => r.truck, { on: 1 }), C('title', 'Job', r => r.w.title || '', { on: 1, wrap: 1 }), C('desc', 'Description', r => r.w.desc || '', { on: 1, wrap: 1 }),
+      C('tech', 'Technician', r => r.w.tech || '', { on: 1 }), C('status', 'Status', r => ucw(r.w.status), { on: 1 }), C('diag', 'Diagnosed', r => fdx(r.w.diagnosed, r.sty), { on: 1 }),
+      C('parts', 'Parts (KSh)', r => N(r.w.parts), { on: 1, num: 1 }), C('labour', 'Labour (KSh)', r => N(r.w.labour), { on: 1, num: 1 }), C('total', 'Total (KSh)', r => N(r.w.total), { on: 1, num: 1 }),
+    ],
+    sorts: [['date', 'Reported', r => r.at], ['truck', 'Truck', r => r.truck], ['status', 'Status', r => r.w.status || ''], ['total', 'Total', r => nz(r.w.total)]], defSort: 'date', defDir: 'desc',
+    groups: [['truck', 'Truck', r => r.truck || '(none)'], ['status', 'Status', r => ucw(r.w.status) || '(none)'], ['month', 'Month', r => monthOf(r.w.reported)]], defGroup: 'none',
+    dateOf: r => r.w.reported,
+    load: async () => A(state.db.workshop).map(w => ({ w, at: tsx(w.reported), truck: up(regOf(w.truckId)) })),
+    pass: (f, r) => inSet(f.wsstatus, r.w.status) && txtOk(f.lorry, r.truck),
+    sum: rs => 'Total : KSh ' + num2(rs.reduce((s, r) => s + nz(r.w.total), 0)),
+  });
+
+  sysRep('requisitions', {
+    g: 'Maintenance & fuel', label: 'Requisitions', desc: 'Requests for fuel, parts and cash: who asked, what for, how much and who approved.',
+    main: ['rqstatus', 'q'], filters: ['rqstatus', 'q'], noun: 'requisitions',
+    cols: [
+      C('date', 'Date', r => fdx(r.r.date, r.sty), { on: 1 }), C('who', 'Requested by', r => r.r.requester || '', { on: 1 }), C('cat', 'Category', r => ucw(r.r.category), { on: 1 }), C('items', 'Items', r => r.r.items || '', { on: 1, wrap: 1 }),
+      C('amount', 'Amount (KSh)', r => N(r.r.amount), { on: 1, num: 1 }), C('status', 'Status', r => ucw(r.r.status), { on: 1 }), C('appr', 'Approved by', r => r.r.approver || '', { on: 1 }), C('appd', 'Approved on', r => fdx(r.r.approvedDate, r.sty), { on: 1 }), C('notes', 'Notes', r => r.r.notes || '', { wrap: 1 }),
+    ],
+    sorts: [['date', 'Date', r => r.at], ['who', 'Requested by', r => r.r.requester || ''], ['amount', 'Amount', r => nz(r.r.amount)], ['status', 'Status', r => r.r.status || '']], defSort: 'date', defDir: 'desc',
+    groups: [['status', 'Status', r => ucw(r.r.status) || '(none)'], ['cat', 'Category', r => ucw(r.r.category) || '(none)'], ['who', 'Requested by', r => r.r.requester || '(none)'], ['month', 'Month', r => monthOf(r.r.date)]], defGroup: 'none',
+    dateOf: r => r.r.date,
+    load: async () => A(state.db.requisitions).map(x => ({ r: x, at: tsx(x.date) })),
+    pass: (f, r) => inSet(f.rqstatus, r.r.status),
+    sum: rs => 'Amount : KSh ' + num2(rs.reduce((s, r) => s + nz(r.r.amount), 0)),
+  });
+
+  const fuelTot = f => (typeof fuelLogTotal === 'function' ? fuelLogTotal(f) : (nz(f.totalPaid) || nz(f.litres) * nz(f.pricePerLitre)));
+  sysRep('fuel', {
+    g: 'Maintenance & fuel', label: 'Fuel & Trip Payments', desc: 'Pump fills and imported trip payments: litres, price, total paid, route and container size. Group by truck, driver, route, size, day or month.',
+    main: ['lorry', 'driver', 'fkind', 'q'], filters: ['lorry', 'driver', 'fkind', 'q'], noun: 'entries',
+    cols: [
+      C('date', 'Date', r => fdx(r.f.date, r.sty), { on: 1 }), C('truck', 'Truck', r => r.truck, { on: 1 }), C('driver', 'Driver', r => r.driver, { on: 1 }), C('container', 'Container', r => up(r.f.container), { on: 1 }), C('size', 'Size / type', r => up(r.f.ctype), { on: 1 }),
+      C('from', 'From', r => up(r.f.routeFrom), { on: 1 }), C('to', 'To', r => up(r.f.routeTo), { on: 1 }), C('litres', 'Litres', r => N(r.f.litres, nz(r.f.litres) ? nz(r.f.litres).toFixed(1) : ''), { on: 1, num: 1 }),
+      C('ppl', 'KSh / litre', r => N(r.f.pricePerLitre, nz(r.f.pricePerLitre) ? num2(r.f.pricePerLitre) : ''), { on: 1, num: 1 }), C('total', 'Total (KSh)', r => N(r.total), { on: 1, num: 1 }), C('station', 'Station / route', r => r.f.station || '', { on: 1 }),
+      C('receipt', 'Reference', r => r.f.receipt || ''), C('odo', 'Odometer', r => r.f.odometer || '', { num: 1 }),
+    ],
+    sorts: [['date', 'Date', r => r.at], ['truck', 'Truck', r => r.truck], ['driver', 'Driver', r => r.driver], ['total', 'Total paid', r => r.total], ['litres', 'Litres', r => nz(r.f.litres)]], defSort: 'date', defDir: 'desc',
+    groups: [['truck', 'Truck', r => r.truck || '(none)'], ['driver', 'Driver', r => r.driver || '(none)'], ['route', 'Route', r => ((up(r.f.routeFrom) + ' → ' + up(r.f.routeTo)).replace(/^ → $/, '') || '(no route)')],
+      ['size', 'Container size', r => (r.st.size ? r.st.size + ' ft' : 'Unknown')], ['station', 'Station', r => r.f.station || '(none)'], ['day', 'Day', r => dayOf(r.f.date), (a, b) => a[1][0].at - b[1][0].at], ['month', 'Month', r => monthOf(r.f.date)]], defGroup: 'none',
+    dateOf: r => r.f.date,
+    load: async () => A(state.db.fuel).map(f => ({ f, at: tsx(f.date), total: fuelTot(f), st: sizeType(f.ctype), truck: up(typeof fuelTruckLabel === 'function' ? fuelTruckLabel(f) : (f.truckRegText || regOf(f.truckId))), driver: up(typeof fuelDriverLabel === 'function' ? fuelDriverLabel(f) : (f.driverNameText || (f.driverId ? drvOf(f.driverId) : ''))) })),
+    pass: (f, r) => txtOk(f.lorry, r.truck) && txtOk(f.driver, r.driver) && (f.fkind === 'fills' ? nz(r.f.litres) > 0 : f.fkind === 'trips' ? !(nz(r.f.litres) > 0) : true),
+    kpis: rows => [['Entries', rows.length], ['Total paid (KSh)', num2(rows.reduce((s, r) => s + r.total, 0))], ['Litres', Math.round(rows.reduce((s, r) => s + nz(r.f.litres), 0)).toLocaleString('en-US')], ['Average per entry (KSh)', rows.length ? num2(rows.reduce((s, r) => s + r.total, 0) / rows.length) : '0.00']],
+    sum: rs => 'Litres : ' + Math.round(rs.reduce((s, r) => s + nz(r.f.litres), 0)).toLocaleString('en-US') + '    Paid : KSh ' + num2(rs.reduce((s, r) => s + r.total, 0)),
+  });
+
+  sysRep('fleetcost', {
+    g: 'Maintenance & fuel', label: 'Fleet Running Costs by Truck', desc: 'Fuel and maintenance cost per truck for the period, with the grand total.', range: true,
+    main: ['lorry', 'q'], filters: ['lorry', 'q'], noun: 'trucks',
+    cols: [
+      C('truck', 'Truck', r => r.truck, { on: 1 }), C('fe', 'Fuel entries', r => r.fe, { on: 1, num: 1 }), C('lit', 'Litres', r => N(r.lit, r.lit ? r.lit.toFixed(1) : '0'), { on: 1, num: 1 }), C('fuel', 'Fuel (KSh)', r => N(r.fuel), { on: 1, num: 1 }),
+      C('mi', 'Maintenance issues', r => r.mi, { on: 1, num: 1 }), C('maint', 'Maintenance (KSh)', r => N(r.maint), { on: 1, num: 1 }), C('tot', 'Total (KSh)', r => N(r.fuel + r.maint), { on: 1, num: 1 }),
+    ],
+    sorts: [['truck', 'Truck', r => r.truck], ['tot', 'Total cost', r => r.fuel + r.maint], ['fuel', 'Fuel cost', r => r.fuel], ['maint', 'Maintenance cost', r => r.maint]], defSort: 'tot', defDir: 'desc',
+    load: async f => {
+      const a = dayStart(f.from), b = dayEnd(f.to), by = new Map(), get = k => { let o = by.get(k); if (!o) by.set(k, o = { truck: k, fe: 0, lit: 0, fuel: 0, mi: 0, maint: 0 }); return o; };
+      A(state.db.fuel).forEach(x => { const t = tsx(x.date); if (!(t >= a && t <= b)) return; const o = get(up(typeof fuelTruckLabel === 'function' ? fuelTruckLabel(x) : (x.truckRegText || regOf(x.truckId))) || '(none)'); o.fe++; o.lit += nz(x.litres); o.fuel += fuelTot(x); });
+      A(state.db.maintenance).forEach(x => { const t = tsx(x.date); if (!(t >= a && t <= b)) return; const o = get(up(regOf(x.truckId)) || '(none)'); o.mi++; o.maint += nz(x.cost); });
+      return [...by.values()];
+    },
+    pass: (f, r) => txtOk(f.lorry, r.truck),
+    sum: rs => 'Fuel : KSh ' + num2(rs.reduce((s, r) => s + r.fuel, 0)) + '    Maintenance : KSh ' + num2(rs.reduce((s, r) => s + r.maint, 0)) + '    Total : KSh ' + num2(rs.reduce((s, r) => s + r.fuel + r.maint, 0)),
+  });
+
+  /* ───────── VESSEL PRESTAKING ───────── */
+  sysRep('prestaking', {
+    g: 'Trips & dispatch', label: 'Vessel Prestaking', desc: 'Containers staged ahead of a vessel: planned date, shift, vessel and voyage, truck and driver, and whether they were shipped or shut out.',
+    main: ['line', 'container', 'psstatus', 'vessel', 'q'], filters: ['line', 'container', 'psstatus', 'vessel', 'voyage', 'q'], noun: 'containers',
+    cols: [
+      C('date', 'Planned', r => fdx(r.p.plannedDate, r.sty), { on: 1 }), C('shift', 'Shift', r => ucw(r.p.shift), { on: 1 }), C('container', 'Container No.', r => r.container, { on: 1 }), C('ctype', 'Size / type', r => up(r.p.ctype), { on: 1 }), C('line', 'Line', r => lineLabel(r.p.line), { on: 1 }),
+      C('vessel', 'Vessel', r => up(r.p.vessel), { on: 1 }), C('voyage', 'Voyage', r => up(r.p.voyage), { on: 1 }), C('consignee', 'Consignee', r => up(r.p.consignee), { on: 1 }), C('truck', 'Truck', r => r.truck, { on: 1 }), C('driver', 'Driver', r => r.driver, { on: 1 }),
+      C('status', 'Status', r => ucw(r.p.status), { on: 1 }), C('orig', 'Origin', r => up(r.p.origin)), C('dest', 'Destination', r => up(r.p.destination)), C('notes', 'Notes', r => r.p.notes || '', { wrap: 1 }),
+    ],
+    sorts: [['date', 'Planned date', r => r.at], ['container', 'Container No.', r => r.container], ['vessel', 'Vessel', r => up(r.p.vessel)], ['status', 'Status', r => r.p.status || '']], defSort: 'date', defDir: 'desc',
+    groups: [['line', 'Shipping line', r => lineLabel(r.p.line)], ['status', 'Status', r => ucw(r.p.status) || '(none)'], ['vessel', 'Vessel', r => up(r.p.vessel) || '(none)'], ['day', 'Planned day', r => dayOf(r.p.plannedDate), (a, b) => a[1][0].at - b[1][0].at]], defGroup: 'none',
+    dateOf: r => r.p.plannedDate || r.p.createdAt,
+    load: async () => A(state.db.vesselPrestaking).map(p => ({ p, at: tsx(p.plannedDate || p.createdAt), container: up(p.container), truck: up(p.truckId ? regOf(p.truckId) : ''), driver: up(p.driverId ? drvOf(p.driverId) : '') })),
+    pass: (f, r) => inSet(f.psstatus, r.p.status) && txtOk(f.vessel, r.p.vessel) && txtOk(f.voyage, r.p.voyage) && (!f.line || !f.line.length || f.line.some(l => (l === '__none__' ? !r.p.line : r.p.line === l))) && (!f._tok.length || f._tok.some(k => key(r.container).indexOf(k) > -1)),
+  });
+
+  /* ───────── FINANCE (Finance and Administrators) ───────── */
+  const invBal = i => Math.max(0, nz(i.total) - nz(i.paid));
+  const curText = by => { const k = Object.keys(by).filter(c => by[c]); return k.length ? k.map(c => sym(c) + ' ' + num2(by[c])).join(' + ') : '0.00'; };
+  sysRep('receivables', {
+    g: 'Finance', roles: ['finance'], label: 'Customer Invoices & Receivables', desc: 'Invoices with total, paid, balance and days overdue. Switch to unpaid or overdue only.',
+    main: ['invstatus', 'curr', 'invview', 'q'], filters: ['invstatus', 'curr', 'invview', 'q'], noun: 'invoices',
+    cols: [
+      C('date', 'Invoice date', r => fdx(r.i.date, r.sty), { on: 1 }), C('ref', 'Invoice', r => r.i.ref || String(r.i.id).slice(0, 8), { on: 1 }), C('client', 'Client', r => up(r.i.client), { on: 1 }), C('due', 'Due', r => fdx(r.i.due, r.sty), { on: 1 }),
+      C('cur', 'Currency', r => r.i.currency || '', { on: 1 }), C('total', 'Total', r => N(r.i.total), { on: 1, num: 1 }), C('paid', 'Paid', r => N(r.i.paid), { on: 1, num: 1 }), C('bal', 'Balance', r => N(r.bal), { on: 1, num: 1 }),
+      C('status', 'Status', r => ucw(r.i.status), { on: 1 }), C('over', 'Days overdue', r => (r.over > 0 ? r.over : ''), { on: 1, num: 1 }), C('terms', 'Terms', r => r.i.terms || ''),
+    ],
+    sorts: [['date', 'Invoice date', r => r.at], ['client', 'Client', r => up(r.i.client)], ['due', 'Due date', r => tsx(r.i.due) || 0], ['bal', 'Balance', r => r.bal], ['over', 'Days overdue', r => r.over]], defSort: 'date', defDir: 'desc',
+    groups: [['client', 'Client', r => up(r.i.client) || '(none)'], ['status', 'Status', r => ucw(r.i.status) || '(none)'], ['cur', 'Currency', r => r.i.currency || '(none)'], ['month', 'Month', r => monthOf(r.i.date)]], defGroup: 'none',
+    dateOf: r => r.i.date,
+    load: async () => { const t = Date.now(); return A(state.db.invoices).map(i => { const bal = invBal(i), due = tsx(i.due); return { i, at: tsx(i.date), bal, over: bal > 0 && due && due < t ? Math.floor((t - due) / DAY) : 0 }; }); },
+    pass: (f, r) => inSet(f.invstatus, r.i.status) && inSet(f.curr, r.i.currency) && (f.invview === 'open' ? r.bal > 0 && r.i.status !== 'draft' : f.invview === 'overdue' ? r.over > 0 : true),
+    kpis: rows => [['Invoices', rows.length], ['Invoiced', curText(sumBy(rows, r => r.i.currency || 'USD', r => r.i.total))], ['Collected', curText(sumBy(rows, r => r.i.currency || 'USD', r => r.i.paid))], ['Outstanding', curText(sumBy(rows, r => r.i.currency || 'USD', r => r.bal))]],
+    sum: rs => 'Balance : ' + curText(sumBy(rs, r => r.i.currency || 'USD', r => r.bal)),
+  });
+
+  def('fin_summary', {
+    g: 'Finance', roles: ['finance'], label: 'Finance Summary (revenue, payroll, expenses)', desc: 'Revenue, VAT, payroll, operating expenses, payables and unposted operations costs for a period. Built on the server and re-checked against your role.',
+    needs: 'none', noCtx: true, noCols: true, main: ['fdept', 'fcat', 'fscope'], filters: ['fdept', 'fcat', 'fscope'], cols: [], sorts: [], groups: [], defGroup: 'none',
+    build: async function (f) {
+      const d = await rpcOrThrow('fin_report', { p_from: f.from, p_to: f.to, p_dept: f.fdept || null, p_cat: f.fcat || null });
+      if (!d) throw new Error('The finance report came back empty');
+      const rv = d.revenue || {}, ex = d.expenses || {}, py = d.payroll || {}, bl = d.bills || {}, ops = A(d.ops), sc = s => f.fscope === 'full' || f.fscope === s;
+      const unposted = Math.max(0, nz(py.gross) - nz(ex.salaries_posted)), net = nz(rv.total) - nz(ex.total) - unposted;
+      const pairs = (title, arr, head) => kvTable(title, [head || 'Item', 'Amount (KSh)'], A(arr).map(p => [String(p[0]), money(p[1])]), { empty: 'No data in this range.' });
+      const T = [kpiTable([['Revenue', num2(rv.total)], ['Operating expenses', num2(ex.total)], ['Payroll (approved / paid)', num2(py.gross)], ['Net result', f.fdept ? 'n/a' : num2(net)], ['Open payables', num2(bl.open)]])];
+      if (sc('revenue')) {
+        T.push(pairs('Revenue by stream', rv.by_stream, 'Stream'));
+        T.push(kvTable('VAT and withholding tax', ['Item', 'Amount (KSh)'], [['VAT on receipts', money(rv.vat)], ['VAT on expenses (input)', money(ex.vat)], ['Withholding tax on expenses', money(ex.wht)]]));
+        if (A(d.invoiced).length) T.push(kvTable('Invoiced in the period', ['Currency', 'Total', 'VAT'], A(d.invoiced).map(i => [String(i.currency), money(i.total), money(i.vat)])));
+      }
+      if (sc('payroll')) {
+        T.push(kvTable('Payroll', ['Item', 'Amount (KSh)'], [['Gross', money(py.gross)], ['PAYE', money(py.paye)], ['NSSF', money(py.nssf)], ['SHIF', money(py.shif)], ['Housing levy', money(py.housing)], ['Net pay', money(py.net)], ['Posted to expenses', money(ex.salaries_posted)], ['Not yet posted', money(unposted)], ['Draft payslips (excluded)', N(py.drafts, String(nz(py.drafts)))]]));
+        T.push(pairs('Payroll by department (gross)', py.by_dept, 'Department'));
+      }
+      if (sc('expenses')) { T.push(pairs('Expenses by category', ex.by_category, 'Category')); T.push(pairs('Expenses by cost centre', ex.by_cost_centre, 'Cost centre')); T.push(pairs('Expenses by payment method', ex.by_method, 'Method')); T.push(kvTable('Approval', ['Item', 'Amount (KSh)'], [['Awaiting approval', money(ex.pending)]])); }
+      if (sc('payables')) { T.push(kvTable('Payables (bills dated in the range)', ['Item', 'Amount (KSh)'], [['Open', money(bl.open)], ['Overdue', money(bl.overdue)], ['Paid', money(bl.paid)]])); T.push(pairs('Open payables by supplier', bl.by_supplier, 'Supplier')); }
+      if (sc('ops')) T.push(kvTable('Operations costs flowing to Finance', ['Source', 'Entries', 'Total (KSh)', 'Not yet posted (KSh)'], ops.map(o => [ucw(o.type), N(o.count, String(nz(o.count))), money(o.total), money(nz(o.total) - nz(o.posted))]), { empty: 'No operations costs in this range.' }));
+      if (f.fscope === 'full') T.push(kvTable('Month by month', ['Month', 'Revenue', 'Expenses', 'Payroll gross', 'Revenue − expenses'], A(d.trend).map(t => [String(t.m), money(t.revenue), money(t.expenses), money(t.payroll), money(nz(t.revenue) - nz(t.expenses))]), { empty: 'No months in this range.' }));
+      const st = sty(f, 'dmy');
+      return { title: 'Finance Summary', count: nz(rv.count) + nz(ex.count) + nz(py.count), landscape: false, hdr: [['From Date', fIso(f.from, st)], ['To Date', fIso(f.to, st)], ['Department', f.fdept || 'All'], ['Category', f.fcat || 'All'], ['Report No', f.no || '']].filter(p => p[1]), tables: T,
+        notes: ['Revenue is not split by department, so the net result is hidden when a department is chosen.'] };
+    },
+  });
+
+  /* ───────── PEOPLE / HR ───────── */
+  const HUB = () => window.GARGO_HUB || null;
+  async function hrLoad(tables) {
+    const H = HUB(); if (!H) throw new Error('The HR hub is not loaded on this device');
+    await H.loadEmployees();
+    return Promise.all(tables.map(t => H.load(t)));
+  }
+  const empOf = id => { const H = HUB(); return (H && H.emp && H.emp[id]) || {}; };
+  const yrs = v => { const t = tsx(v); return isNaN(t) ? '' : Math.max(0, (Date.now() - t) / 3.156e10).toFixed(1); };
+
+  sysRep('hr_staff', {
+    g: 'People (HR)', roles: ['hr', 'finance'], label: 'Staff Register', desc: 'Every employee with department, job title, start date, tenure and status.', noRange: true,
+    main: ['dept', 'hrstatus', 'q'], filters: ['dept', 'hrstatus', 'q'], noun: 'employees',
+    cols: [
+      C('no', 'Staff No.', r => r.e.staff_no || '', { on: 1 }), C('name', 'Name', r => up(r.e.full_name), { on: 1 }), C('dept', 'Department', r => r.e.department || '', { on: 1 }), C('title', 'Job title', r => r.e.job_title || '', { on: 1 }),
+      C('type', 'Type', r => r.e.employment_type || '', { on: 1 }), C('start', 'Start date', r => fdx(r.e.start_date, r.sty), { on: 1 }), C('ten', 'Tenure (yrs)', r => yrs(r.e.start_date), { on: 1, num: 1 }), C('status', 'Status', r => ucw(r.e.status), { on: 1 }),
+      C('phone', 'Phone', r => r.e.phone || '', { on: 1 }), C('email', 'Email', r => r.e.email || ''), C('gender', 'Gender', r => r.e.gender || ''), C('basic', 'Basic salary (KSh)', r => N(r.e.basic_salary), { num: 1 }),
+    ],
+    sorts: [['name', 'Name', r => up(r.e.full_name)], ['no', 'Staff No.', r => r.e.staff_no || ''], ['dept', 'Department', r => r.e.department || ''], ['start', 'Start date', r => tsx(r.e.start_date) || 0]], defSort: 'name',
+    groups: [['dept', 'Department', r => r.e.department || 'Unassigned'], ['status', 'Status', r => ucw(r.e.status) || '(none)'], ['type', 'Employment type', r => r.e.employment_type || '(none)'], ['gender', 'Gender', r => r.e.gender || 'Not stated']], defGroup: 'none',
+    load: async () => { const [e] = await hrLoad(['employees']); return e.map(x => ({ e: x })); },
+    pass: (f, r) => inSet(f.dept, r.e.department || 'Unassigned') && inSet(f.hrstatus, r.e.status),
+  });
+
+  sysRep('hr_leave', {
+    g: 'People (HR)', roles: ['hr'], label: 'Leave Requests', desc: 'Leave by employee, type and status for a period, with working days.',
+    main: ['dept', 'ltype', 'lstatus', 'q'], filters: ['dept', 'ltype', 'lstatus', 'q'], noun: 'requests',
+    cols: [
+      C('name', 'Employee', r => up(r.who.full_name), { on: 1 }), C('dept', 'Department', r => r.who.department || '', { on: 1 }), C('type', 'Leave type', r => r.l.leave_type || '', { on: 1 }), C('from', 'From', r => fdx(r.l.start_date, r.sty), { on: 1 }),
+      C('to', 'To', r => fdx(r.l.end_date, r.sty), { on: 1 }), C('days', 'Days', r => N(r.l.days, String(nz(r.l.days))), { on: 1, num: 1 }), C('status', 'Status', r => ucw(r.l.status), { on: 1 }), C('reason', 'Reason', r => r.l.reason || '', { on: 1, wrap: 1 }),
+    ],
+    sorts: [['from', 'From date', r => tsx(r.l.start_date) || 0], ['name', 'Employee', r => up(r.who.full_name)], ['days', 'Days', r => nz(r.l.days)], ['status', 'Status', r => r.l.status || '']], defSort: 'from', defDir: 'desc',
+    groups: [['name', 'Employee', r => up(r.who.full_name) || '(unknown)'], ['type', 'Leave type', r => r.l.leave_type || '(none)'], ['status', 'Status', r => ucw(r.l.status) || '(none)'], ['dept', 'Department', r => r.who.department || 'Unassigned']], defGroup: 'none',
+    dateOf: r => r.l.start_date,
+    load: async () => { const [l] = await hrLoad(['leave_requests']); return l.map(x => ({ l: x, who: empOf(x.employee_id) })); },
+    pass: (f, r) => inSet(f.dept, r.who.department || 'Unassigned') && inSet(f.ltype, r.l.leave_type) && inSet(f.lstatus, r.l.status),
+    sum: rs => 'Days : ' + rs.reduce((s, r) => s + nz(r.l.days), 0),
+  });
+
+  sysRep('hr_attendance', {
+    g: 'People (HR)', roles: ['hr'], label: 'Attendance Register', desc: 'Daily attendance with time in and out. Group by employee to see lateness and absences.',
+    main: ['dept', 'astatus', 'q'], filters: ['dept', 'astatus', 'q'], noun: 'entries',
+    cols: [
+      C('date', 'Date', r => fdx(r.a.work_date, r.sty), { on: 1 }), C('name', 'Employee', r => up(r.who.full_name), { on: 1 }), C('dept', 'Department', r => r.who.department || '', { on: 1 }), C('in', 'Time in', r => r.a.time_in || '', { on: 1 }),
+      C('out', 'Time out', r => r.a.time_out || '', { on: 1 }), C('status', 'Status', r => ucw(r.a.status), { on: 1 }),
+    ],
+    sorts: [['date', 'Date', r => tsx(r.a.work_date) || 0], ['name', 'Employee', r => up(r.who.full_name)], ['status', 'Status', r => r.a.status || '']], defSort: 'date', defDir: 'desc',
+    groups: [['name', 'Employee', r => up(r.who.full_name) || '(unknown)'], ['status', 'Status', r => ucw(r.a.status) || '(none)'], ['dept', 'Department', r => r.who.department || 'Unassigned'], ['day', 'Day', r => dayOf(r.a.work_date), (a, b) => a[1][0].at - b[1][0].at]], defGroup: 'none',
+    dateOf: r => r.a.work_date,
+    load: async () => { const [a] = await hrLoad(['attendance']); return a.map(x => ({ a: x, at: tsx(x.work_date), who: empOf(x.employee_id) })); },
+    pass: (f, r) => inSet(f.dept, r.who.department || 'Unassigned') && inSet(f.astatus, r.a.status),
+    sum: rs => ['present', 'late', 'absent', 'leave', 'off'].map(s => ucw(s) + ' : ' + rs.filter(r => r.a.status === s).length).join('    '),
+  });
+
+  sysRep('hr_payroll', {
+    g: 'People (HR)', roles: ['hr', 'finance'], label: 'Payroll Register', desc: 'Payslips by period with PAYE, NSSF, SHIF, housing levy and net pay. The range picks whole months.', range: true,
+    main: ['dept', 'pstatus', 'q'], filters: ['dept', 'pstatus', 'q'], noun: 'payslips',
+    cols: [
+      C('period', 'Period', r => r.p.period || '', { on: 1 }), C('name', 'Employee', r => up(r.who.full_name), { on: 1 }), C('dept', 'Department', r => r.who.department || '', { on: 1 }), C('basic', 'Basic', r => N(r.p.basic), { on: 1, num: 1 }),
+      C('allow', 'Allowances', r => N(r.p.allowances), { num: 1 }), C('gross', 'Gross', r => N(r.p.gross), { on: 1, num: 1 }), C('paye', 'PAYE', r => N(r.p.paye), { on: 1, num: 1 }), C('nssf', 'NSSF', r => N(r.p.nssf), { on: 1, num: 1 }),
+      C('shif', 'SHIF', r => N(r.p.shif), { on: 1, num: 1 }), C('ahl', 'Housing levy', r => N(r.p.housing_levy), { on: 1, num: 1 }), C('oth', 'Other deductions', r => N(r.p.other_deductions), { num: 1 }), C('net', 'Net pay', r => N(r.p.net), { on: 1, num: 1 }), C('status', 'Status', r => ucw(r.p.status), { on: 1 }),
+    ],
+    sorts: [['period', 'Period', r => r.p.period || ''], ['name', 'Employee', r => up(r.who.full_name)], ['gross', 'Gross', r => nz(r.p.gross)], ['net', 'Net pay', r => nz(r.p.net)]], defSort: 'period', defDir: 'desc',
+    groups: [['period', 'Period', r => r.p.period || '(none)'], ['dept', 'Department', r => r.who.department || 'Unassigned'], ['status', 'Status', r => ucw(r.p.status) || '(none)'], ['name', 'Employee', r => up(r.who.full_name) || '(unknown)']], defGroup: 'none',
+    load: async () => { const [p] = await hrLoad(['payroll']); return p.map(x => ({ p: x, who: empOf(x.employee_id) })); },
+    pass: (f, r) => (r.p.period || '') >= f.from.slice(0, 7) && (r.p.period || '') <= f.to.slice(0, 7) && inSet(f.dept, r.who.department || 'Unassigned') && inSet(f.pstatus, r.p.status),
+    sum: rs => { const s = k => num2(rs.reduce((a, r) => a + nz(r.p[k]), 0)); return 'Gross : ' + s('gross') + '    PAYE : ' + s('paye') + '    NSSF : ' + s('nssf') + '    SHIF : ' + s('shif') + '    Levy : ' + s('housing_levy') + '    Net : ' + s('net'); },
+  });
+
+  /* ───────── OVERVIEW: one page that captures the whole system ───────── */
+  def('snapshot', {
+    g: 'Overview', label: 'System Snapshot', desc: 'One page for the whole operation right now: fleet, drivers, trips, depot, workshop, requisitions and money owed.',
+    needs: 'none', noCtx: true, noCols: true, noRange: true, filters: [], cols: [], sorts: [], groups: [], defGroup: 'none',
+    build: async function (f) {
+      const db = state.db, T = [], by = (list, fn) => { const m = {}; A(list).forEach(x => { const k = fn(x) || '(none)'; m[k] = (m[k] || 0) + 1; }); return m; };
+      const cnt = (list, fn) => A(list).filter(fn).length, today = new Date().toDateString();
+      const rows = obj => Object.keys(obj).sort().map(k => [ucw(k), N(obj[k], String(obj[k]))]);
+      T.push(kvTable('Fleet', ['Measure', 'Trucks'], [['Trucks on the register', N(A(db.trucks).length, String(A(db.trucks).length))]].concat(rows(by(db.trucks, t => t.status))).concat([['Service due within 14 days (or overdue)', N(cnt(db.trucks, t => { const d = daysTo(t.nextService); return d != null && d <= 14; }))]])));
+      T.push(kvTable('Drivers', ['Measure', 'Drivers'], [['Drivers on the register', N(A(db.drivers).length)]].concat(rows(by(db.drivers, d => d.status))).concat([['Licence expired', N(cnt(db.drivers, d => { const x = daysTo(d.licenceExp); return x != null && x < 0; }))], ['Licence expires within 30 days', N(cnt(db.drivers, d => { const x = daysTo(d.licenceExp); return x != null && x >= 0 && x <= 30; }))]])));
+      T.push(kvTable('Trips on this device', ['Measure', 'Trips'], rows(by(db.trips, t => t.status)).concat([['Started today', N(cnt(db.trips, t => new Date(t.startTime).toDateString() === today))]]), { empty: 'No trips loaded.' }));
+      let depot = [['Shutouts open', N(cnt(db.shutouts, s => s.status === 'open'))], ['Prestaked containers waiting', N(cnt(db.vesselPrestaking, p => p.status === 'staged'))]];
+      try { if (window.ICR && ICR.enabled && navigator.onLine) { const c = await ICR.counts(); depot = [['Gate-ins today', N(nz(c.gate_in_today))], ['Interchange records pending', N(nz(c.pending))]].concat(depot); } else depot = [['Gate-ins today', N(cnt(db.interchange, i => (i.type === 'Gate-In' || i.type === 'Depot-In') && new Date(i.date).toDateString() === today))]].concat(depot); } catch (x) { /* counts are a bonus */ }
+      T.push(kvTable('Depot', ['Measure', 'Count'], depot));
+      T.push(kvTable('Maintenance, workshop and requisitions', ['Measure', 'Count'], [['Maintenance issues open', N(cnt(db.maintenance, m => m.status === 'open'))], ['Maintenance issues in progress', N(cnt(db.maintenance, m => m.status === 'in_progress'))], ['Workshop jobs not finished', N(cnt(db.workshop, w => w.status && !/complete|closed|done/i.test(w.status)))], ['Container repairs awaiting approval', N(cnt(db.containerRepairs, c => c.status === 'awaiting_approval'))], ['Requisitions pending', N(cnt(db.requisitions, r => r.status === 'pending'))]]));
+      if (typeof canFinance === 'function' && canFinance()) {
+        const open = A(db.invoices).filter(i => invBal(i) > 0 && i.status !== 'draft'), over = open.filter(i => { const d = tsx(i.due); return d && d < Date.now(); });
+        T.push(kvTable('Customer invoices', ['Measure', 'Value'], [['Unpaid invoices', N(open.length)], ['Unpaid balance', curText(sumBy(open, i => i.currency || 'USD', invBal))], ['Overdue invoices', N(over.length)], ['Overdue balance', curText(sumBy(over, i => i.currency || 'USD', invBal))]]));
+      }
+      return { title: 'System Snapshot', count: T.length, landscape: false, hdr: [['As at', fIso(todayIso(), sty(f, 'dmy')) + ' ' + ft(new Date())], ['Report No', f.no || '']].filter(p => p[1]), tables: T, notes: ['Counts come from the data loaded on this device and from the server where marked. Use the other reports for detail.'] };
+    },
+  });
+
+  def('pipeline', {
+    g: 'Overview', label: 'Depot Storage Pipeline & Zone Occupancy', desc: 'Bookings waiting for survey or allocation, containers in storage, and how full each storage zone is.',
+    needs: 'none', noCtx: true, noCols: true, noRange: true, filters: [], cols: [], sorts: [], groups: [], defGroup: 'none',
+    build: async function (f) {
+      const bd = window.bookingDocs; if (!bd) throw new Error('Depot bookings are not available on this device');
+      const [zones, awaiting, surveyed, escalated] = await Promise.all([bd.listZones(), bd.awaitingSurveyBookings(), bd.surveyedAwaitingAllocation(), bd.escalatedBookings()]);
+      let inStore = []; try { if (typeof depOpsRepatriationEligibleBookings === 'function') inStore = await depOpsRepatriationEligibleBookings(); } catch (x) { /* optional */ }
+      const cap = A(zones).reduce((s, z) => s + nz(z.capacity_teu), 0), occ = A(zones).reduce((s, z) => s + nz(z.occupied_teu), 0);
+      const T = [kvTable('Storage pipeline', ['Stage', 'Bookings'], [['Awaiting survey', N(A(awaiting).length)], ['Surveyed, awaiting allocation', N(A(surveyed).length)], ['Escalated (joint survey needed)', N(A(escalated).length)], ['Currently in storage', N(A(inStore).length)]]),
+        kvTable('Zone occupancy', ['Zone', 'Capacity (TEU)', 'Occupied (TEU)', 'Free (TEU)', 'Full %'], A(zones).map(z => [String(z.name || z.zone_name || z.code || z.id), N(z.capacity_teu), N(z.occupied_teu), N(Math.max(nz(z.capacity_teu) - nz(z.occupied_teu), 0)), N(nz(z.capacity_teu) ? nz(z.occupied_teu) / nz(z.capacity_teu) * 100 : 0, nz(z.capacity_teu) ? Math.round(nz(z.occupied_teu) / nz(z.capacity_teu) * 100) + '%' : '')]).concat([['ALL ZONES', N(cap), N(occ), N(Math.max(cap - occ, 0)), N(cap ? occ / cap * 100 : 0, cap ? Math.round(occ / cap * 100) + '%' : '')]]))];
+      return { title: 'Depot Storage Pipeline & Zone Occupancy', count: A(zones).length, landscape: false, hdr: [['As at', fIso(todayIso(), sty(f, 'dmy'))], ['Report No', f.no || '']].filter(p => p[1]), tables: T };
+    },
+  });
+
+  def('dupes', {
+    g: 'Exceptions', label: 'Duplicate Scan (same container, type and day)', desc: 'Searches the whole register on the server for repeats: the same container, movement type and day entered more than once. Runs only when you press Preview.',
+    needs: 'none', noCtx: true, noCols: true, noRange: true, main: ['container', 'q'], filters: ['container', 'q'], cols: [], sorts: [], groups: [], defGroup: 'none',
+    build: async function (f) {
+      const data = await rpcOrThrow('find_interchange_duplicates');
+      const rows = A(data).map(r => { const ic = icFromRow(r); return { container: up(ic.container), type: ic.type, at: ts(ic.date), eir: up(ic.eirNumber), status: ic.status, clerk: up(ic.clerkName), id: ic.id }; });
+      const g = new Map(); rows.forEach(r => { const k = r.container + '::' + r.type + '::' + new Date(r.at).toDateString(); (g.get(k) || g.set(k, []).get(k)).push(r); });
+      const toks = tokens(f), st = sty(f, 'dmy'); let sets = [...g.values()].filter(l => l.length > 1);
+      if (toks.length) sets = sets.filter(l => toks.some(t => key(l[0].container).indexOf(t) > -1));
+      if (f.q) sets = sets.filter(l => l.some(r => [r.container, r.type, r.eir, r.status, r.clerk].join(' ').toLowerCase().indexOf(String(f.q).toLowerCase()) > -1));
+      sets.sort((a, b) => a[0].container.localeCompare(b[0].container));
+      const t = { head: ['Container No.', 'Movement', 'Date', 'EIR No.', 'Status', 'Clerk'], align: ['', '', '', '', '', ''], numbered: false, empty: 'No duplicates found across the register.',
+        groups: sets.map(l => ({ label: l[0].container + '  ·  ' + l[0].type + '  ·  ' + fd(l[0].at, st) + '  (' + l.length + ' records)', rows: l.map(r => [r.container, r.type, fd(r.at, st) + ' ' + ft(r.at), r.eir, ucw(r.status), r.clerk]) })) };
+      return { title: 'Duplicate Scan', count: sets.reduce((s, l) => s + l.length, 0), landscape: true, hdr: [['As at', fIso(todayIso(), st)], ['Duplicate sets', String(sets.length)], ['Report No', f.no || '']].filter(p => p[1]), tables: [t],
+        notes: ['Review these in Interchange. Genuine repeats can be flagged or removed there.'] };
+    },
+  });
+
   const PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['year', 'This year'], ['custom', 'Custom']];
   function presetRange(p) {
     const t = todayIso(), d = new Date();
@@ -676,28 +1129,40 @@
     else inner = '<input id="' + id + '" value="' + e(v) + '"' + (d.ph ? ' placeholder="' + e(d.ph) + '"' : '') + (d.dl ? ' list="rc_dl_' + d.dl + '"' : '') + ' autocomplete="off">';
     return '<div class="fg"><label>' + e(d.l) + '</label>' + inner + '</div>';
   }
+  function relatedHtml(rep) {
+    const ids = (RELATED[rep.id] || []).filter(k => REP[k] && canSee(REP[k])); if (!ids.length) return '';
+    return '<div class="rc-related"><span class="rc-rel-l">Related reports</span>' + ids.map(k => '<button type="button" class="rc-chip" data-rc="go:' + k + '" title="Opens with the same shipping line and dates">' + e(REP[k].label) + '</button>').join('') + '</div>';
+  }
+  /* preview only: a container number opens that container's full history */
+  function decorateLinks(out) {
+    if (RC.cur === 'history') return;
+    out.querySelectorAll('.rcp table').forEach(t => {
+      const heads = [].map.call(t.querySelectorAll('thead th'), th => th.textContent.trim()), idx = heads.findIndex(h => /^cont(ainer)?\.?\s*no\.?$/i.test(h)); if (idx < 0) return;
+      t.querySelectorAll('tbody tr').forEach(tr => { const td = tr.children[idx]; if (!td || td.querySelector('a')) return; const v = td.textContent.trim().toUpperCase(); if (/^[A-Z]{4}\d{7}$/.test(v)) td.innerHTML = '<a href="#" class="rc-link" data-rc="hist:' + v + '" title="Open the full history of this container">' + e(v) + '</a>'; });
+    });
+  }
   const layOf = rep => (RC.S.lay && RC.S.lay[rep.id]) || {};
   function uiHtml() {
     const rep = REP[RC.cur], S = RC.S, lay = layOf(rep), views = lsGet(LSV, {});
-    const nav = ORDER.map(g => '<div class="rc-nav-g">' + e(g) + '</div>' + Object.keys(REP).filter(k => REP[k].g === g).map(k => '<button type="button" class="' + (k === RC.cur ? 'on' : '') + '" data-rc="rep:' + k + '" title="' + e(REP[k].desc) + '">' + e(REP[k].label) + '</button>').join('')).join('');
-    const main = rep.filters.filter(k => ['line', 'size', 'type', 'container', 'q'].indexOf(k) > -1), more = rep.filters.filter(k => main.indexOf(k) < 0);
+    const nav = ORDER.map(g => { const ks = Object.keys(REP).filter(k => REP[k].g === g && canSee(REP[k])); return !ks.length ? '' : '<div class="rc-nav-g">' + e(g) + '</div>' + ks.map(k => '<button type="button" class="' + (k === RC.cur ? 'on' : '') + '" data-rc="rep:' + k + '" title="' + e(REP[k].desc) + '">' + e(REP[k].label) + '</button>').join(''); }).join('');
+    const mainWant = (rep.main || ['line', 'size', 'type', 'container', 'q']).slice(), main = rep.filters.filter(k => mainWant.indexOf(k) > -1).sort((a, b) => (b === 'line') - (a === 'line')), more = rep.filters.filter(k => main.indexOf(k) < 0);
     const cols = rep.colsFn ? rep.colsFn({ lift: S.lift }) : rep.cols, onCols = lay.cols && lay.cols.length ? lay.cols : cols.filter(c => c.on).map(c => c.k);
     const lsel = (id, label, opts, cur) => '<div class="fg"><label>' + label + '</label><select id="' + id + '">' + opts.map(o => '<option value="' + e(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + e(o[1]) + '</option>').join('') + '</select></div>';
     const colPick = cols.length ? '<div class="fg"><label>Columns</label><details class="rc-ms" data-k="cols"><summary class="rc-sum" data-all="Default columns">' + e(lay.cols && lay.cols.length ? lay.cols.length + ' columns chosen' : 'Default columns') + '</summary><div class="rc-box">' +
       cols.map(c => '<label><input type="checkbox" value="' + e(c.k) + '"' + (onCols.indexOf(c.k) > -1 ? ' checked' : '') + '> ' + e(c.h) + '</label>').join('') + '<div class="rc-box-foot"><button type="button" class="tbl-btn" data-rc="clear:cols">Use default</button></div></div></details></div>' : '';
     const layout = (rep.sorts.length ? lsel('rc_sort', 'Sort by', rep.sorts, lay.sort || rep.defSort || rep.sorts[0][0]) + lsel('rc_dir', 'Order', [['asc', 'Ascending'], ['desc', 'Descending']], lay.dir || rep.defDir || 'asc') : '<input type="hidden" id="rc_sort"><input type="hidden" id="rc_dir">') +
-      (rep.groups.length ? lsel('rc_group', rep.id === 'stock' ? 'Layout' : 'Group by', rep.groups, lay.group || rep.defGroup) : '<input type="hidden" id="rc_group">') + colPick;
+      (rep.groups.length ? lsel('rc_group', rep.id === 'stock' ? 'Layout' : 'Group by', rep.groups, lay.group || defGroupOf(rep)) : '<input type="hidden" id="rc_group">') + colPick;
     const vnames = Object.keys(views).sort();
     const dls = ['vessel', 'party', 'transporter', 'clerk'].filter(d => rep.filters.some(k => F[k] && F[k].dl === d)).map(d => '<datalist id="rc_dl_' + d + '">' + distinct(d).map(x => '<option value="' + e(x) + '">').join('') + '</datalist>').join('');
     return '<div class="rc-wrap"><div class="rc-nav">' + nav + '</div><div class="rc-main">' +
       '<div class="rc-panel"><div class="rc-title">' + e(rep.label) + '</div><div class="rc-desc">' + e(rep.desc) + '</div>' +
-      (rep.needTok ? '' : '<div class="rc-chips">' + PRESETS.map(p => '<button type="button" class="filter-btn' + ((S.preset || 'today') === p[0] ? ' active' : '') + '" data-rc="preset:' + p[0] + '">' + p[1] + '</button>').join('') + '</div>') +
-      '<div class="rc-grid">' + (rep.needTok ? '' : (rep.asAt ? '<input id="rc_from" type="hidden" value="' + e(S.to) + '"><div class="fg"><label>As at (date)</label><input id="rc_to" type="date" value="' + e(S.to) + '"></div>'
+      (rep.needTok || rep.noRange ? '' : '<div class="rc-chips">' + PRESETS.map(p => '<button type="button" class="filter-btn' + ((S.preset || 'today') === p[0] ? ' active' : '') + '" data-rc="preset:' + p[0] + '">' + p[1] + '</button>').join('') + '</div>') +
+      '<div class="rc-grid">' + (rep.needTok || rep.noRange ? '' : (rep.asAt ? '<input id="rc_from" type="hidden" value="' + e(S.to) + '"><div class="fg"><label>As at (date)</label><input id="rc_to" type="date" value="' + e(S.to) + '"></div>'
         : '<div class="fg"><label>From Date</label><input id="rc_from" type="date" value="' + e(S.from) + '"></div><div class="fg"><label>To Date</label><input id="rc_to" type="date" value="' + e(S.to) + '"></div>')) + main.map(k => fieldHtml(k, S, rep)).join('') + '</div>' +
       (more.length ? '<details class="rc-more"><summary>More filters (' + more.length + ')</summary><div class="rc-grid">' + more.map(k => fieldHtml(k, S, rep)).join('') + '</div></details>' : '') +
       '<details class="rc-more" open><summary>Layout &amp; print options</summary><div class="rc-grid">' + layout + ['no', 'dfmt', 'orient'].concat(rep.id === 'stock' ? ['cc'] : []).map(k => fieldHtml(k, S, rep)).join('') + '</div></details>' +
       '<div class="rc-actions"><button class="action-btn" data-rc="run">Preview</button><button class="action-btn ghost" data-rc="print">Print / PDF</button><button class="action-btn ghost" data-rc="excel">Excel</button><button class="action-btn ghost" data-rc="csv">CSV</button><button class="action-btn ghost" data-rc="copy">Copy</button><button class="action-btn ghost" data-rc="reset">Reset filters</button></div>' +
-      '<div class="rc-views"><input id="rc_vname" placeholder="Name this set of filters" maxlength="40"><button class="action-btn ghost" data-rc="saveview">Save view</button>' +
+      relatedHtml(rep) + '<div class="rc-views"><input id="rc_vname" placeholder="Name this set of filters" maxlength="40"><button class="action-btn ghost" data-rc="saveview">Save view</button>' +
       (vnames.length ? '<select id="rc_vsel">' + vnames.map(n => '<option>' + e(n) + '</option>').join('') + '</select><button class="action-btn ghost" data-rc="loadview">Open</button><button class="action-btn ghost" data-rc="delview">Delete</button>' : '') + '</div>' + dls + '</div>' +
       '<div id="rcOut"></div></div></div>';
   }
@@ -710,7 +1175,7 @@
     keys.forEach(k => { const d = F[k]; if (!d) return; if (d.k === 'multi') f[k] = multiRead(k); else if (!$('rc_' + k)) f[k] = defOf(d); else if (d.k === 'number') { const v = V('rc_' + k); f[k] = v === '' ? '' : Number(v); } else f[k] = V('rc_' + k).trim(); });
     f.from = V('rc_from') || todayIso(); f.to = V('rc_to') || f.from; f.preset = RC.S.preset || 'custom';
     if (rep.asAt) f.from = f.to;
-    f.sort = V('rc_sort'); f.dir = V('rc_dir'); f.group = V('rc_group') || rep.defGroup; f._tok = tokens(f);
+    f.sort = V('rc_sort'); f.dir = V('rc_dir'); f.group = V('rc_group') || defGroupOf(rep); f._tok = tokens(f);
     f.cols = multiRead('cols'); const dk = (rep.colsFn ? rep.colsFn(f) : rep.cols).filter(c => c.on).map(c => c.k);
     if (f.cols.length === dk.length && f.cols.every(k => dk.indexOf(k) > -1)) f.cols = [];     // untouched default set = "use default"
     return f;
@@ -760,6 +1225,9 @@
 .rc-box label{display:flex;align-items:center;gap:8px;padding:7px 8px;font-size:12.5px;color:var(--text);cursor:pointer;border-radius:6px;margin:0}
 .rc-box label:hover{background:var(--hover)}.rc-box input{width:auto;min-height:0}.rc-box-foot{padding:6px 8px 2px}
 .rc-actions,.rc-views{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}.rc-views input,.rc-views select{max-width:210px}
+.rc-related{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}.rc-rel-l{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-3);margin-right:2px}
+.rc-chip{padding:5px 11px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer}.rc-chip:hover{background:var(--hover);color:var(--gold);border-color:var(--gold-border)}
+.rcp a.rc-link{color:#1a4fd6;text-decoration:underline;cursor:pointer}
 .rc-stat{font-size:11.5px;color:var(--text-2);margin:0 2px 8px}.rc-warn{padding:14px;color:var(--amber);font-size:13px}
 @media (max-width:900px){.rc-wrap{grid-template-columns:minmax(0,1fr)}.rc-nav{display:flex;overflow-x:auto;gap:6px;padding:8px;-webkit-overflow-scrolling:touch}.rc-nav-g{display:none}.rc-nav button{width:auto;flex:0 0 auto;white-space:nowrap;border-color:var(--border)}}`;
 
@@ -824,14 +1292,15 @@
 
   /* ───────────────────────── run / print / export ───────────────────────── */
   const notice = m => '<div class="rc-panel rc-warn">' + e(m) + '</div>';
-  RC.compute = function (id, filters) {                       // headless: build a report with given filters, no screen needed
+  RC.compute = async function (id, filters) {                       // headless: build a report with given filters, no screen needed
     const rep = REP[id]; if (!rep) throw new Error('Unknown report ' + id);
-    const f = Object.assign({ from: todayIso(), to: todayIso(), group: rep.defGroup, sort: rep.defSort, dir: rep.defDir }, filters || {}); if (rep.asAt) f.from = f.to;
+    const f = Object.assign({ from: todayIso(), to: todayIso(), group: defGroupOf(rep), sort: rep.defSort, dir: rep.defDir }, filters || {}); if (rep.asAt) f.from = f.to;
     Object.keys(F).forEach(k => { if (f[k] === undefined) f[k] = defOf(F[k]); }); f._tok = tokens(f);
-    const res = rep.build(f, makeCtx()); res.rep = rep; return { rep, f, res, html: renderRes(res, f, 0), aoa: aoaOf(res, f) };
+    const res = await rep.build(f, rep.noCtx ? null : makeCtx()); res.rep = rep; return { rep, f, res, html: renderRes(res, f, 0), aoa: aoaOf(res, f) };
   };
   async function run(after) {
     const rep = REP[RC.cur], out = $('rcOut'); if (!rep || !out) return null;
+    if (!canSee(rep)) { out.innerHTML = notice('Your role cannot open this report.'); return null; }
     const f = readForm(rep);
     if (f.from > f.to) { toast('From Date must not be after To Date', 'error'); return null; }
     if (rep.needTok && !f._tok.length) { out.innerHTML = notice('Type one or more container numbers above, then press Preview.'); return null; }
@@ -840,10 +1309,10 @@
     const t0 = Date.now();
     try {
       await ensureData(rep, f);
-      const res = rep.build(f, makeCtx()); res.rep = rep;
+      const res = await rep.build(f, rep.noCtx ? null : makeCtx()); res.rep = rep;
       RC.last = { rep, f, res, at: new Date() }; RC.dirty = false;
       const cap = document.documentElement.classList.contains('gx-lite') ? 600 : 1500;
-      out.innerHTML = '<div class="rc-stat">' + res.count + ' record' + (res.count === 1 ? '' : 's') + ' · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s · this preview is what prints</div><div class="rcp">' + renderRes(res, f, cap) + '</div>';
+      out.innerHTML = '<div class="rc-stat">' + res.count + ' record' + (res.count === 1 ? '' : 's') + ' · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s · this preview is what prints</div><div class="rcp">' + renderRes(res, f, cap) + '</div>'; decorateLinks(out);
     } catch (x) { console.error('Report Centre:', x); out.innerHTML = notice('The report could not be built: ' + (x && x.message)); toast('Report failed: ' + (x && x.message), 'error', 6000); return null; }
     if (after === 'print') RC.print();
     return RC.last;
@@ -876,18 +1345,26 @@
 
   /* ───────────────────────── page: mount, events ───────────────────────── */
   function initState() {
-    const S = Object.assign({ lay: {} }, lsGet(LS, {})); RC.S = S; if (S.rep && REP[S.rep]) RC.cur = S.rep;
+    const S = Object.assign({ lay: {} }, lsGet(LS, {})); RC.S = S; if (S.rep && REP[S.rep] && canSee(REP[S.rep])) RC.cur = S.rep;
     S.preset = S.preset || 'today';
     const r = S.preset !== 'custom' ? presetRange(S.preset) : null;
     if (r) { S.from = r[0]; S.to = r[1]; } else { S.from = S.from || todayIso(); S.to = S.to || S.from; }
   }
   function paint() { const root = $('rcRoot'); if (!root) return; root.innerHTML = uiHtml(); RC.dirty = true; RC.last = null; }
-  RC.render = function () { if (!$('rcRoot')) return; if (!RC.S.from) initState(); if (!$('rcRoot').dataset.built) { $('rcRoot').dataset.built = '1'; paint(); } };
+  RC.render = function () {
+    const r = $('rcRoot'); if (!r) return; if (!RC.S.from) initState();
+    if (!canSee(REP[RC.cur])) RC.cur = 'daily_in';
+    if (!r.dataset.built || r.dataset.role !== ROLE()) { r.dataset.built = '1'; r.dataset.role = ROLE(); paint(); }
+  };
+  /* open a given report from anywhere: ReportCentre.open('stock', { line: ['<line id>'] }) */
+  RC.open = function (id, filters) { if (!REP[id] || !canSee(REP[id])) return false; RC.cur = id; RC.S.rep = id; Object.assign(RC.S, filters || {}); RC.show(); if ($('rcRoot')) { $('rcRoot').dataset.role = ROLE(); paint(); } return true; };
   RC.show = function () { if (typeof showSection === 'function') showSection('reportcentre', document.querySelector('.nav-item[data-section="reportcentre"]')); };
   const root = () => $('rcRoot');
   function act(a, el) {
     const [cmd, arg] = a.split(':');
     if (cmd === 'rep') { stash(); RC.cur = arg; RC.S.rep = arg; paint(); return; }
+    if (cmd === 'go') { if (!REP[arg] || !canSee(REP[arg])) return; stash(); RC.cur = arg; RC.S.rep = arg; paint(); return run(); }
+    if (cmd === 'hist') { if (!REP.history) return; stash(); RC.S.container = arg; RC.cur = 'history'; RC.S.rep = 'history'; paint(); return run(); }
     if (cmd === 'preset') {
       const r = presetRange(arg); RC.S.preset = arg;
       root().querySelectorAll('.rc-chips .filter-btn').forEach(b => b.classList.toggle('active', b === el));
@@ -923,16 +1400,16 @@
     if ($('sec-reportcentre')) return true;
     const anchor = $('sec-depotreport'); if (!anchor || !anchor.parentNode) return false;
     const s = document.createElement('section'); s.className = 'section'; s.id = 'sec-reportcentre';
-    s.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Report Centre — every depot report in one place</div></div><div id="rcRoot"></div>';
+    s.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Data Hub — depot, fleet, finance and HR reports in one place</div></div><div id="rcRoot"></div>';
     anchor.parentNode.insertBefore(s, anchor.nextSibling);
     if (!$('rcStyle')) { const st = document.createElement('style'); st.id = 'rcStyle'; st.textContent = UI_CSS + PAPER; document.head.appendChild(st); }
     return true;
   }
   function register() {
-    try { if (typeof SECTION_META !== 'undefined') SECTION_META.reportcentre = ['Insights', 'Report Centre']; } catch (x) {}
+    try { if (typeof SECTION_META !== 'undefined') SECTION_META.reportcentre = ['Insights', 'Data Hub']; } catch (x) {}
     try {
       if (typeof ALL_SIDEBAR_SECTIONS !== 'undefined' && ALL_SIDEBAR_SECTIONS.indexOf('reportcentre') < 0) ALL_SIDEBAR_SECTIONS.push('reportcentre');
-      ['admin', 'ops', 'clerk', 'dispatch', 'finance'].forEach(r => { ROLE_SIDEBAR[r] = ROLE_SIDEBAR[r] || []; if (ROLE_SIDEBAR[r].indexOf('reportcentre') < 0) ROLE_SIDEBAR[r].push('reportcentre'); });
+      ['admin', 'ops', 'clerk', 'dispatch', 'finance', 'hr', 'viewer'].forEach(r => { ROLE_SIDEBAR[r] = ROLE_SIDEBAR[r] || []; if (ROLE_SIDEBAR[r].indexOf('reportcentre') < 0) ROLE_SIDEBAR[r].push('reportcentre'); });
     } catch (x) {}
     try { if (typeof sectionRenderers !== 'undefined') sectionRenderers.reportcentre = RC.render; } catch (x) {}
   }
@@ -940,12 +1417,25 @@
   function mountShortcut() {
     const sec = $('sec-depotreport'); if (!sec || $('rcOpenBtn')) return;
     const row = sec.querySelector('.sec-toolbar .filter-row'); if (!row) return;
-    const b = document.createElement('button'); b.id = 'rcOpenBtn'; b.type = 'button'; b.className = 'filter-btn'; b.textContent = 'Report Centre ↗'; b.title = 'Daily IN / OUT, Lift, Stock Advising and many more reports';
+    const b = document.createElement('button'); b.id = 'rcOpenBtn'; b.type = 'button'; b.className = 'filter-btn'; b.textContent = 'Data Hub ↗'; b.title = 'Daily IN / OUT, Lift, Stock Advising, fleet, finance, HR and many more reports';
     b.onclick = () => RC.show(); row.appendChild(b);
+  }
+  /* Home dashboard: Data Hub button for everyone except drivers (and anyone whose access list leaves it out) */
+  function syncDashButton() {
+    const b = $('dashDataHubBtn'); if (!b) return;
+    let ok = !!ROLE() && ROLE() !== 'driver';
+    try { if (ok && typeof canSeeSection === 'function') ok = !!canSeeSection('reportcentre'); } catch (x) {}
+    b.style.display = ok ? '' : 'none';
+  }
+  RC.syncDash = syncDashButton;
+  function hookDash() {
+    const b = $('dashDataHubBtn'); if (b && !b.dataset.rc) { b.dataset.rc = '1'; b.onclick = () => RC.show(); }
+    ['bootShell', 'applyRoleUI'].forEach(n => { const f = window[n]; if (typeof f === 'function' && !f._rcDash) { const w = function () { const r = f.apply(this, arguments); try { syncDashButton(); } catch (x) {} return r; }; w._rcDash = true; window[n] = w; } });
+    syncDashButton();
   }
   function boot() {
     if (!ensureSection()) { console.warn('Report Centre: Depot Report section not found'); return; }
-    register(); initState(); wire(); mountShortcut();
+    register(); initState(); wire(); mountShortcut(); hookDash();
     const _r = window.renderDepotReport;
     if (typeof _r === 'function' && !_r._rc) { const w = function () { mountShortcut(); return _r.apply(this, arguments); }; w._rc = true; window.renderDepotReport = w; try { if (typeof sectionRenderers !== 'undefined') sectionRenderers.depotreport = w; } catch (x) {} }
   }
