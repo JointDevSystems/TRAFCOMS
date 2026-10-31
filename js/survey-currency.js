@@ -1,14 +1,5 @@
 'use strict';
-/* Gargo survey currency. Loads AFTER form-designer.js (last script in index.html).
 
-   Rule (same as invoicing): every survey is priced in USD, except PIL, which is KES.
-   - The survey form gets a "Currency" dropdown (a Form Designer field stored in depot_surveys.cf_currency).
-     It defaults from the shipping line and can be changed by hand. An administrator edits the list of currencies in
-     Settings -> Form Designer -> Survey form -> Currency -> Edit.
-   - Every damage/repair item is stamped with the currency it was priced in, and all totals, lists and PDFs read that stamp.
-     Items saved before this change have no stamp and are shown as KES, which is what they were priced in.
-   - Labour (tariff hours x rate per hour) uses a per-currency rate set in Settings -> Form Designer -> Rules.
-     The GHD tariff material prices are dollar figures, so the USD labour rate must be entered there once. */
 (function () {
   const $ = id => document.getElementById(id);
   const FIELD = 'gf_survey_currency';
@@ -28,7 +19,7 @@
       if (el.tagName === 'SELECT') { const o = el.options[el.selectedIndex]; return String((o && (o.text || o.value)) || ''); }
       return String(el.value || '');
     },
-    /* currency a new item on this form should be priced in (stays consistent with items already added) */
+   
     curFor(prefix) {
       const items = (window._repairItems && window._repairItems[prefix]) || [];
       if (items.length) return M.itemCur(items[0]);
@@ -52,7 +43,11 @@
       return `<div style="margin-top:6px;font-size:11px;color:var(--amber)">Labour rate for ${c} is not set, so the hours are not priced. An administrator sets it in Settings &rarr; Form Designer &rarr; Rules.</div>`;
     },
     refreshLabels() {
-      document.querySelectorAll('.gx-cur').forEach(s => { s.textContent = M.sym(M.curFor(s.getAttribute('data-cur-for'))); });
+      document.querySelectorAll('.gx-cur').forEach(s => {
+        const p = s.getAttribute('data-cur-for');
+        s.textContent = M.sym(M.curFor(p));
+        if (typeof window.refreshTariffPicker === 'function') window.refreshTariffPicker(p);   // PIL (KES) forms switch to the PIL tariff
+      });
     },
   };
 
@@ -80,6 +75,12 @@
     if (line) { line.addEventListener('change', () => apply(false)); line.addEventListener('input', () => apply(false)); }
     if (!f.value) apply(true); else M.refreshLabels();
   }
+
+  /* any form whose shipping line or currency changes re-points its tariff picker (sv has its own handlers too; this also covers ic and cr) */
+  document.addEventListener('change', e => {
+    const id = e.target && e.target.id;
+    if (id === 'sv_line' || id === 'ic_line' || id === 'cr_line' || id === FIELD) M.refreshLabels();
+  });
 
   const _os = window.openSurveyModal;
   if (typeof _os === 'function') {

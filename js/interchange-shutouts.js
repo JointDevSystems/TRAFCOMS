@@ -1498,8 +1498,44 @@ function repairItemsTotal(items) {
   return (items || []).reduce((sum, r) => sum + (Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r))) + Number(r.material || 0), 0);
 }
 
+/* Which tariff prices this form: PIL (KES) forms use the PIL schedule, everything else the GHD (USD) schedule.
+   The currency is the single switch (it defaults from the shipping line and can be changed on the survey form),
+   so a KES form can never be priced from USD figures. */
+function tariffMode(prefix) {
+  try { if (window.PIL_TARIFF_SCHEDULE && window.GargoMoney && GargoMoney.curFor(prefix) === 'KES') return 'PIL'; } catch (e) {}
+  return 'GHD';
+}
+function tariffFor(prefix) {
+  return (tariffMode(prefix) === 'PIL' ? window.PIL_TARIFF_SCHEDULE : (window.bookingDocs && window.bookingDocs.TARIFF_SCHEDULE)) || {};
+}
+function _tariffCatOptions(prefix) { return Object.keys(tariffFor(prefix)).sort().map(c => `<option>${esc(c)}</option>`).join(''); }
+function _tariffNote(prefix) {
+  if (tariffMode(prefix) !== 'PIL') return '';
+  const want = Number((window.PIL_TARIFF_META || {}).labourRate) || 550;
+  const have = (window.GargoMoney && GargoMoney.labourRate) ? GargoMoney.labourRate('KES') : 0;
+  const warn = have !== want
+    ? ` <span style="color:var(--amber)">Labour rate is set to KSh ${have}/hr but this tariff is built for KSh ${want}/hr, so totals will not match the PIL price list. An administrator sets it in Settings &rarr; Form Designer &rarr; Rules.</span>` : '';
+  return `PIL tariff (KES): labour at KSh ${want}/hr plus material.${warn}`;
+}
+/* Re-point an open form's picker at the right tariff when its currency / line changes. Safe to call any time. */
+function refreshTariffPicker(prefix) {
+  const sel = document.getElementById(`${prefix}_tcat`); if (!sel) return;
+  const mode = tariffMode(prefix);
+  if (sel.getAttribute('data-tariff') !== mode) {
+    sel.setAttribute('data-tariff', mode);
+    sel.innerHTML = '<option value="">—</option>' + _tariffCatOptions(prefix);
+    const codeSel = document.getElementById(`${prefix}_tcode`); if (codeSel) codeSel.innerHTML = '<option value="">Select category first…</option>';
+    _tariffFill(prefix, null, '');
+    const box = document.getElementById(`${prefix}_tsearch`); if (box) box.value = '';
+    const out = document.getElementById(`${prefix}_tsearchResults`); if (out) { out.style.display = 'none'; out.innerHTML = ''; }
+  }
+  const note = document.getElementById(`${prefix}_tnote`);
+  if (note) { const t = _tariffNote(prefix); note.innerHTML = t; note.style.display = t ? 'block' : 'none'; }
+  const wrap = document.getElementById(`${prefix}_tsavewrap`); if (wrap) wrap.style.display = mode === 'PIL' ? 'none' : 'flex';   // the catalog editor is the GHD catalog
+}
+
 function tariffPickerHtml(prefix) {
-  const categoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).sort().map(c => `<option>${esc(c)}</option>`).join('');
+  const categoryOptions = _tariffCatOptions(prefix);
   const canSave = (typeof canEditTariffCatalog === 'function') && canEditTariffCatalog();
   return `
     <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">
@@ -1510,8 +1546,9 @@ function tariffPickerHtml(prefix) {
       <input id="${prefix}_tsearch" autocomplete="off" placeholder="Type to search every category…" oninput="onTariffSearch('${prefix}')" />
       <div id="${prefix}_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>
     </div>
+    <div id="${prefix}_tnote" style="display:none;font-size:11px;color:var(--text-2);margin:-2px 0 8px"></div>
     <div class="form-row-2">
-      <div class="fg"><label>Category</label><select id="${prefix}_tcat" onchange="onRepairCategoryChange('${prefix}')"><option value="">—</option>${categoryOptions}</select></div>
+      <div class="fg"><label>Category</label><select id="${prefix}_tcat" data-tariff="${tariffMode(prefix)}" onchange="onRepairCategoryChange('${prefix}')"><option value="">—</option>${categoryOptions}</select></div>
       <div class="fg"><label>Code / Item</label><select id="${prefix}_tcode" onchange="onRepairCodeChange('${prefix}')"><option value="">Select category first…</option></select></div>
     </div>
     <div class="form-row-2">
@@ -1522,12 +1559,12 @@ function tariffPickerHtml(prefix) {
       <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" min="0" placeholder="0" /></div>
       <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="${prefix}">USD</span>)</label><input id="${prefix}_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>
     </div>
-    ${canSave ? `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="${prefix}_tsavecat" /> Also save this to the tariff catalog for next time</label>` : ''}
+    ${canSave ? `<label id="${prefix}_tsavewrap" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="${prefix}_tsavecat" /> Also save this to the tariff catalog for next time</label>` : ''}
     <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem('${prefix}')">+ Add item</button>
     <div id="${prefix}_repairList"></div>`;
 }
 
-function _tariffRows(cat) { return (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || []; }
+function _tariffRows(cat, prefix) { return tariffFor(prefix)[cat] || []; }
 
 function _tariffFill(prefix, row, cat) {
   const set = (id, v) => { const e = document.getElementById(`${prefix}_${id}`); if (e) e.value = v; };
@@ -1545,7 +1582,7 @@ function onTariffSearch(prefix) {
   const terms = box.value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) { out.style.display = 'none'; out.innerHTML = ''; return; }
   const hits = [];
-  const sched = window.bookingDocs.TARIFF_SCHEDULE || {};
+  const sched = tariffFor(prefix);
   Object.keys(sched).forEach(cat => sched[cat].forEach((row, idx) => {
     const hay = `${row.code} ${row.item} ${cat}`.toLowerCase();
     if (terms.every(t => hay.indexOf(t) !== -1)) hits.push({ cat, idx, row });
@@ -1565,14 +1602,14 @@ function pickTariffHit(prefix, cat, idx) {
   if (catSel) { catSel.value = cat; onRepairCategoryChange(prefix); }
   const codeSel = document.getElementById(`${prefix}_tcode`);
   if (codeSel) codeSel.value = String(idx);
-  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
+  _tariffFill(prefix, _tariffRows(cat, prefix)[idx], cat);
   const out = document.getElementById(`${prefix}_tsearchResults`); if (out) out.style.display = 'none';
 }
 
 function onRepairCategoryChange(prefix) {
   const cat = document.getElementById(`${prefix}_tcat`).value;
   const codeSel = document.getElementById(`${prefix}_tcode`);
-  const rows = _tariffRows(cat);
+  const rows = _tariffRows(cat, prefix);
   _tariffFill(prefix, null, cat);
   codeSel.innerHTML = rows.length ? '<option value="">Select…</option>' + rows.map((r,i) => `<option value="${i}">${esc(r.code)} — ${esc(r.item)}</option>`).join('') : '<option value="">Select category first…</option>';
 }
@@ -1580,7 +1617,7 @@ function onRepairCategoryChange(prefix) {
 function onRepairCodeChange(prefix) {
   const cat = document.getElementById(`${prefix}_tcat`).value;
   const idx = document.getElementById(`${prefix}_tcode`).value;
-  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
+  _tariffFill(prefix, _tariffRows(cat, prefix)[idx], cat);
 }
 
 function addRepairItem(prefix) {
@@ -1593,11 +1630,11 @@ function addRepairItem(prefix) {
   const hours = Math.max(0, parseFloat(val('thours')) || 0);
   const material = Math.max(0, parseFloat(val('tmaterial')) || 0);
   const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours, material, currency: GargoMoney.curFor(prefix) };
-  const picked = _tariffRows(cat)[val('tcode')];
+  const picked = _tariffRows(cat, prefix)[val('tcode')];
   if (!picked) entry.custom = true;
   repairItemsFor(prefix).push(entry);
   const save = document.getElementById(`${prefix}_tsavecat`);
-  if (save && save.checked && typeof saveTariffCatalogEntry === 'function') {
+  if (save && save.checked && tariffMode(prefix) !== 'PIL' && typeof saveTariffCatalogEntry === 'function') {
     saveTariffCatalogEntry({ category: entry.category, code: entry.code, item: entry.item, hours, material }).catch(() => {});
     save.checked = false;
   }
@@ -1615,6 +1652,7 @@ function renderRepairItemsList(prefix) {
   const el = document.getElementById(`${prefix}_repairList`);
   if (!el) return;
   GargoMoney.refreshLabels();
+  refreshTariffPicker(prefix);
   const items = repairItemsFor(prefix);
   if (!items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added — container will be logged as good condition.</div>'; return; }
   const rows = items.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">
