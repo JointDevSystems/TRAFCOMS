@@ -294,10 +294,6 @@
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 17V7"/><path d="M13 17v-4"/><path d="M17 17v-8"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
                         Depot Report <span class="nav-badge" id="badge-depotreport"></span>
                     </button>
-                    <button class="nav-item" onclick="showSection('reportcentre',this)" data-section="reportcentre">
-                        <svg class="nav-icon" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
-                        Data Hub
-                    </button>
                     <button class="nav-item" onclick="showSection('shippinglines',this)" data-section="shippinglines">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v5"/><path d="M2 12h20"/></svg>
                         Shipping Lines
@@ -411,7 +407,6 @@
                     <section class="section active" id="sec-dashboard">
                         <div class="sec-toolbar">
                             <div class="sec-title">Operations Overview</div>
-                            <button class="action-btn" id="dashDataHubBtn" type="button" style="display:none" title="Depot, fleet, finance and HR reports in one place">Data Hub ↗</button>
                             <div class="filter-row">
                                 <button class="pill active" onclick="filterActivity('all',this)">All</button>
                                 <button class="pill" onclick="filterActivity('dispatch',this)">Dispatch</button>

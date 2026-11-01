@@ -188,4 +188,55 @@
     openModal('Photo file — ' + c, '<div id="gxpModalHost"></div>');
     G.panel(document.getElementById('gxpModalHost'), Object.assign({ container: c }, ctx || {}));
   };
+  /* ── Resources page (Data Hub): Photo store ──
+     A collapsible card above the reports. Look up any container's photo file, or open one from the latest uploads. */
+  function resCss() {
+    if (document.getElementById('gxpResCss')) return;
+    const s = document.createElement('style'); s.id = 'gxpResCss';
+    s.textContent = '#gxpRes{margin:0 0 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}' +
+      '#gxpRes>summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:600;color:var(--text);list-style:none;display:flex;align-items:center;gap:8px}' +
+      '#gxpRes>summary::-webkit-details-marker{display:none}#gxpRes>summary::after{content:"+";margin-left:auto;color:var(--gold);font-size:16px}#gxpRes[open]>summary::after{content:"\\2212"}' +
+      '#gxpRes .gxp-res-body{padding:0 16px 14px}.gxp-res-search{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}' +
+      '.gxp-res-search input{flex:1 1 220px;min-width:0;text-transform:uppercase}.gxp-res-recent{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}' +
+      '.gxp-res-it{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-2);cursor:pointer;padding:0;text-align:left;color:inherit}' +
+      '.gxp-res-it img{display:block;width:100%;height:76px;object-fit:cover}.gxp-res-it span{display:block;padding:4px 6px;font-size:10.5px;color:var(--text-2);word-break:break-all}';
+    document.head.appendChild(s);
+  }
+  function resOpen(c) {
+    const host = document.getElementById('gxpResHost'), q = document.getElementById('gxpResQ'); if (!host) return;
+    c = cnorm(c || (q && q.value)); if (!c) { if (typeof toast === 'function') toast('Enter a container number', 'error'); return; }
+    if (q) q.value = c;
+    G.panel(host, { container: c });
+  }
+  async function resRecent() {
+    const box = document.getElementById('gxpResRecent'); if (!box) return;
+    try {
+      const { data, error } = await client().from('container_photos').select('container,url,title,category,created_at').order('created_at', { ascending: false }).limit(24);
+      if (error) throw error;
+      if (!data || !data.length) { box.innerHTML = '<div class="gxp-msg">No photos in the store yet.</div>'; return; }
+      box.innerHTML = '<div class="gxp-h">Latest uploads</div><div class="gxp-res-recent">' + data.map(r =>
+        '<button type="button" class="gxp-res-it" data-c="' + esc(r.container) + '"><img loading="lazy" src="' + esc(r.url) + '" alt="' + esc(r.title || G.catLabel(r.category)) + '"><span>' + esc(r.container) + '</span></button>').join('') + '</div>';
+      box.querySelectorAll('[data-c]').forEach(b => b.onclick = () => resOpen(b.getAttribute('data-c')));
+    } catch (e) { box.innerHTML = '<div class="gxp-msg" style="color:var(--amber)">Latest uploads could not be loaded' + (navigator.onLine ? '' : ' (offline)') + '.</div>'; }
+  }
+  G.mountResources = function () {
+    const sec = document.getElementById('sec-reportcentre'); if (!sec) return;
+    css(); resCss();
+    if (document.getElementById('gxpRes')) return;
+    const d = document.createElement('details'); d.id = 'gxpRes';
+    d.innerHTML = '<summary>Photo store</summary><div class="gxp-res-body"><div class="gxp-res-search"><input id="gxpResQ" placeholder="Container number, e.g. MSKU1234567" maxlength="20" autocapitalize="characters" autocomplete="off">' +
+      '<button type="button" class="modal-btn" id="gxpResGo">Open photo file</button></div><div id="gxpResHost"></div><div id="gxpResRecent"></div></div>';
+    sec.insertBefore(d, document.getElementById('rcRoot') || null);
+    document.getElementById('gxpResGo').onclick = () => resOpen();
+    document.getElementById('gxpResQ').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); resOpen(); } });
+    let loaded = false;
+    d.addEventListener('toggle', () => { if (d.open && !loaded) { loaded = true; resRecent(); } });
+  };
+  /* mount when the Resources page is shown (works from the top-bar Data Hub button, search, links and ReportCentre.open) */
+  document.addEventListener('DOMContentLoaded', function () {
+    const f = window.showSection;
+    if (typeof f !== 'function' || f._gxpRes) return;
+    const w = function (sec) { const r = f.apply(this, arguments); if (sec === 'reportcentre') { try { G.mountResources(); } catch (x) { console.warn('photo store mount', x); } } return r; };
+    w._gxpRes = true; window.showSection = w;
+  });
 })();

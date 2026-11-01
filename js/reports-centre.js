@@ -1427,6 +1427,7 @@
   }
   /* shortcut on the Depot Report page */
   function mountShortcut() {
+    return;   /* single entry point: the Data Hub button in the top bar, next to Sync */
     const sec = $('sec-depotreport'); if (!sec || $('rcOpenBtn')) return;
     const row = sec.querySelector('.sec-toolbar .filter-row'); if (!row) return;
     const b = document.createElement('button'); b.id = 'rcOpenBtn'; b.type = 'button'; b.className = 'filter-btn'; b.textContent = 'Data Hub ↗'; b.title = 'Daily IN / OUT, Lift, Stock Advising, fleet, finance, HR and many more reports';
@@ -1436,11 +1437,11 @@
   function syncDashButton() {
     let ok = !!ROLE() && ROLE() !== 'driver';
     try { if (ok && typeof canSeeSection === 'function') ok = !!canSeeSection('reportcentre'); } catch (x) {}
-    ['dashDataHubBtn', 'topDataHubBtn'].forEach(id => { const b = $(id); if (b) b.style.display = ok ? '' : 'none'; });
+    ['topDataHubBtn'].forEach(id => { const b = $(id); if (b) b.style.display = ok ? '' : 'none'; });
   }
   RC.syncDash = syncDashButton;
   function hookDash() {
-    ['dashDataHubBtn', 'topDataHubBtn'].forEach(id => { const b = $(id); if (b && !b.dataset.rc) { b.dataset.rc = '1'; b.onclick = () => RC.show(); } });
+    ['topDataHubBtn'].forEach(id => { const b = $(id); if (b && !b.dataset.rc) { b.dataset.rc = '1'; b.onclick = () => RC.show(); } });
     ['bootShell', 'applyRoleUI'].forEach(n => { const f = window[n]; if (typeof f === 'function' && !f._rcDash) { const w = function () { const r = f.apply(this, arguments); try { syncDashButton(); } catch (x) {} return r; }; w._rcDash = true; window[n] = w; } });
     syncDashButton();
   }
