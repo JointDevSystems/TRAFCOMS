@@ -827,6 +827,10 @@ async function createDispatch() {
     toast('Select a status — Repat, Shipper or Sale Unit', 'error');
     return;
   }
+  if (outwardType && !isOutwardWorkType(workType)) {
+    toast('An outward status (' + outwardTypeLabel(outwardType) + ') is selected but the work type is ' + workType + ', so no outward interchange would be issued. Change the work type to Depot → Port, or clear the status.', 'error', 8000);
+    return;
+  }
 
   let newTripId = null;
 
