@@ -1,9 +1,13 @@
 'use strict';
 
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null }; }
+/* Form Designer custom fields for the dispatch form (stored in cf_* columns of trips; empty until an administrator adds fields). */
+function gxTripCustomOut(t) { try { return (window.GargoForms && GargoForms.tripOut) ? GargoForms.tripOut(t && t.custom) : {}; } catch (e) { return {}; } }
+function gxTripCustomIn(r)  { try { return (window.GargoForms && GargoForms.tripIn) ? GargoForms.tripIn(r) : {}; } catch (e) { return {}; } }
 
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null, ...gxTripCustomOut(t) }; }
+
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, custom: gxTripCustomIn(r) }; }
 
 function isOutwardWorkType(workType) { return workType === 'Depot → Port'; }
 
@@ -698,15 +702,11 @@ function renderAwaitingDispatch() {
   `).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">✅</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
 }
 
+/* The Status field (Repat / Shipper / Sale Unit) is always shown; it is only REQUIRED for Depot → Port. */
 function toggleDispatchOutwardType() {
-  const workType = document.getElementById('d_worktype').value;
-  const row = document.getElementById('d_outwardtype_row');
-  if (!row) return;
-  row.style.display = isOutwardWorkType(workType) ? 'block' : 'none';
-  if (!isOutwardWorkType(workType)) {
-    const sel = document.getElementById('d_outwardtype');
-    if (sel) sel.value = '';
-  }
+  const wt = document.getElementById('d_worktype');
+  const hint = document.getElementById('d_outwardtype_hint');
+  if (hint && wt) hint.textContent = isOutwardWorkType(wt.value) ? '(required for Depot → Port)' : '(optional)';
 }
 
 function loadTripIntoDispatchForm(tripId) {
@@ -739,6 +739,7 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_vessel').value     = t.vessel || '';
   document.getElementById('d_voyage').value     = t.voyage || '';
   const dateOutEl = document.getElementById('d_dateout'); if (dateOutEl) dateOutEl.value = '';
+  if (window.GargoForms) { try { GargoForms.decorate('dispatch'); GargoForms.fill('dispatch', t.custom); } catch (e) {} }   // Form Designer fields
 
   renderContainerImgGrid();
   dispatchPrefillFromEir(true);
@@ -760,6 +761,7 @@ function cancelDispatchEdit() {
   if (outwardTypeSel) outwardTypeSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
   toggleDispatchOutwardType();
+  if (window.GargoForms) GargoForms.clearForm('dispatch');
   populateDispatchSelects();
   const banner = document.getElementById('dispatchEditBanner');
   if (banner) banner.style.display = 'none';
@@ -787,6 +789,8 @@ async function createDispatch() {
     toast(`Container number: ${contIssue}`, 'error');
     return;
   }
+  if (window.GargoForms) { const formErr = GargoForms.validate('dispatch'); if (formErr) { toast(formErr, 'error'); return; } }   // Form Designer rules
+  const custom = window.GargoForms ? GargoForms.collect('dispatch') : {};
   const dupTrip = findLiveTripByContainer(cont, editingId || undefined);
   if (dupTrip) {
     toast(`${cont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}, status: ${dupTrip.status.replace('_',' ')}). Complete or resolve it before re-dispatching this container.`, 'error');
@@ -818,9 +822,9 @@ async function createDispatch() {
   const dateOut         = dateOutInput ? new Date(dateOutInput).toISOString() : new Date().toISOString();
   const releaseFile     = _dispatchReleaseFile;
   const outwardTypeSel = document.getElementById('d_outwardtype');
-  const outwardType = isOutwardWorkType(workType) ? (outwardTypeSel ? outwardTypeSel.value : '') : null;
+  const outwardType = (outwardTypeSel && outwardTypeSel.value) || null;
   if (isOutwardWorkType(workType) && !OUTWARD_TYPES.includes(outwardType)) {
-    toast('Select an outward type — Repat, Sale or Shipper', 'error');
+    toast('Select a status — Repat, Shipper or Sale Unit', 'error');
     return;
   }
 
@@ -846,7 +850,7 @@ async function createDispatch() {
       }
     }
 
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, custom: Object.assign({}, t.custom, custom) });
     t._dirty = true;
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
@@ -872,7 +876,7 @@ async function createDispatch() {
       ctype, workType, outwardType, origin, dest, shippingLine: line,
       status: 'active', startTime: new Date().toISOString(),
       eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
-      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut,
+      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, custom,
       _dirty: true,
     };
     state.db.trips.push(trip);
@@ -910,6 +914,7 @@ async function createDispatch() {
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
   toggleDispatchOutwardType();
+  if (window.GargoForms) GargoForms.clearForm('dispatch');
   renderDispatch();
   refreshAwaitingDispatchUI();
 }

@@ -4,8 +4,8 @@
   const G = window.GargoForms = window.GargoForms || {};
   const $ = id => document.getElementById(id);
   const LS_DEFS = 'gargo-cf-defs';
-  const TABLES = { inward: 'interchange', survey: 'depot_surveys' };
-  const FORMS = ['survey'];
+  const TABLES = { inward: 'interchange', survey: 'depot_surveys', dispatch: 'trips' };
+  const FORMS = ['survey', 'dispatch'];
   const TYPES = [['text', 'Short text'], ['longtext', 'Long text'], ['number', 'Number'], ['date', 'Date'], ['bool', 'Yes / No'], ['select', 'Dropdown list']];
 
   
@@ -21,6 +21,14 @@
       ['sv_cargo', 'Cargo Status', { cfg: 'survey.requireCargoStatus', def: false }],
       ['sv_gatepass', 'Gate Pass No.'], ['sv_truck', 'Vehicle / Truck No.'], ['sv_trailer', 'Trailer Number'],
       ['sv_driver', 'Driver Name'], ['sv_driver_id', 'Driver ID Number'], ['sv_clerk', 'Surveyed By'], ['sv_seal', 'Seal Number'], ['sv_remarks', 'Remarks / Notes'],
+    ],
+    dispatch: [
+      ['d_container', 'Container No.', { locked: 1 }], ['d_size', 'Size', { locked: 1 }], ['d_type', 'Type', { locked: 1 }],
+      ['d_eir', 'EIR No.'], ['d_dateout', 'Date Out'], ['d_receiving', 'Receiving Party'], ['d_release_no', 'Release Order No.'],
+      ['d_vessel', 'Vessel'], ['d_voyage', 'Voyage'], ['d_truck', 'Truck', { locked: 1 }], ['d_driver', 'Driver', { locked: 1 }],
+      ['d_worktype', 'Work Type', { locked: 1 }], ['d_line', 'Shipping Line'], ['d_outwardtype', 'Status (Repat / Shipper / Sale Unit)', { locked: 1 }],
+      ['d_origin', 'Origin'], ['d_dest', 'Destination'], ['d_distance', 'Distance (km)'], ['d_priority', 'Priority'],
+      ['d_ref', 'Client Reference'], ['d_notes', 'Notes'],
     ],
   };
   const RULES = [
@@ -91,7 +99,7 @@
     else inp = `<input id="${id}" type="text"${ph}>`;
     return `<div class="fg gf-field"><label>${esc(d.label || d.field_key)}${d.required ? ' <span class="gf-req">*</span>' : ''}</label>${inp}${d.help_text ? `<div class="gf-help">${esc(d.help_text)}</div>` : ''}</div>`;
   }
-  function rootOf(form) { return form === 'inward' ? $('inwardTabSingle') : $('modalBody'); }
+  function rootOf(form) { return form === 'inward' ? $('inwardTabSingle') : form === 'dispatch' ? $('dispatchTabSingle') : $('modalBody'); }
 
   G.decorate = function (form) {
     const root = rootOf(form); if (!root) return;
@@ -162,6 +170,27 @@
     return row;
   };
 
+
+  /* dispatch form: custom values <-> trips columns (cf_*). Only columns that are ready are ever written or read. */
+  G.tripOut = function (cust) {
+    const row = {}; if (!cust) return row;
+    G.columnsFor('trips').forEach(col => { const k = col.slice(3); if (k in cust) row[col] = cust[k] === '' ? null : cust[k]; });
+    return row;
+  };
+  G.tripIn = function (r) {
+    const out = {}; if (!r) return out;
+    G.columnsFor('trips').forEach(col => { if (r[col] !== undefined && r[col] !== null) out[col.slice(3)] = r[col]; });
+    return out;
+  };
+  /* put saved custom values back into a form (used when a trip is opened for completion) */
+  G.fill = function (form, cust) {
+    live(form).forEach(d => {
+      const e = $(`gf_${form}_${d.field_key}`); if (!e) return;
+      const v = cust ? cust[d.field_key] : undefined;
+      e.value = (v === undefined || v === null) ? '' : (d.field_type === 'bool' ? (v ? 'yes' : 'no') : String(v));
+    });
+  };
+
   /* ── database: create / verify columns ── */
   async function ensureColumn(row) {
     const { data, error } = await supabase.rpc('gargo_ensure_field_column', { p_form: row.form_key, p_field_key: row.field_key, p_type: row.field_type });
@@ -178,6 +207,7 @@
     persist();
     document.querySelectorAll('.gf-custom').forEach(b => b.remove());
     G.decorate('survey');
+    G.decorate('dispatch');
   }
 
   /* ── designer UI ── */
@@ -211,7 +241,7 @@
 
   function tabsHtml() {
     const t = (k, l) => `<button class="filter-btn ${D.tab === k ? 'active' : ''}" onclick="GargoForms.tab('${k}')">${l}</button>`;
-    return `<div class="gf-tabs">${t('survey', 'Survey form')}${t('rules', 'Rules')}${t('db', 'Database')}</div>`;
+    return `<div class="gf-tabs">${t('survey', 'Survey form')}${t('dispatch', 'Dispatch form')}${t('rules', 'Rules')}${t('db', 'Database')}</div>`;
   }
 
   function builtinTable(form) {
@@ -234,7 +264,7 @@
         ${d.column_error ? `<div class="gf-sub" style="color:var(--red)">${esc(d.column_error)}</div>` : ''}</div>
       <div style="display:flex;gap:4px"><button class="action-btn ghost gf-mini" ${i === 0 ? 'disabled' : ''} onclick="GargoForms.move('${d.id}',-1)" aria-label="Move up">▲</button><button class="action-btn ghost gf-mini" ${i === list.length - 1 ? 'disabled' : ''} onclick="GargoForms.move('${d.id}',1)" aria-label="Move down">▼</button></div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${d.column_status !== 'ready' ? `<button class="action-btn gf-mini" onclick="GargoForms.retry('${d.id}')">Create column</button>` : ''}<button class="action-btn ghost gf-mini" onclick="GargoForms.edit('${d.id}')">Edit</button><button class="action-btn ghost gf-mini" onclick="GargoForms.toggleActive('${d.id}')">${d.active ? 'Archive' : 'Restore'}</button></div></div>`).join('');
-    return `<div class="gf-h">Custom fields</div><div class="gf-sub" style="margin-bottom:6px">The <b>Currency</b> field below is a custom field: click Edit to change which currencies are offered (one per line).</div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}
+    return `<div class="gf-h">Custom fields</div><div class="gf-sub" style="margin-bottom:6px">${form === 'survey' ? 'The <b>Currency</b> field below is a custom field: click Edit to change which currencies are offered (one per line).' : 'Custom fields appear under “Additional details” on the Dispatch form and are saved with each trip.'}</div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}
       <div style="margin-top:10px"><button class="action-btn" onclick="GargoForms.startAdd()">+ Add a field</button></div>${editorHtml(form)}`;
   }
 
@@ -266,14 +296,14 @@
   function dbHtml() {
     const all = G.defs.filter(d => d.kind === 'field');
     const rows = all.map(d => `<div class="gf-row" style="grid-template-columns:minmax(0,1fr) auto"><div>${esc(d.label)} <span class="gf-sub">${esc(TABLES[d.form_key])}.${esc(d.column_name || 'cf_' + d.field_key)}</span>${d.column_error ? `<div class="gf-sub" style="color:var(--red)">${esc(d.column_error)}</div>` : ''}</div><span class="gf-chip ${esc(d.column_status)}">${esc(d.column_status)}</span></div>`).join('');
-    return `<div class="gf-h">Database</div><div class="gf-sub" style="margin-bottom:8px">Each custom field is stored in its own column of <b>depot_surveys</b>. Columns are only ever added, never changed or removed, so archiving a field keeps its data.</div>
+    return `<div class="gf-h">Database</div><div class="gf-sub" style="margin-bottom:8px">Each custom field is stored in its own column of the form’s table (<b>depot_surveys</b> for the survey, <b>trips</b> for dispatch). Columns are only ever added, never changed or removed, so archiving a field keeps its data.</div>
       <button class="action-btn" id="gfVerifyBtn" onclick="GargoForms.verify()">Verify and repair all columns</button><div id="gfVerifyOut" class="gf-sub" style="margin-top:8px;min-height:18px"></div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}`;
   }
 
   function render() {
     const body = $('modalBody'); if (!body) return;
     let inner = backendBanner() + tabsHtml();
-    if (D.tab === 'survey') inner += builtinTable('survey') + customTable('survey');
+    if (D.tab === 'survey' || D.tab === 'dispatch') inner += builtinTable(D.tab) + customTable(D.tab);
     else if (D.tab === 'rules') inner += rulesHtml();
     else inner += dbHtml();
     body.innerHTML = inner;
@@ -403,10 +433,10 @@
     if (!blk) { blk = document.createElement('div'); blk.id = 'gfSettingsBlock'; blk.className = 'report-block'; blk.style.gridColumn = '1/-1'; grid.insertBefore(blk, grid.firstChild); }
     const n = G.defs.filter(d => d.kind === 'field').length, bad = G.defs.filter(d => d.kind === 'field' && d.column_status !== 'ready').length;
     blk.innerHTML = `<h3>Form Designer</h3>
-      <div class="detail-row"><span>Customise</span><b>Survey form (fields, currency, rules)</b></div>
+      <div class="detail-row"><span>Customise</span><b>Survey and Dispatch forms (fields, currency, rules)</b></div>
       <div class="detail-row"><span>Custom fields</span><b>${n}${bad ? ` <span class="gf-chip error">${bad} need attention</span>` : ''}</b></div>
       <div class="detail-row"><span>Database</span><b>${G.backend.ok === false ? '<span class="gf-chip pending">not reachable</span>' : 'new fields create their own columns automatically'}</b></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="action-btn" onclick="GargoForms.open('survey')">Edit Survey form</button><button class="action-btn ghost" onclick="GargoForms.open('rules')">Rules &amp; labour rates</button><button class="action-btn ghost" onclick="GargoForms.open('db')">Database</button></div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="action-btn" onclick="GargoForms.open('survey')">Edit Survey form</button><button class="action-btn" onclick="GargoForms.open('dispatch')">Edit Dispatch form</button><button class="action-btn ghost" onclick="GargoForms.open('rules')">Rules &amp; labour rates</button><button class="action-btn ghost" onclick="GargoForms.open('db')">Database</button></div>`;
   }
 
   /* ── wire into the app ── */
@@ -423,6 +453,16 @@
       G.decorate('survey');
       return r;
     };
+  }
+  const _rd = window.renderDispatch;
+  if (typeof _rd === 'function') {
+    window.renderDispatch = function () {
+      const r = _rd.apply(this, arguments);
+      try { G.decorate('dispatch'); } catch (e) {}
+      G.load().then(() => { try { G.decorate('dispatch'); } catch (e) {} });
+      return r;
+    };
+    if (typeof sectionRenderers !== 'undefined') sectionRenderers.dispatch = window.renderDispatch;
   }
   const _bs = window.bootShell;
   if (typeof _bs === 'function') window.bootShell = function () { const r = _bs.apply(this, arguments); G.load(); return r; };

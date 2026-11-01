@@ -1,12 +1,5 @@
 'use strict';
-/* Gargo Finance Suite. Loads AFTER finance.js and hr.js.
-   Adds to the Finance Hub (through GARGO_FIN.add, so finance.js stays the single owner of renderFinance):
-     Reports            period reports pulled on demand (revenue, VAT, payroll, expenses, payables, ops costs)
-     Ops Cost Posting   workshop jobs, requisitions, fuel and repairs flow into Expenses, one item at a time
-     People Directory   every employee with login, driver link, payslip, loan and bank status
-   and richer Receipt / Bill / Expense forms (cost centre, VAT, withholding tax, revenue stream, related employee).
-   Heavy lifting is done by database functions (fin_report, fin_unposted, fin_post_cost, fin_post_all, fin_people,
-   hr_sync_people). They re-check the caller's role, so this file only presents results. */
+
 (function () {
   const F = window.GARGO_FIN, H = window.GARGO_HUB;
   if (!F || !H) { console.error('finance-suite.js needs finance.js to load first'); return; }
@@ -136,7 +129,7 @@
       /* the fin_report function writes its own audit-log entry, so none is added here */
     } finally { pulling = false; }
   };
-  window.fsExport = () => { if (!repCsv) return; H.downloadCSV(repCsv.name, ['Section', 'Item', 'Amount'], repCsv.rows); addAudit(who(), 'Exported finance report', repCsv.name); };
+  window.fsExport = () => { if (!repCsv) return; { const co = ((window.GH_BRAND && GH_BRAND.lines) || ['GARGO HAVEN DEPOT LIMITED']).map(l => [l]); H.downloadCSV(repCsv.name, co[0], co.slice(1).concat([['Finance report'], [], ['Section', 'Item', 'Amount']], repCsv.rows)); } addAudit(who(), 'Exported finance report', repCsv.name); };
 
   /* ═════════ OPS COST POSTING ═════════ */
   let todo = [];

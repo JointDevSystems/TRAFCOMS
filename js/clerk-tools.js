@@ -728,9 +728,10 @@ function exportFuelReport() {
     r.logs.slice().sort((a, b) => new Date(a.date) - new Date(b.date)).map(f => [
       String(f.date).slice(0, 10), fuelTruckLabel(f), fuelDriverLabel(f), f.container || '', f.ctype || '', f.routeFrom || '', f.routeTo || '',
       Number(f.litres) || 0, Number(f.pricePerLitre) || 0, fuelLogTotal(f), f.station || '', f.receipt || '']));
+  const top = ((window.GH_BRAND && GH_BRAND.lines) || ['GARGO HAVEN DEPOT LIMITED']).map(l => [l]).concat([['Fuel Report'], []]);   // same heading as invoices / interchanges
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), `By ${by}`.slice(0, 31));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Entries');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(sum)), `By ${by}`.slice(0, 31));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(detail)), 'Entries');
   XLSX.writeFile(wb, `fuel_report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 

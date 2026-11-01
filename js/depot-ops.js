@@ -3,7 +3,7 @@
 
 const OUTWARD_TYPES = ['Repatriation to Port', 'Shippers/Export', 'Sale units'];
 /* Stored values stay as they are (existing trips, reports and filters keep working); people see the short names. */
-const OUTWARD_LABELS = { 'Repatriation to Port': 'Repat', 'Shippers/Export': 'Shipper', 'Sale units': 'Sale' };
+const OUTWARD_LABELS = { 'Repatriation to Port': 'Repat', 'Shippers/Export': 'Shipper', 'Sale units': 'Sale Unit' };
 function outwardTypeLabel(v) { return OUTWARD_LABELS[v] || v || ''; }
 function outwardTypeOptionsHtml(selected) { return OUTWARD_TYPES.map(w => `<option value="${w}"${w === selected ? ' selected' : ''}>${OUTWARD_LABELS[w]}</option>`).join(''); }
 /* Gate-In container status (set at the gate; the survey result replaces it later). */
@@ -2507,7 +2507,7 @@ async function depOpsCreateOutwardFromBooking(bookingId) {
   const dest = destEl ? destEl.value : '';
   const outwardType = outwardTypeEl ? outwardTypeEl.value : '';
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
-  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repat, Sale or Shipper', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select a status — Repat, Shipper or Sale Unit', 'error'); return; }
 
   const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
   if (error || !booking) { toast('Booking not found', 'error'); return; }
@@ -2554,7 +2554,7 @@ async function depOpsCreateManualOutward() {
   if (!zoneId) { toast('Select a zone', 'error'); return; }
   if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
   if (!lineId) { toast('Select the shipping line — without it this container won\u2019t show up under any line\u2019s account', 'error'); return; }
-  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select an outward type — Repat, Sale or Shipper', 'error'); return; }
+  if (!OUTWARD_TYPES.includes(outwardType)) { toast('Select a status — Repat, Shipper or Sale Unit', 'error'); return; }
   const dupTrip = findLiveTripByContainer(container);
   if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
 

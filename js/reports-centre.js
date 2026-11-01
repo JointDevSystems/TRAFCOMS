@@ -1233,6 +1233,9 @@
 .rc-stat{font-size:11.5px;color:var(--text-2);margin:0 2px 8px}.rc-warn{padding:14px;color:var(--amber);font-size:13px}
 @media (max-width:900px){.rc-wrap{grid-template-columns:minmax(0,1fr)}.rc-nav{display:flex;overflow-x:auto;gap:6px;padding:8px;-webkit-overflow-scrolling:touch}.rc-nav-g{display:none}.rc-nav button{width:auto;flex:0 0 auto;white-space:nowrap;border-color:var(--border)}}`;
 
+  /* Same heading as invoices, inspection reports and interchanges (shared letterhead from branding.js). */
+  const letterhead = () => (typeof window.ghPrintHeaderHtml === 'function') ? window.ghPrintHeaderHtml() : '<h1>' + CO + '</h1>';
+  const coLines = () => (window.GH_BRAND && Array.isArray(GH_BRAND.lines) && GH_BRAND.lines.length) ? GH_BRAND.lines : [CO];
   const hdrItems = (res, f) => res.hdr || hdrDefault(f);
   function describe(f, rep) {
     const out = [];
@@ -1267,7 +1270,7 @@
   }
   function renderRes(res, f, cap) {
     const rep = res.rep, lim = cap ? { left: cap, cut: 0 } : null, ln = hdrItems(res, f);
-    let h = '<h1>' + CO + '</h1><h2' + (res.titleCls ? ' class="' + res.titleCls + '"' : '') + '>' + e(res.title) + '</h2>';
+    let h = letterhead() + '<h2' + (res.titleCls ? ' class="' + res.titleCls + '"' : '') + '>' + e(res.title) + '</h2>';
     if (res.badge) h += '<div class="lnrow"><span>' + e(lineText(f)) + '</span><span class="bd">' + e(res.badge) + '</span><span></span></div><div class="hdr">' + ln.slice(1).filter(p => p[1]).map(p => '<div><b>' + e(p[0]) + ' :</b> ' + e(p[1]) + '</div>').join('') + '</div>';
     else h += '<div class="hdr">' + ln.map(p => '<div><b>' + (p[0] ? e(p[0]) + ' :' : '') + '</b> ' + e(p[1]) + '</div>').join('') + '</div>';
     const d = describe(f, rep); if (d) h += '<div class="fl">Filters: ' + e(d) + '</div>';
@@ -1278,7 +1281,7 @@
   }
   const footAoa = (ft, cols) => { const cells = ft.cells || [], span = ft.span || Math.max(1, cols - cells.length), r = [ft.text]; for (let i = 1; i < span; i++) r.push(''); return r.concat(cells.map(val)); };
   function aoaOf(res, f) {
-    const a = [[CO], [res.title + (res.badge ? ' ' + res.badge : '')]];
+    const a = coLines().map(l => [l]); a.push([res.title + (res.badge ? ' ' + res.badge : '')]);
     (res.badge ? [['Agent / Line', lineText(f)]].concat(hdrItems(res, f).slice(1)) : hdrItems(res, f)).forEach(p => { if (p[1]) a.push([p[0], p[1]]); });
     const d = describe(f, res.rep); if (d) a.push(['Filters', d]); a.push([]);
     res.tables.forEach(t => {
@@ -1402,7 +1405,7 @@
     if ($('sec-reportcentre')) return true;
     const anchor = $('sec-depotreport'); if (!anchor || !anchor.parentNode) return false;
     const s = document.createElement('section'); s.className = 'section'; s.id = 'sec-reportcentre';
-    s.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Data Hub — depot, fleet, finance and HR reports in one place</div></div><div id="rcRoot"></div>';
+    s.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Resources</div></div><div id="rcRoot"></div>';
     anchor.parentNode.insertBefore(s, anchor.nextSibling);
     if (!$('rcStyle')) { const st = document.createElement('style'); st.id = 'rcStyle'; st.textContent = UI_CSS + PAPER; document.head.appendChild(st); }
     return true;
