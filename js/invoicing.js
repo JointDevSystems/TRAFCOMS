@@ -582,8 +582,8 @@ function invoiceConfig() {
   return {
     companyName:     c.companyName     || 'Gargo Haven Depot Limited',
     companyLocation: c.companyLocation || 'Refinery Road, Changamwe, Mombasa',
-    poBox:           c.poBox           || 'P.O. Box 3291 GPO Msa',
-    companyTel:      c.companyTel      || '+254 116 307 751',
+    poBox:           c.poBox           || 'P.O Box 3291-80100',
+    companyTel:      c.companyTel      || '+254116307751 / +254108613789',
     companyVatReg:   c.companyVatReg   || 'PO52380957H',
     bankName:        c.bankName        || 'Family Bank',
     bankAccount:     c.bankAccount     || '',

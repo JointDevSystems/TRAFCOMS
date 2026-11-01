@@ -54,12 +54,13 @@
       const ic = (state.db.interchange || []).find(x => x.id === id);
       if (!ic) return toast('Record not found on this device', 'error');
       if (typeof icAwaitingSurvey === 'function' && !icAwaitingSurvey(ic) && typeof ensureEirNumber === 'function') await ensureEirNumber(ic);
-      const r = buildInterchangeSlip(id);
+      const by = await icPrinter(ic); if (by === null) return;
+      const r = buildInterchangeSlip(id, { printedBy: by });
       act(r, mode, (/^(Gate|Depot)-In$/.test(ic.type) ? 'Inward' : 'Outward') + ' EIR — ' + ic.container + (ic.eirNumber ? ' · ' + ic.eirNumber : ''));
     } catch (x) { console.error(x); toast('Could not build the interchange: ' + (x && x.message), 'error'); }
   };
   D.inspection = async function (surveyId, mode) {
-    try { const r = await buildInspectionReport(surveyId); act(r, mode, 'Inspection report'); }
+    try { const by = await icPrinter(null, 'Inspection report'); if (by === null) return; const r = await buildInspectionReport(surveyId, { printedBy: by }); act(r, mode, 'Inspection report'); }
     catch (x) { console.error(x); toast('Could not build the inspection report: ' + (x && x.message), 'error'); }
   };
 
@@ -88,9 +89,14 @@
       h += '<div class="gxd-h">Trips and dispatch</div>';
       trips.forEach(t => { h += '<div class="gxd-row"><div><b>' + e(t.origin || '—') + ' → ' + e(t.dest || '—') + '</b><div class="gxd-meta">' + e(t.workType || '') + ' · ' + e(t.status || '') + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(t.startTime) : t.startTime) + '</div></div><div class="gxd-btns"><button type="button" class="tbl-btn" onclick="closeModal();showTripDetail(\'' + e(t.id) + '\')">Open trip</button></div></div>'; });
     }
+    h += '<div id="gxpDocHost"></div>';
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="modal-btn" onclick="closeModal();ReportCentre.open(\'history\',{container:\'' + e(cont) + '\'},true)">Open full history in Data Hub</button></div>';
     const body = $('modalBody'), ttl = $('modalTitle');
-    if (body && ttl && ttl.textContent.indexOf(cont) > -1) body.innerHTML = h;
+    if (body && ttl && ttl.textContent.indexOf(cont) > -1) {
+      body.innerHTML = h;
+      const sv = rows.find(i => i.surveyId);
+      if (window.GargoPhotos) GargoPhotos.panel($('gxpDocHost'), { container: cont, surveyId: sv ? sv.surveyId : null, interchangeId: rows[0] ? rows[0].id : null });
+    }
   };
 
   /* right after a dispatch is saved / completed: the outward EIR that was just issued */

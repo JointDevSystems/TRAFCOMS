@@ -1,7 +1,5 @@
 'use strict';
-/* Gargo Finance Hub + the shared record helper GARGO_HUB (also used by hr.js).
-   Tables come from migration phase1_hr_finance_core.sql. Access and approval rules are enforced by the database
-   (row-level security + triggers); this screen only mirrors them so people get a clear message, not a raw error. */
+
 (function () {
   const pad = n => String(n).padStart(2, '0');
   /* Local (Nairobi) date, not UTC: toISOString() would give yesterday's date between midnight and 3 a.m. */
@@ -56,7 +54,7 @@
   }
   const csvCell = v => { if (typeof v === 'number') return String(v); let t = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };   // leading ' stops spreadsheet formula injection
   function downloadCSV(name, header, rows) {
-    const text = '\ufeff' + [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+    const text = '\ufeff' + [...ghCsvRows(), header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' })); a.download = name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   }

@@ -706,7 +706,7 @@
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container Status</label><select id="iw_status"><option>Available</option><option>Food Grade</option><option>Damage</option></select></div>
-                                            <div></div>
+                                            <div class="fg"><label>Consignee / C&amp;F <span class="label-optional">(optional)</span></label><input id="iw_consignee" placeholder="Consignee / clearing &amp; forwarding agent" /></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Driver Name</label><input id="iw_driver" list="iwDriverList" placeholder="Driver name — pick existing or type new" oninput="iwDriverPicked(this)" onchange="iwDriverPicked(this)" /></div>
@@ -1700,6 +1700,7 @@
     <script defer src="js/branding.js"></script>
     <script defer src="js/core-state.js"></script>
     <script defer src="js/core-db.js"></script>
+    <script defer src="js/photo-store.js"></script>
     <script defer src="js/client-auth.js"></script>
     <script defer src="js/trucks-drivers.js"></script>
     <script defer src="js/dispatch-trips.js"></script>

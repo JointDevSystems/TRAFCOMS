@@ -1,7 +1,5 @@
 'use strict';
-/* Gargo HR Hub — overview, employees (360° profile), leave (workflow + balances), attendance, payroll (Kenya statutory,
-   payslips, bank & statutory exports), licences & compliance, recruitment, performance, training, discipline, assets.
-   Uses GARGO_HUB from finance.js. New tables/columns: see supabase/hr-expansion.sql */
+
 const hrCan = () => isAdmin() || currentRole() === 'hr';
 const HR_DEPTS = ['Gate & Security', 'Yard Operations', 'Weighbridge', 'Workshop', 'Reefer Unit', 'Transport & Fleet', 'Finance', 'HR & Admin', 'Management'];
 const today10 = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
@@ -34,7 +32,8 @@ function hrLeaveForm() {
 function hrCsv(name, rows) {
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' }));
+  const pre = /template|^bank-payments/i.test(name) ? '' : ghCsvPreamble('\n');   // import templates and bank files must stay clean
+  a.href = URL.createObjectURL(new Blob([pre + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' }));
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 

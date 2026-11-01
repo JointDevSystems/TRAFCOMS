@@ -50,7 +50,7 @@ function renderInward() {
   renderInwardStillInStorage();
   /* Realtime sync re-runs this renderer. It used to wipe whatever the clerk was typing in the gate-in form every time
      any user changed any record. Only reset the form when it is empty or holds nothing the clerk typed. */
-  const typed = ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer'].some(id => { const el = document.getElementById(id); return el && el.value; });
+  const typed = ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer', 'iw_consignee'].some(id => { const el = document.getElementById(id); return el && el.value; });
   if (!typed && !_inwardBooking) clearInwardForm(true);
 }
 
@@ -257,7 +257,7 @@ async function _createInwardEntryInner() {
     transporter: sanitize(bk.transporter || ''), eirNumber: '',
     clerkName: (state.profile && state.profile.name) || '',
     blNumber: sanitize(bk.bl_number || ''), guaranteeNo: sanitize(bk.bl_number || ''),
-    vessel: sanitize(bk.vessel || ''), voyage: sanitize(bk.voyage || ''), deliveringParty: sanitize(bk.company || bk.full_name || ''),
+    vessel: sanitize(bk.vessel || ''), voyage: sanitize(bk.voyage || ''), deliveringParty: sanitize(val('iw_consignee') || bk.company || ''),
     isoCode: '', grossWeight: '', manufactureDate: '', cargoStatus: '',
     repairs: [], repairTotal: 0, notes: booking ? `Booking ${bk.reference || String(bk.id).slice(0, 8)} \u00b7 ${bk.full_name || ''}${bk.phone ? ' \u00b7 ' + bk.phone : ''}` : '',
     date: dateVal, gateInAt: dateVal, depotInAt: null, status: 'pending', img: '', photos: [],
@@ -346,7 +346,7 @@ function finalizeDepotIn(ic) {
 }
 
 function clearInwardForm(skipRepopulate) {
-  ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer', 'iw_consignee'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const iwSt = document.getElementById('iw_status'); if (iwSt) iwSt.value = 'Available';
   _inwardBooking = null;
   const bn = document.getElementById('inwardBookingBanner'); if (bn) { bn.style.display = 'none'; bn.innerHTML = ''; }
@@ -405,7 +405,7 @@ function downloadInwardReportCSV() {
   const head = ['Gate-In date', 'Depot-In date', 'Container', 'Movement', 'Size/Type', 'Shipping line', 'EIR No.', 'Truck', 'Trailer', 'Driver', 'Driver ID', 'Status'];
   const rows = _iwRptRows.map(({ ic, status, at }) => [at, ic.depotInAt || '', ic.container, ic.type, ic.ctype, lineName(ic.line), ic.eirNumber,
     ic.truck ? truckName(ic.truck) : ic.truckRegText, ic.trailerNo, ic.driver ? driverName(ic.driver) : ic.driverNameText, ic.driverIdNumber, IW_STATUS_LABEL[status]]);
-  const blob = new Blob(['\ufeff' + [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\ufeff' + ghCsvPreamble('\r\n') + [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `inward-report-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
@@ -566,7 +566,7 @@ async function startInwardFromBooking(bookingId) {
   const ct = ctypeFromBookingText(b.cargo_type);
   if (ct) populateSizeTypeSelects('iw_size', 'iw_type', ct);
   if (b.shipping_line_id && (state.db.shippingLines || []).some(l => l.id === b.shipping_line_id)) setv('iw_line', b.shipping_line_id);
-  setv('iw_delivering', b.company || b.full_name || '');
+  setv('iw_consignee', b.company || '');
   setv('iw_guarantee_no', b.bl_number || '');
   setv('iw_vessel', b.vessel || ''); setv('iw_voyage', b.voyage || '');
   setv('iw_transporter', b.transporter || ''); setv('iw_truck', b.truck_reg || '');
@@ -1178,7 +1178,7 @@ function downloadDepotReportCSV() {
     ic.truck ? truckName(ic.truck) : ic.truckRegText, ic.driver ? driverName(ic.driver) : ic.driverNameText,
     ic.condition, ic.status, _icSourceTag(ic),
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = ghCsvPreamble('\n') + [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1440,6 +1440,13 @@ async function openSurveyModal(bookingId) {
   const typeOptions = CONTAINER_TYPE_OPTIONS.map(t => `<option ${curType === t ? 'selected' : ''}>${t}</option>`).join('');
   const cargoOpts = ['', 'Empty', 'Laden / Full', 'Part Load', 'Damaged Cargo'].map(o => `<option value="${o}" ${x.cargoStatus === o ? 'selected' : ''}>${o || '—'}</option>`).join('');
   const pick = (a, b) => sanitize(a || b || '');
+  // Consignee: only ever the recorded consignee / company. A name that matches the driver or the booking contact is never used
+  // (the gate-entry booking stores the driver's name as its contact, which used to land in this field).
+  const _nk = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const _notConsignee = [x.driver ? driverName(x.driver) : '', x.driverNameText, booking.driver_name, booking.full_name].map(_nk).filter(Boolean);
+  const svConsignee = [x.deliveringParty, booking.company].map(v => String(v || '').trim()).find(v => v && _notConsignee.indexOf(_nk(v)) < 0) || '';
+  // Remarks: never the system note "Booking REF · contact · phone"
+  const svRemarks = /^Booking\s[^\u00b7]*\u00b7/.test(String(x.notes || '')) ? '' : String(x.notes || '');
   _surveyImages = (x.photos && x.photos.length) ? x.photos.slice() : [];
   _surveyGuaranteeFile = null;
   window._repairItems.sv = [];
@@ -1455,7 +1462,7 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Shipping Line</label><select id="sv_line"><option value="">—</option>${lineOptions}</select></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Consignee / C&amp;F</label><input id="sv_consignee" value="${pick(x.deliveringParty, booking.company || booking.full_name)}"></div>
+      <div class="fg"><label>Consignee / C&amp;F</label><input id="sv_consignee" value="${sanitize(svConsignee)}"></div>
       <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="${pick(x.blNumber, booking.bl_number)}"></div>
     </div>
     <div class="form-row-2">
@@ -1467,7 +1474,7 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" value="${pick(x.isoCode)}"></div>
     </div>
     <div class="form-row-2">
-      <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number" min="0" value="${x.grossWeight || ''}"></div>
+      <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number" min="0"></div>
       <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number" min="0"></div>
     </div>
     <div class="form-row-2">
@@ -1505,7 +1512,7 @@ async function openSurveyModal(bookingId) {
 
     <div class="fg"><label>Survey Photos <span class="label-optional">(up to 10)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
     <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>
-    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(x.notes || '')}</textarea></div>
+    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(svRemarks)}</textarea></div>
     <button class="submit-btn" onclick="saveSurvey('${bookingId}')">${ic ? 'Save Survey &amp; Complete Depot-In' : 'Save Survey'} →</button>
   `);
   const svContEl = document.getElementById('sv_container');
@@ -1594,6 +1601,9 @@ async function saveSurvey(bookingId) {
     const willEscalate = val('sv_condition') === 'heavily_damaged';
     let eirForSurvey = sourceIc ? (sourceIc.eirNumber || '') : '';
     if (sourceIc && !eirForSurvey && !willEscalate) eirForSurvey = await nextEirNumber('Depot-In', val('sv_line') || sourceIc.line || '');
+    // photos go to Supabase Storage; the survey keeps links only
+    if (window.GargoPhotos) { try { _surveyImages = await GargoPhotos.migrateList(_surveyImages, { container, category: 'survey' }); } catch (e) { console.warn('photo upload', e); } }
+    if (_surveyImages.some(u => /^data:/.test(u))) toast('Some photos could not be uploaded (offline?) and were kept on this device', 'warning', 6000);
     const survey = await window.bookingDocs.recordSurvey({
       bookingId,
       sourceInterchangeId: sourceIc ? sourceIc.id : null,
@@ -1624,6 +1634,7 @@ async function saveSurvey(bookingId) {
       custom: window.GargoForms ? GargoForms.collect('survey') : null,   // Form Designer fields (incl. Currency)
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
+    if (window.GargoPhotos && survey) GargoPhotos.linkSurveyPhotos({ container, surveyId: survey.id, interchangeId: sourceIc ? sourceIc.id : null, urls: _surveyImages }).catch(() => {});
 
     // Everything the old inward form captured that the survey table has no column for goes onto the interchange record
     const extra = {
@@ -2053,7 +2064,7 @@ function downloadSurveyRegisterCSV() {
     s.escalated ? 'Yes' : 'No', s.interchange_generated_at ? 'Yes' : 'No',
     Array.isArray(s.photos) ? s.photos.length : 0,
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = ghCsvPreamble('\n') + [headers, ...rows].map(r => r.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2210,7 +2221,7 @@ function downloadDepOpsReportCSV() {
     ic.date, ic.container, ic.type, ic.ctype, lineName(ic.line), ic.condition,
     ic.truck ? truckName(ic.truck) : '', ic.driver ? driverName(ic.driver) : '', ic.status, ic.repairTotal || 0,
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = ghCsvPreamble('\n') + [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

@@ -253,7 +253,7 @@ function trcRenderAuditTable(rows) {
 function trcExportAuditCSV() {
   if (!trc.auditRows.length) return;
   const headers = ['Time','User','Action','Detail'];
-  const lines = [headers.join(',')];
+  const lines = ghCsvPreamble('\n').split('\n').concat([headers.join(',')]);
   trc.auditRows.forEach(a=>lines.push([a.time, a.user, a.action, a.detail].map(csvEscape).join(',')));
   downloadTextFile(`gargo-audit-log-${Date.now()}.csv`, lines.join('\n'), 'text/csv');
   addAudit(state.profile.username, 'Audit Log Exported', `${trc.auditRows.length} entries (CSV)`);

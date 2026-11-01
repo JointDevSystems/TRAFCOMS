@@ -594,7 +594,10 @@ function gxImageReader() {
       gxCompressImage(file).then(function (u) {
         if (!u) return fail('could not read this file');
         if (/^image\//i.test((file && file.type) || '') && u.length > GX_PHOTO_STORED_MAX) return fail('could not be compressed enough. Choose a JPEG or PNG photo');
-        r.result = u; if (r.onload) r.onload({ target: r });
+        r.result = u;
+        var fire = function () { if (r.onload) r.onload({ target: r }); };
+        /* upload to Supabase Storage so only a link is kept; falls back to the image itself when offline */
+        if (window.GargoPhotos && /^data:image/.test(u)) window.GargoPhotos.put(u, { category: 'other' }).then(function (link) { r.result = link; fire(); }, fire); else fire();
       }, function (e) { if (r.onerror) r.onerror(e); });
     } };
   return r;

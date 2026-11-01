@@ -19,10 +19,7 @@ function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||
 
 function icFromRow(r){ let repairs=[]; try{ repairs = r.repairs ? (typeof r.repairs==='string' ? JSON.parse(r.repairs) : r.repairs) : []; }catch(e){ repairs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } let photos=[]; try{ photos = r.photos ? (typeof r.photos==='string' ? JSON.parse(r.photos) : r.photos) : []; }catch(e){ photos=[]; } return { gateInAt:r.date, depotInAt:((r.type==='Depot-In' && r.survey_status && r.survey_status!=='awaiting_survey') ? (r.surveyed_at||null) : null), id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'', eirNumber:r.eir_number||'', vessel:r.vessel||'', voyage:r.voyage||'', blNumber:r.bl_number||'', ctype:r.ctype||'', repairs, repairTotal:r.repair_total||0, surveyId:r.survey_id||null, bookingId:r.booking_id||null, truckRegText:r.truck_reg_text||'', driverNameText:r.driver_name_text||'', needsSurvey:!!r.needs_survey, surveyStatus:r.survey_status||null, surveyedAt:r.surveyed_at||null, surveyedBy:r.surveyed_by||null, deliveringParty:r.delivering_party||'', guaranteeNo:r.guarantee_no||'', cargoStatus:r.cargo_status||'', dateOut:r.date_out||null, receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, transporter:r.transporter||'', driverIdNumber:r.driver_id_number||'', photos, isoCode:r.iso_code||'', trailerNo:r.trailer_no||'', grossWeight:(r.gross_weight==null?'':r.gross_weight), manufactureDate:r.manufacture_date||'', clerkName:r.clerk_name||'', storageZone:r.storage_zone||'', storageBlock:r.storage_block||'', storageSlot:r.storage_slot||'' }; }
 
-/* ── Container uniqueness ─────────────────────────────────────────────
-   The database is the real gatekeeper (triggers refuse a second live record for the same
-   container number). These helpers give the user a clear message BEFORE anything is saved,
-   and roll back the screen if the server still refuses. */
+
 function normContainerKey(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 
 function localContainerConflict(container, ignoreIcId) {
@@ -377,7 +374,7 @@ function downloadInterchangeCSV() {
     ic.dateOut, ic.receivingParty, ic.releaseOrderNo,
     (ic.repairs || []).map(r => `${r.code} (${r.item})`).join('; '), ic.repairTotal || 0, ic.status, ic.notes,
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = ghCsvPreamble('\n') + [headers, ...rows].map(r => r.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -405,18 +402,7 @@ function approveInterchange(id) {
   toast('Interchange approved', 'success');
 }
 
-/* ── EIR numbering + shared interchange helpers ────────────────────────
-   EIR numbers are never typed in. Each one starts with the initials of the
-   shipping line (first three letters of the line code) followed by that
-   line's running number: COS001, COS002 ... COS132, MSC001 ...  One series
-   per line covers both inward and outward movements, so a number is never
-   reused. Lines with no code fall back to the "EIR" prefix.
-   If the next_eir_number_for_prefix() database function is installed (see
-   supabase_clerk_tools_migration.sql) the number comes from an atomic
-   counter, so two clerks recording at once can never get the same one.
-   Until then it falls back to "highest existing + 1", checking the database
-   as well as the rows loaded in the browser (only part of the interchange
-   table is loaded at any time). */
+
 function isInwardMovement(type) { return type === 'Gate-In' || type === 'Depot-In'; }
 
 function eirPrefixForLine(lineId) {
@@ -454,8 +440,7 @@ async function nextEirNumber(movementType, lineId) {
   return fmtNo(max + 1);
 }
 
-// Older records can have a blank or "N/A" EIR. Give them a proper one the first
-// time a slip is produced, so the printed form always carries a number.
+
 async function ensureEirNumber(ic) {
   if (!ic || !eirNumberIsMissing(ic.eirNumber)) return;
   ic.eirNumber = await nextEirNumber(ic.type, ic.line);
@@ -578,7 +563,8 @@ async function saveInterchange() {
   }
 }
 
-function buildInterchangeSlip(icId) {
+function buildInterchangeSlip(icId, opts) {
+  opts = opts || {};
   const ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return null; }
   if (!window.jspdf) { toast('PDF library still loading — try again in a moment', 'error'); return null; }
@@ -609,8 +595,7 @@ function buildInterchangeSlip(icId) {
   }
 
   // ---- letterhead + title block ---------------------------------------------
-  ghPdfLetterhead(doc, MARGIN, 8, 122);
-  doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(MARGIN, 36, RIGHT, 36);
+  ghPdfLetterhead(doc, MARGIN, 8, CONTENT_W);   // logo + company details, centred, with the gold rule
 
   let y = 40;
   doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.setTextColor(20);
@@ -734,8 +719,10 @@ function buildInterchangeSlip(icId) {
   doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(20);
   doc.text(`THIS CONTAINER WAS ${inward ? 'RECEIVED' : 'RELEASED'} IN GOOD CONDITION EXCEPT AS NOTED ABOVE.`, MARGIN, y);
   y += 7;
-  if (ic.notes) {
-    const noteLines = doc.splitTextToSize(String(ic.notes), CONTENT_W - 4).slice(0, 5);
+  // the system note "Booking REF · name · phone" is internal; keep it off the printed slip
+  const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || '')) ? '' : String(ic.notes || '');
+  if (slipNotes) {
+    const noteLines = doc.splitTextToSize(slipNotes, CONTENT_W - 4).slice(0, 5);
     const boxH = 9 + noteLines.length * 4;
     if (y + boxH > 285) { doc.addPage(); y = 20; }
     doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(MARGIN, y, CONTENT_W, boxH);
@@ -743,26 +730,63 @@ function buildInterchangeSlip(icId) {
     doc.text('REMARKS', MARGIN + 2, y + 4.2);
     doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
     doc.text(noteLines, MARGIN + 2, y + 8.6);
+    y += boxH + 4;
   }
 
+  // ---- sign-off: surveyed / issued by, printed by, official stamp ----------------------
+  const SO_H = 36;
+  let soY = Math.max(y + 4, 286 - SO_H);
+  if (soY + SO_H > 288) { doc.addPage(); soY = 20; }
+  ghPdfSignOff(doc, MARGIN, soY, CONTENT_W, {
+    surveyLabel: inward ? 'Surveyed by' : 'Issued by (clerk)', surveyor: ic.clerkName || '',
+    surveyedAt: inward ? (ic.surveyedAt || ic.depotInAt || ic.date) : ic.date,
+    printedBy: opts.printedBy || '', printedAt: new Date(),
+  });
+
   return { doc, filename: `interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
+}
+
+/* Asks whoever is printing for their two names and logs it. Returns the name, or null if cancelled. */
+async function icPrinter(ic, what) {
+  if (typeof ghAskPrinter !== 'function') return '';
+  const by = await ghAskPrinter({ title: (what || 'Interchange') + ' — who is printing?', detail: ic ? [ic.container, ic.eirNumber].filter(Boolean).join(' · ') : '' });
+  if (by) { try { addAudit((state.profile && state.profile.username) || 'system', (what || 'Interchange') + ' Printed', (ic ? [ic.container, ic.eirNumber].filter(Boolean).join(' · ') + ' · ' : '') + 'by ' + by); } catch (e) {} }
+  return by;
 }
 
 async function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
-  const r = buildInterchangeSlip(icId);
+  const by = await icPrinter(ic); if (by === null) return;
+  const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) r.doc.save(r.filename);
 }
 
 async function printInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
-  const r = buildInterchangeSlip(icId);
+  const by = await icPrinter(ic); if (by === null) return;
+  const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) ghPrintPdf(r.doc);
 }
 
-async function buildInspectionReport(surveyId) {
+/* Survey photos + the container file (post-repair, damage, seal, other), as images a PDF can embed. */
+async function collectInspectionPhotos(s) {
+  const out = { survey: [], post_repair: [], other: [] }, seen = new Set(), MAXG = 12;
+  const push = (grp, url, title) => { if (!url || typeof url !== 'string' || seen.has(url) || out[grp].length >= MAXG) return; seen.add(url); out[grp].push({ url, title: title || '' }); };
+  (Array.isArray(s.photos) ? s.photos : []).forEach((p, i) => push('survey', typeof p === 'string' ? p : (p && p.url), 'Survey photo ' + (i + 1)));
+  try {
+    if (window.GargoPhotos && s.container) {
+      (await GargoPhotos.list(s.container, true)).forEach(r => push(r.category === 'survey' ? 'survey' : (r.category === 'post_repair' ? 'post_repair' : 'other'), r.url, r.title || GargoPhotos.catLabel(r.category)));
+    }
+  } catch (e) { console.warn('container photo file not loaded', e); }
+  const all = [].concat(out.survey, out.post_repair, out.other);
+  for (let i = 0; i < all.length; i += 4) await Promise.all(all.slice(i, i + 4).map(async ph => { ph.data = window.GargoPhotos ? await GargoPhotos.toDataUrl(ph.url) : (/^data:/.test(ph.url) ? ph.url : ''); }));
+  return out;
+}
+
+async function buildInspectionReport(surveyId, opts) {
+  opts = opts || {};
   if (!surveyId) { toast('No survey on file for this record', 'error'); return null; }
   let s = (_surveyRegisterData.find(x => x.id === surveyId)) || _surveyLookupCache[surveyId];
   if (!s) {
@@ -804,26 +828,22 @@ async function buildInspectionReport(surveyId) {
   const reportId = `REP-INS-${String(s.id).replace(/-/g,'').slice(0,8).toUpperCase()}`;
 
   // ---- header ----------------------------------------------------------
-  ghPdfLetterhead(doc, MARGIN, 6, 118);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(110);
-  doc.text('Email: info@gargohavendepot.co.ke', MARGIN, 29);
-
-  doc.setFont(undefined, 'bold'); doc.setFontSize(20); doc.setTextColor(20);
-  doc.text('INSPECTION', RIGHT, 17, { align: 'right' });
-  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GOLD);
-  doc.text(reportId, RIGHT, 23, { align: 'right' });
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(140);
-  doc.text(now.toLocaleString('en-KE'), RIGHT, 27.5, { align: 'right' });
-
-  doc.setDrawColor(20); doc.setLineWidth(0.6); doc.line(MARGIN, 31, RIGHT, 31);
+  ghPdfLetterhead(doc, MARGIN, 6, CONTENT_W);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(20);
+  doc.text('CONTAINER INSPECTION REPORT', MARGIN, 38);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(...GOLD);
+  doc.text(reportId, RIGHT, 36, { align: 'right' });
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(120);
+  doc.text(now.toLocaleString('en-KE'), RIGHT, 40.5, { align: 'right' });
+  doc.setTextColor(20);
 
   // ---- report information panel (green) --------------------------------
-  let y = 37;
+  let y = 45;
   infoBox(MARGIN, y, CONTENT_W, 18, [232, 245, 233]);
   kv(MARGIN + 4, y + 8, 'Report ID', reportId, GREEN);
   kv(MARGIN + 4, y + 15.5, 'Type', 'Container Inspection Report', GREEN);
   kv(MARGIN + 95, y + 8, 'Generated', fmtDate(now.toISOString()), GREEN);
-  kv(MARGIN + 95, y + 15.5, 'Generated By', s.clerk_name || '—', GREEN);
+  kv(MARGIN + 95, y + 15.5, 'Printed By', opts.printedBy || '—', GREEN);
   y += 24;
 
   // ---- title banner (blue) ---------------------------------------------
@@ -906,24 +926,35 @@ async function buildInspectionReport(surveyId) {
     y += 16;
   }
 
-  // ---- inspection photos ------------------------------------------------------
-  const photos = Array.isArray(s.photos) ? s.photos : [];
-  if (photos.length) {
-    y = ensureSpace(y, 20);
-    sectionHeading('Inspection Photos', y); y += 7;
-    const cellW = (CONTENT_W - 8) / 3, cellH = 32;
-    photos.slice(0, 9).forEach((src, i) => {
-      const col = i % 3, row = Math.floor(i / 3);
-      if (row > 0 && row % 3 === 0 && col === 0) { doc.addPage(); y = 20; }
-      const px = MARGIN + col * (cellW + 4);
-      const py = y + (row % 3) * (cellH + 4);
-      try {
-        doc.addImage(src, undefined, px, py, cellW, cellH, undefined, 'FAST');
-      } catch (e) { /* skip unreadable image */ }
-      doc.setDrawColor(210); doc.rect(px, py, cellW, cellH, 'S');
-    });
-    y += Math.ceil(Math.min(photos.length, 9) / 3) * (cellH + 4) + 4;
-  }
+  // ---- photos: survey, post-repair and any other labelled photos from the container file --------
+  const photoGroups = await collectInspectionPhotos(s);
+  const photoSection = (title, list) => {
+    if (!list.length) return;
+    y = ensureSpace(y, 60); sectionHeading(`${title} (${list.length})`, y); y += 6;
+    const cellW = (CONTENT_W - 8) / 3, cellH = 40, capH = 8;
+    for (let i = 0; i < list.length; i += 3) {
+      y = ensureSpace(y, cellH + capH + 2);
+      list.slice(i, i + 3).forEach((ph, c) => {
+        const px = MARGIN + c * (cellW + 4);
+        doc.setDrawColor(210); doc.setLineWidth(0.3); doc.rect(px, y, cellW, cellH, 'S');
+        let drawn = false;
+        if (ph.data) {
+          try {
+            const p = doc.getImageProperties(ph.data), sc = Math.min((cellW - 2) / p.width, (cellH - 2) / p.height), dw = p.width * sc, dh = p.height * sc;
+            doc.addImage(ph.data, undefined, px + (cellW - dw) / 2, y + (cellH - dh) / 2, dw, dh, undefined, 'FAST'); drawn = true;
+          } catch (e) { /* unreadable image */ }
+        }
+        if (!drawn) { doc.setFont(undefined, 'italic'); doc.setFontSize(7); doc.setTextColor(150); doc.text('image unavailable', px + cellW / 2, y + cellH / 2, { align: 'center' }); }
+        doc.setFont(undefined, 'normal'); doc.setFontSize(6.8); doc.setTextColor(80);
+        doc.text(doc.splitTextToSize(String(ph.title || ''), cellW - 1).slice(0, 2), px + 0.5, y + cellH + 3.4);
+      });
+      y += cellH + capH + 2;
+    }
+    doc.setTextColor(20); y += 4;
+  };
+  photoSection('Inspection Photos', photoGroups.survey);
+  photoSection('Post-Repair Photos', photoGroups.post_repair);
+  photoSection('Other Photos', photoGroups.other);
 
   // ---- damage reports ------------------------------------------------------
   y = ensureSpace(y, 20);
@@ -950,32 +981,28 @@ async function buildInspectionReport(surveyId) {
     });
   }
 
-  // ---- certification ------------------------------------------------------
-  y = ensureSpace(y, 40);
-  doc.setDrawColor(20); doc.setLineWidth(0.5); doc.rect(MARGIN, y, CONTENT_W, 22);
+  // ---- certification + sign-off -------------------------------------------------------
+  y = ensureSpace(y, 70);
+  doc.setDrawColor(20); doc.setLineWidth(0.5); doc.rect(MARGIN, y, CONTENT_W, 20);
   doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(20);
-  doc.text('Certification', MARGIN + CONTENT_W/2, y + 7, { align: 'center' });
+  doc.text('Certification', MARGIN + CONTENT_W / 2, y + 6.5, { align: 'center' });
   doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(80);
-  const certLines = doc.splitTextToSize('This inspection report was generated by GARGO HAVEN DEPOT Ltd and represents an accurate record of the container inspection performed.', CONTENT_W - 8);
-  doc.text(certLines, MARGIN + CONTENT_W/2, y + 13, { align: 'center' });
-  y += 30;
-
-  doc.setDrawColor(150); doc.line(MARGIN, y, MARGIN + 70, y);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-  doc.text('Inspector Signature', MARGIN, y + 5);
-  doc.setFontSize(7.5); doc.setTextColor(150);
-  doc.text(`GARGO HAVEN DEPOT Ltd — Generated by ${s.clerk_name || 'system'} on ${now.toLocaleDateString('en-KE')}`, RIGHT, y + 5, { align: 'right' });
+  doc.text(doc.splitTextToSize('This inspection report was generated by GARGO HAVEN DEPOT Ltd and represents an accurate record of the container inspection performed.', CONTENT_W - 8), MARGIN + CONTENT_W / 2, y + 12, { align: 'center' });
+  y += 26;
+  ghPdfSignOff(doc, MARGIN, y, CONTENT_W, { surveyLabel: 'Surveyed by', surveyor: s.clerk_name || '', surveyedAt: s.surveyed_at, printedBy: opts.printedBy || '', printedAt: now });
 
   return { doc, filename: `inspection-report-${(s.container || s.id).replace(/\s+/g, '')}.pdf` };
 }
 
 async function downloadInspectionReport(surveyId) {
-  const r = await buildInspectionReport(surveyId);
+  const by = await icPrinter(null, 'Inspection report'); if (by === null) return;
+  const r = await buildInspectionReport(surveyId, { printedBy: by });
   if (r) r.doc.save(r.filename);
 }
 
 async function printInspectionReport(surveyId) {
-  const r = await buildInspectionReport(surveyId);
+  const by = await icPrinter(null, 'Inspection report'); if (by === null) return;
+  const r = await buildInspectionReport(surveyId, { printedBy: by });
   if (r) ghPrintPdf(r.doc);
 }
 
