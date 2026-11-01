@@ -1225,6 +1225,8 @@
 .rc-box label{display:flex;align-items:center;gap:8px;padding:7px 8px;font-size:12.5px;color:var(--text);cursor:pointer;border-radius:6px;margin:0}
 .rc-box label:hover{background:var(--hover)}.rc-box input{width:auto;min-height:0}.rc-box-foot{padding:6px 8px 2px}
 .rc-actions,.rc-views{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}.rc-views input,.rc-views select{max-width:210px}
+.top-hub-btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;margin-right:6px;border:1px solid var(--gold-border);border-radius:10px;background:var(--btn-bg);color:var(--btn-fg);font-size:12.5px;font-weight:700;letter-spacing:.2px;cursor:pointer;box-shadow:0 2px 14px var(--btn-glow)}.top-hub-btn:hover{filter:brightness(1.08)}
+@media (max-width:720px){.top-hub-btn span{display:none}.top-hub-btn{padding:0 10px}}
 .rc-related{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}.rc-rel-l{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-3);margin-right:2px}
 .rc-chip{padding:5px 11px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer}.rc-chip:hover{background:var(--hover);color:var(--gold);border-color:var(--gold-border)}
 .rcp a.rc-link{color:#1a4fd6;text-decoration:underline;cursor:pointer}
@@ -1357,7 +1359,7 @@
     if (!r.dataset.built || r.dataset.role !== ROLE()) { r.dataset.built = '1'; r.dataset.role = ROLE(); paint(); }
   };
   /* open a given report from anywhere: ReportCentre.open('stock', { line: ['<line id>'] }) */
-  RC.open = function (id, filters) { if (!REP[id] || !canSee(REP[id])) return false; RC.cur = id; RC.S.rep = id; Object.assign(RC.S, filters || {}); RC.show(); if ($('rcRoot')) { $('rcRoot').dataset.role = ROLE(); paint(); } return true; };
+  RC.open = function (id, filters, autoRun) { if (!REP[id] || !canSee(REP[id])) return false; RC.cur = id; RC.S.rep = id; Object.assign(RC.S, filters || {}); RC.show(); if ($('rcRoot')) { $('rcRoot').dataset.role = ROLE(); paint(); } if (autoRun) run(); return true; };
   RC.show = function () { if (typeof showSection === 'function') showSection('reportcentre', document.querySelector('.nav-item[data-section="reportcentre"]')); };
   const root = () => $('rcRoot');
   function act(a, el) {
@@ -1422,14 +1424,13 @@
   }
   /* Home dashboard: Data Hub button for everyone except drivers (and anyone whose access list leaves it out) */
   function syncDashButton() {
-    const b = $('dashDataHubBtn'); if (!b) return;
     let ok = !!ROLE() && ROLE() !== 'driver';
     try { if (ok && typeof canSeeSection === 'function') ok = !!canSeeSection('reportcentre'); } catch (x) {}
-    b.style.display = ok ? '' : 'none';
+    ['dashDataHubBtn', 'topDataHubBtn'].forEach(id => { const b = $(id); if (b) b.style.display = ok ? '' : 'none'; });
   }
   RC.syncDash = syncDashButton;
   function hookDash() {
-    const b = $('dashDataHubBtn'); if (b && !b.dataset.rc) { b.dataset.rc = '1'; b.onclick = () => RC.show(); }
+    ['dashDataHubBtn', 'topDataHubBtn'].forEach(id => { const b = $(id); if (b && !b.dataset.rc) { b.dataset.rc = '1'; b.onclick = () => RC.show(); } });
     ['bootShell', 'applyRoleUI'].forEach(n => { const f = window[n]; if (typeof f === 'function' && !f._rcDash) { const w = function () { const r = f.apply(this, arguments); try { syncDashButton(); } catch (x) {} return r; }; w._rcDash = true; window[n] = w; } });
     syncDashButton();
   }

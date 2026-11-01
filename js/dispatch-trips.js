@@ -143,36 +143,98 @@ async function gxInwardEirFor(container) {
     try { rows = rows.concat(await ICR.byContainer(String(container).trim().toUpperCase())); } catch (e) { /* offline or not found: carry on without it */ }
   }
   const inward = rows.filter(i => isInwardMovement(i.type) && i.eirNumber).sort((a, b) => new Date(b.date) - new Date(a.date));
-  return inward[0] || null;
+  const ic = inward[0] || null;
+  if (ic) { const t0 = new Date(ic.date).getTime(); ic._gxInYard = !rows.some(i => /Out$/.test(i.type || '') && new Date(i.date).getTime() >= t0); }   // still in storage = no exit after it came in
+  return ic;
 }
 
-/* Dispatch console: when the container already has an inward EIR, load what that EIR knows into the form.
-   The outward EIR number is NOT copied: the outward EIR gets its own number when the dispatch completes.
+/* Dispatch console: when the container already has an inward EIR, load what that EIR knows into the form:
+   the inward EIR number (read-only), size/type, shipping line, vessel, voyage and B/L. A container that is still in
+   storage is switched to Depot → Port (the outward move). The outward EIR number is NOT copied: the outward EIR gets
+   its own number when the dispatch is saved or completed.
    soft = true (editing an existing trip): only fill fields that are still empty. */
 async function dispatchPrefillFromEir(soft) {
   const input = document.getElementById('d_container'), box = document.getElementById('d_eir_info');
   if (!input) return;
-  const hide = () => { if (box) { box.style.display = 'none'; box.innerHTML = ''; } };
+  const el = id => document.getElementById(id);
+  const clear = () => { if (box) { box.style.display = 'none'; box.innerHTML = ''; } const f = el('d_ineir'), v = el('d_ineir_view'); if (f) { f.value = ''; delete f.dataset.icId; } if (v) v.style.display = 'none'; };
   const cont = input.value.trim().toUpperCase();
-  if (cont.length < 10) { hide(); return; }
+  if (cont.length < 10) { clear(); return; }
   if (input.dataset.eirFor === cont && soft !== true) return;      // already loaded for this container (blur fires after change)
   const ic = await gxInwardEirFor(cont);
   if (input.value.trim().toUpperCase() !== cont) return;           // the clerk kept typing while we looked it up
   input.dataset.eirFor = cont;
-  if (!ic) { hide(); return; }
-  const el = id => document.getElementById(id);
+  if (!ic) { clear(); return; }
   const empty = id => { const e = el(id); return !!e && !String(e.value || '').trim(); };
   const setIf = (id, val) => { const e = el(id); if (e && val && (soft !== true || empty(id))) e.value = val; };
+  const f = el('d_ineir'), v = el('d_ineir_view');
+  if (f) { f.value = ic.eirNumber || ''; f.dataset.icId = ic.id; }
+  if (v) v.style.display = '';
   if (ic.ctype && soft !== true) populateSizeTypeSelects('d_size', 'd_type', ic.ctype);
   if (ic.line && el('d_line') && [...el('d_line').options].some(o => o.value === ic.line) && (soft !== true || empty('d_line'))) el('d_line').value = ic.line;
   setIf('d_vessel', ic.vessel);
   setIf('d_voyage', ic.voyage);
   setIf('d_ref', ic.guaranteeNo || ic.blNumber);
+  setIf('d_receiving', ic.receivingParty);
+  const wt = el('d_worktype');
+  if (soft !== true && ic._gxInYard && wt && wt.value === 'Port → Depot') {         // untouched default + container is in storage: it is leaving
+    wt.value = 'Depot → Port'; toggleDispatchOutwardType();
+    setIf('d_origin', 'Depot'); setIf('d_dest', 'Kilindini Port');
+  }
   if (box) {
     box.style.display = 'flex';
-    box.innerHTML = `<span style="flex:1;min-width:0"><strong>Inward EIR ${esc(ic.eirNumber)}</strong> found for ${esc(cont)} (${esc(ic.type)}, ${esc(fmtDate(ic.date))}${ic.condition ? ', ' + esc(ic.condition) : ''}). Size/type, shipping line, vessel, voyage and B/L were filled in from it. The outward EIR is issued automatically when this dispatch is completed.</span>`;
+    box.innerHTML = `<span style="flex:1;min-width:0"><strong>Inward EIR ${esc(ic.eirNumber)}</strong> found for ${esc(cont)} (${esc(ic.type)}, ${esc(fmtDate(ic.date))}${ic.condition ? ', ' + esc(ic.condition) : ''}${ic._gxInYard ? ', in storage' : ''}). Size/type, shipping line, vessel, voyage and B/L were filled in from it. The outward EIR is issued automatically when this dispatch is saved or completed.</span>`;
   }
 }
+function dispatchViewInwardEir() {
+  const f = document.getElementById('d_ineir'); if (f && f.dataset.icId && window.GargoDocs) GargoDocs.eir(f.dataset.icId, 'preview');
+}
+
+/* "Pick from storage": containers that are in the yard right now (server search when interchange is loaded on demand) */
+let _dpsT = null;
+function dispatchPickFromStorage() {
+  openModal('Containers in storage', '<div class="fg"><input id="dps_q" placeholder="Search container, vessel or EIR…" oninput="dispatchStorageSearch()" autocomplete="off" /></div><div id="dps_list"></div>');
+  dispatchStorageSearch(true);
+  setTimeout(() => { const q = document.getElementById('dps_q'); if (q) q.focus(); }, 60);
+}
+function dispatchStorageSearch(now) { clearTimeout(_dpsT); _dpsT = setTimeout(dispatchStorageRun, now === true ? 0 : 250); }
+async function dispatchStorageRun() {
+  const list = document.getElementById('dps_list'); if (!list) return;
+  const q = ((document.getElementById('dps_q') || {}).value || '').trim();
+  list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">Loading…</div>';
+  let items = [];
+  try {
+    if (window.ICR && ICR.enabled && navigator.onLine) items = (await ICR.yard({ q, limit: 40 })).items;
+    else { const ql = q.toLowerCase(); items = (state.db.interchange || []).filter(i => typeof icInYard === 'function' && icInYard(i) && (!ql || [i.container, i.vessel, i.eirNumber].join(' ').toLowerCase().indexOf(ql) > -1)).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 40); }
+  } catch (e) { list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">Could not load the yard list. Check your connection.</div>'; return; }
+  if (!document.getElementById('dps_list')) return;
+  if (!items.length) { list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">No containers in storage match.</div>'; return; }
+  const code = id => { const l = (state.db.shippingLines || []).find(x => x.id === id); return l ? (l.code || l.name) : ''; };
+  const age = d => { const n = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return isNaN(n) ? '' : n + ' d in yard'; };
+  list.innerHTML = items.map(i => `<div class="activity-row" style="cursor:pointer;gap:10px" onclick="dispatchUseStorageContainer('${esc(i.container)}')"><div style="flex:1;min-width:0"><div class="mono" style="color:var(--gold);font-weight:600">${esc(i.container)}</div><div style="font-size:10.5px;color:var(--text-3)">${esc(i.ctype || '')} ${code(i.line) ? '· ' + esc(code(i.line)) : ''} ${i.vessel ? '· ' + esc(i.vessel) : ''} · ${i.eirNumber ? 'EIR ' + esc(i.eirNumber) : 'awaiting survey'} · ${esc(age(i.date))}</div></div><span style="font-size:11px;color:var(--text-2)">Use →</span></div>`).join('');
+}
+function dispatchUseStorageContainer(c) {
+  closeModal();
+  const el = document.getElementById('d_container'); if (!el) return;
+  el.value = c; delete el.dataset.eirFor;
+  try { markContainerValidity(el); } catch (e) {}
+  dispatchPrefillFromEir();
+}
+/* typing a container number: also offer the ones in storage (on-demand interchange means they are not all in memory) */
+let _dlT = null;
+document.addEventListener('input', ev => {
+  const el = ev.target; if (!el || el.id !== 'd_container') return;
+  clearTimeout(_dlT); const q = el.value.trim();
+  _dlT = setTimeout(async () => {
+    if (q.length >= 3 && window.ICR && ICR.enabled && navigator.onLine) {
+      try {
+        const r = await ICR.yard({ q, limit: 12 }), dl = document.getElementById('containerHistory');
+        if (dl && el.value.trim() === q) { const have = new Set([...dl.options].map(o => o.value)); r.items.forEach(i => { if (!have.has(i.container)) dl.insertAdjacentHTML('beforeend', `<option value="${esc(i.container)}">In storage${i.eirNumber ? ' · EIR ' + esc(i.eirNumber) : ''}</option>`); }); }
+      } catch (e) { /* the list is a convenience */ }
+    }
+    if (el.value.trim().length >= 11) dispatchPrefillFromEir();     // a full container number (typed or chosen from the list)
+  }, 300);
+}, true);
 
 const _outIcBusy = new Set();
 
@@ -223,6 +285,7 @@ function gxReportOutwardIc(r, cont) {
   if (!r) return;
   if (r.created) {
     toast(`Outward interchange issued — ${r.created.eirNumber}`, 'success', 5000);
+    try { if (window.GargoDocs) GargoDocs.offerOutward(r.created); } catch (e) {}
     try { if (state.currentSection === 'interchange') renderInterchange(_icFilter || 'all'); } catch (e) {}
   } else if (r.error) {
     toast(`Dispatch saved, but the outward interchange for ${cont} could not be created (${r.error}). Create it from Interchange → New.`, 'warning', 9000);
@@ -695,7 +758,7 @@ function cancelDispatchEdit() {
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeSel = document.getElementById('d_outwardtype');
   if (outwardTypeSel) outwardTypeSel.value = '';
-  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; }
+  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
   toggleDispatchOutwardType();
   populateDispatchSelects();
   const banner = document.getElementById('dispatchEditBanner');
@@ -845,7 +908,7 @@ async function createDispatch() {
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeResetSel = document.getElementById('d_outwardtype');
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
-  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; }
+  { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
   toggleDispatchOutwardType();
   renderDispatch();
   refreshAwaitingDispatchUI();

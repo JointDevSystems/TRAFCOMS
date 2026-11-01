@@ -34,6 +34,7 @@ const SHELL_FILES = [
   './js/tracking.js',
   './js/reports-audit.js',
   './js/reports-centre.js',
+  './js/documents.js',
   './js/admin-ui-shell.js',
   './js/nav-compat.js',
   './js/navigation.js',

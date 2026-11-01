@@ -373,6 +373,10 @@
                         </div>
                     </div>
                     <div class="section-topbar-right">
+                        <button class="top-hub-btn" id="topDataHubBtn" type="button" style="display:none" title="Data Hub: every report in one place">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+                            <span>Data Hub</span>
+                        </button>
                         <div class="sync-status synced" id="syncStatus" onclick="handleSyncStatusClick()">
                             <span class="sync-dot"></span>
                             <span id="syncLabel">Synced</span>
@@ -538,6 +542,10 @@
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" onchange="dispatchPrefillFromEir()" onblur="dispatchPrefillFromEir()" /></div>
                                             <div class="fg"><label>Size</label><select id="d_size" onchange="refreshTypeSelectForSize('d_size','d_type')"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Inward EIR No. <span class="label-optional">(auto-filled from storage)</span></label><div style="display:flex;gap:6px"><input id="d_ineir" readonly placeholder="Pick a container in storage" style="flex:1;min-width:0" /><button type="button" class="action-btn ghost" id="d_ineir_view" style="display:none" onclick="dispatchViewInwardEir()">View</button></div></div>
+                                            <div class="fg"><label>Containers in storage</label><button type="button" class="action-btn" onclick="dispatchPickFromStorage()">Pick from storage</button></div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Type</label><select id="d_type"></select></div>
@@ -1726,5 +1734,6 @@
     <script defer src="js/form-designer.js"></script>
     <script defer src="js/survey-currency.js"></script>
     <script defer src="js/reports-centre.js"></script>
+    <script defer src="js/documents.js"></script>
 </body>
 </html>

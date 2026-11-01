@@ -1302,7 +1302,7 @@ async function renderDepOpsStorageList() {
         const icCell = !survey
           ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>'
           : survey.interchange_generated_at
-            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>${survey.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${survey.interchange_id}')" title="Print">🖨</button>` : ''}`
+            ? `<span class="sbadge s-approved" title="Generated ${fmtDate(survey.interchange_generated_at)}">✓ Generated</span>${survey.interchange_id ? ` <button class="tbl-btn" onclick="GargoDocs.eir('${survey.interchange_id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInterchangeSlip('${survey.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${survey.interchange_id}')" title="Print">🖨</button>` : ''}`
             : `<button class="modal-btn primary" onclick="generateInterchangeFromSurvey('${b.id}','${survey.id}')">Generate →</button>`;
         return `<tr style="border-top:1px solid var(--border)">
           <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
@@ -2008,8 +2008,8 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
         <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'food_grade' ? 'approved' : 'pending'))} ${sanitize(conditionStatusLabel(s.condition_status))}</td>
-        <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
-        <td style="padding:6px 8px"><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button><button class="tbl-btn" onclick="printInspectionReport('${s.id}')" title="Print">🖨</button></td>
+        <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="GargoDocs.eir('${s.interchange_id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
+        <td style="padding:6px 8px"><button class="tbl-btn" onclick="GargoDocs.inspection('${s.id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button><button class="tbl-btn" onclick="printInspectionReport('${s.id}')" title="Print">🖨</button></td>
         <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>
       </tr>`).join('')}</tbody></table></div>`;
   } catch (e) {
@@ -2098,7 +2098,7 @@ async function renderDepOpsMasterList() {
           <td style="padding:6px 8px">${sbadge(b.storage_status==='escalated'?'rejected':b.storage_status==='surveyed'||b.storage_status==='allocated'?'approved':'pending')} ${MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status||'—')}</td>
           <td style="padding:6px 8px">${s ? sanitize(conditionStatusLabel(s.condition_status)) : '—'}</td>
           <td style="padding:6px 8px">${loc}</td>
-          <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
+          <td style="padding:6px 8px">${s && s.interchange_generated_at ? `✓${s.interchange_id ? ` <button class="tbl-btn" onclick="GargoDocs.eir('${s.interchange_id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   } catch (e) {
