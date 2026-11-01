@@ -1,7 +1,7 @@
 'use strict';
 
 (function () {
-  if (typeof state === 'undefined' || !state.db) { console.error('report-centre.js needs the Gargo core scripts first'); return; }
+  if (typeof state === 'undefined') { console.error('report-centre.js needs the Gargo core scripts first'); return; }   // state.db is null until the data has loaded, so it must not be checked here
   const $ = id => document.getElementById(id);
   const e = s => (typeof esc === 'function' ? esc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
   const IN_TYPES = ['Gate-In', 'Depot-In'], OUT_TYPES = ['Gate-Out', 'Depot-Out'];
