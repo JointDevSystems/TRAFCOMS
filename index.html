@@ -44,6 +44,7 @@
     <link rel="stylesheet" href="gargo-colors.css" />
     <link rel="stylesheet" href="mobile.css" />
     <link rel="stylesheet" href="tablet.css" />
+    <link rel="stylesheet" href="cameras.css" />
 <style>
 .yard-slot{width:100%;aspect-ratio:1/1;border-radius:3px;background:#2a2a35;border:1px solid rgba(255,255,255,0.06)}
 .yard-slot-empty{background:#2a2a35}
@@ -415,6 +416,13 @@
                             </div>
                         </div>
                         <div class="kpi-row" id="kpiRow"></div>
+                        <div class="panel" id="gateCamPanel" style="display:none;margin:0 0 12px">
+                            <div class="panel-head gc-head"><span class="panel-title">Live Gate Cameras</span><span class="panel-meta" id="gateCamMeta" style="margin-right:auto"></span></div>
+                            <div class="gc-body">
+                                <div class="gc-wall" id="gateCamWall"></div>
+                                <div><div class="gc-feed-title">Latest gate movements</div><div id="gateCamFeed"></div></div>
+                            </div>
+                        </div>
                         <div class="two-col-grid">
                             <div class="panel">
                                 <div class="panel-head"><span class="panel-title">Fleet Status</span><span class="panel-meta" id="fleetStatusMeta"></span></div>
@@ -1727,6 +1735,7 @@
     <script defer src="js/finance-billing.js"></script>
     <script defer src="js/hr-users.js"></script>
     <script defer src="js/ic-remote.js"></script>
+    <script defer src="js/cameras-p2p.js"></script>
     <script defer src="js/form-designer.js"></script>
     <script defer src="js/survey-currency.js"></script>
     <script defer src="js/reports-centre.js"></script>

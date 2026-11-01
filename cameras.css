@@ -1,0 +1,64 @@
+/* Live cameras: dashboard wall, feed, broadcast and manage screens */
+.gc-head{display:flex;align-items:center;gap:10px}
+.gc-body{display:grid;grid-template-columns:1fr;gap:14px;padding:14px}
+@media(min-width:1000px){.gc-body{grid-template-columns:minmax(0,1fr) 300px}}
+.gc-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;align-content:start}
+.cam-tile{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;cursor:pointer;border:1px solid var(--border)}
+.cam-tile video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.cam-tile:fullscreen video{object-fit:contain}
+.cam-tile.cam-down video{opacity:.25}
+.cam-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent 28%,transparent 70%,rgba(0,0,0,.6))}
+.cam-meta{position:absolute;left:10px;bottom:8px;right:10px;display:flex;flex-direction:column;color:#fff;font-size:12px;line-height:1.3;pointer-events:none;text-shadow:0 1px 3px #000}
+.cam-meta span{font-size:10.5px;opacity:.8}
+.cam-state{position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:6px;padding:3px 8px;font:600 10px var(--font-mono,monospace);letter-spacing:.8px;text-transform:uppercase;color:#fff;background:rgba(0,0,0,.6);pointer-events:none}
+.cam-state::before{content:"";width:7px;height:7px;border-radius:50%;background:#888}
+.cam-state[data-s=live]::before{background:var(--green,#22c55e);animation:gcPulse 1.6s infinite}
+.cam-state[data-s=wait]::before,.cam-state[data-s=stall]::before{background:var(--amber,#f59e0b)}
+.cam-state[data-s=off]::before{background:var(--red,#ef4444)}
+@keyframes gcPulse{50%{opacity:.3}}
+.reduce-motion .cam-state::before{animation:none}
+.gc-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;text-align:center;min-height:140px;padding:20px;color:var(--text-3);font-size:12.5px;line-height:1.6}
+.gc-feed-title{font:600 10px var(--font-mono,monospace);letter-spacing:1.5px;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}
+.gc-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border)}
+.gc-row.fresh{background:var(--gold-dim,rgba(255,180,0,.08))}
+.gc-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.gc-dot.in{background:var(--blue,#3b82f6)}.gc-dot.out{background:var(--gold,#d4a017)}
+.gc-row-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.gc-row-main b{font:600 12px var(--font-mono,monospace);color:var(--text)}
+.gc-row-main span{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gc-row-time{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.gc-bc-view{position:relative;aspect-ratio:16/9;background:#000;margin:10px 0}
+.gc-bc-view video{width:100%;height:100%;object-fit:cover}
+.gc-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px}
+.gc-type{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);padding:10px;cursor:pointer}
+.gc-type:has(input:checked){border-color:var(--gold);background:var(--gold-dim,rgba(255,180,0,.08))}
+.gc-type small{display:block;color:var(--text-3);font-size:11px;margin-top:3px;line-height:1.5}
+.gc-chk{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:3px 0;color:var(--text-2)}
+.gc-chk i{width:10px;height:10px;border-radius:50%;margin-top:4px;flex:none;background:#888}
+.gc-chk.ok i{background:var(--green,#22c55e)}.gc-chk.bad i{background:var(--red,#ef4444)}.gc-chk.wait i{background:var(--amber,#f59e0b)}
+.gc-test-video{width:100%;max-width:480px;aspect-ratio:16/9;background:#000;margin-top:10px}
+
+/* Dark placeholder shown until a feed is live ("Activate Feed") */
+.gc-activate{grid-column:1/-1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;aspect-ratio:16/9;max-height:360px;width:100%;padding:24px;text-align:center;color:#cbd5e1;border:1px solid var(--border);background:radial-gradient(ellipse at 50% 40%,#0f172a 0%,#02040a 75%);overflow:hidden}
+.gc-activate::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+.gc-activate-ring{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.28);color:#fff;padding-left:3px}
+.gc-activate-title{font:700 17px var(--font-mono,monospace);letter-spacing:1.2px;text-transform:uppercase;color:#fff}
+.gc-activate-sub{font-size:12px;line-height:1.6;max-width:360px;color:#94a3b8}
+.gc-activate-on{cursor:pointer;transition:border-color .15s}
+.gc-activate-on:hover,.gc-activate-on:focus-visible{border-color:var(--gold,#d4a017);outline:none}
+.gc-activate-on:hover .gc-activate-ring,.gc-activate-on:focus-visible .gc-activate-ring{border-color:var(--gold,#d4a017);color:var(--gold,#d4a017)}
+
+/* compact sizing: the feed sits near the top of the dashboard */
+#gateCamPanel .gc-body{gap:10px;padding:10px}
+#gateCamPanel .gc-wall{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+@media(min-width:1000px){#gateCamPanel .gc-body{grid-template-columns:minmax(0,1fr) 250px}}
+#gateCamPanel .gc-activate{aspect-ratio:auto;height:180px;max-height:none;padding:16px;gap:8px}
+#gateCamPanel .gc-activate-ring{width:50px;height:50px}
+#gateCamPanel .gc-activate-title{font-size:15px}
+#gateCamFeed{max-height:200px;overflow:auto}
+
+/* Engines without aspect-ratio (Chrome < 88, old tablets): keep 16:9 boxes with the padding trick */
+@supports not (aspect-ratio:1/1){
+  .cam-tile,.p2p-vid,.gc-bc-view,.gc-test-video{height:0;padding-top:56.25%}
+  .cam-tile>video,.p2p-vid>video,.gc-bc-view>video{position:absolute;top:0;left:0}
+}
