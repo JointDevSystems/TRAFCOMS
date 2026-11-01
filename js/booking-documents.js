@@ -655,6 +655,7 @@
         iso_code: payload.isoCode || null,
         mgwt: payload.mgwt || null,
         tare_weight: payload.tareWeight || null,
+        ...(payload.cscApproval ? { csc_approval: payload.cscApproval } : {}),   // column added by supabase_outward_eir_migration.sql
         vessel: payload.vessel || null,
         voyage: payload.voyage || null,
         source_interchange_id: payload.sourceInterchangeId || null,

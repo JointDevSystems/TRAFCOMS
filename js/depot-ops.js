@@ -1477,6 +1477,7 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number" min="0"></div>
       <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number" min="0"></div>
     </div>
+    <div class="fg"><label>CSC Approval <span class="label-optional">(optional)</span></label><input id="sv_csc" placeholder="e.g. USA/AB-077/10-10" maxlength="40" style="text-transform:uppercase" value="${pick(x.cscApproval)}"></div>
     <div class="form-row-2">
       <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="sv_gross" type="number" min="0" step="1" placeholder="e.g. 30480" value="${x.grossWeight || ''}"></div>
       <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="${pick(x.manufactureDate)}"></div>
@@ -1617,6 +1618,7 @@ async function saveSurvey(bookingId) {
       isoCode: val('sv_iso').toUpperCase(),
       mgwt: val('sv_mgwt') ? parseFloat(val('sv_mgwt')) : null,
       tareWeight: val('sv_tare') ? parseFloat(val('sv_tare')) : null,
+      cscApproval: val('sv_csc').toUpperCase(),
       vessel: val('sv_vessel'),
       voyage: val('sv_voyage'),
       transporter: val('sv_transporter'),

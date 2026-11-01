@@ -573,6 +573,7 @@ function buildInterchangeSlip(icId, opts) {
   const MARGIN = 14, CONTENT_W = 182, RIGHT = MARGIN + CONTENT_W;
   if (icAwaitingSurvey(ic)) { toast('The interchange is issued after the survey is complete', 'warning'); return null; }
   const inward = isInwardMovement(ic.type);
+  if (!inward) return icBuildOutwardSlip(ic, doc, opts);   // outward EIR = the paper "Container Interchange Report / Receipt" layout
   const money = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // One bordered cell: small caption on top, value centred beneath — the same
@@ -746,6 +747,227 @@ function buildInterchangeSlip(icId, opts) {
   return { doc, filename: `interchange-${(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   OUTWARD EIR  —  "Container Interchange Report / Receipt" (the paper form, reproduced exactly)
+   Layout: title + EIR no · shipper / reference / date / time · container + agent · final destination /
+   release order / order date · ISO-size-type-vessel-voyage-MTWT-MGWT-CSC · transporter / truck / driver ·
+   prepared by / releasing clerk · remarks / stamp · NB · "DATE IN / EIR IN / VESSEL IN / VOYAGE IN".
+   Needs supabase_outward_eir_migration.sql for: interchange.release_order_date / final_destination /
+   csc_approval and depot_surveys.csc_approval. Until it is run, those boxes simply print blank.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+const IC_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function icFmtDMY(v) {                                     // 12-Nov-2025  (date-only values are not shifted by time zone)
+  if (!v) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+  if (m && String(v).length <= 10) return m[3] + '-' + IC_MON[Number(m[2]) - 1] + '-' + m[1];
+  const d = new Date(v); if (isNaN(d)) return '';
+  return String(d.getDate()).padStart(2, '0') + '-' + IC_MON[d.getMonth()] + '-' + d.getFullYear();
+}
+function icFmtTime12(v) {                                  // 10:48 AM
+  const d = new Date(v); if (isNaN(d)) return '';
+  const h = d.getHours(), h12 = h % 12 || 12;
+  return String(h12).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+
+/* Everything the outward slip needs that is not on the outward record itself. Run before building the PDF. */
+async function icSlipPrefetch(ic) {
+  if (!ic || isInwardMovement(ic.type)) return;
+  const S = ic._slip = { extra: {}, inward: null, survey: null, trip: null };
+  try {                                                    // the dispatch trip this outward record was issued from
+    const tid = typeof gxOutwardIcId === 'function' ? gxOutwardIcId(ic.id) : null;
+    if (tid) S.trip = (state.db.trips || []).find(t => String(t.id).toLowerCase() === tid) || null;
+  } catch (e) { /* no trip: fine */ }
+
+  const key = normContainerKey(ic.container);             // the inward record this container came in on
+  let rows = (state.db.interchange || []).filter(i => normContainerKey(i.container) === key);
+  if (window.ICR && ICR.enabled && navigator.onLine) { try { rows = rows.concat(await ICR.byContainer(String(ic.container).trim().toUpperCase())); } catch (e) { /* use what is on this device */ } }
+  const seen = new Map(); rows.forEach(r => seen.set(r.id, r));
+  const outAt = new Date(ic.date).getTime() + 86400000;
+  const ins = Array.from(seen.values()).filter(i => isInwardMovement(i.type) && !icAwaitingSurvey(i)).sort((a, b) => new Date(b.date) - new Date(a.date));
+  S.inward = ins.find(i => i.eirNumber && new Date(i.date).getTime() <= outAt) || ins.find(i => i.eirNumber) || ins[0] || null;
+
+  if (!navigator.onLine || typeof supabase === 'undefined') return;
+  try {
+    const { data, error } = await supabase.from('interchange').select('release_order_date,final_destination,csc_approval').eq('id', ic.id).maybeSingle();
+    if (!error && data) S.extra = data;                    // error = migration not run yet: boxes stay blank
+  } catch (e) { /* ignore */ }
+  if (S.inward && S.inward.surveyId) {
+    try {
+      let r = await supabase.from('depot_surveys').select('tare_weight,mgwt,iso_code,csc_approval').eq('id', S.inward.surveyId).maybeSingle();
+      if (r.error) r = await supabase.from('depot_surveys').select('tare_weight,mgwt,iso_code').eq('id', S.inward.surveyId).maybeSingle();
+      if (!r.error && r.data) S.survey = r.data;
+    } catch (e) { /* ignore */ }
+  }
+}
+
+function icBuildOutwardSlip(ic, doc, opts) {
+  opts = opts || {};
+  const S = ic._slip || {}, X = S.extra || {}, inw = S.inward || null, sv = S.survey || {}, trip = S.trip || null;
+  const U = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
+  const num = v => (v === '' || v == null || !isFinite(Number(v)) || Number(v) <= 0) ? '' : String(Number(v));
+  const M = 14, W = 182, LINE = 150, INK = 20, VAL = 55;
+
+  // ── data ──────────────────────────────────────────────────────────────────────────────
+  const lineRec = (state.db.shippingLines || []).find(l => l.id === ic.line);
+  const agent = lineRec ? (lineRec.code || lineRec.name) : (ic.line ? lineName(ic.line) : '');
+  const sz = ic.ctype ? decomposeCtype(ic.ctype) : { size: '', type: '' };
+  const drv = ic.driver ? (state.db.drivers || []).find(d => d.id === ic.driver) : null;
+  const truckReg = ic.truck ? String(truckName(ic.truck)).split(' · ')[0] : (ic.truckRegText || '');
+  const tripRef = trip && trip.ref && !/^REF-\d+$/.test(trip.ref) ? trip.ref : '';
+  const rmk = String(ic.notes || '').trim();
+  const userRemark = /^(Auto-issued|Booking\s)/.test(rmk) ? '' : rmk;     // system notes are internal: never printed
+  const D = {
+    eir: ic.eirNumber || '',
+    shipper: ic.receivingParty || (trip && trip.receivingParty) || ic.deliveringParty || '',
+    reference: tripRef || ic.guaranteeNo || ic.blNumber || (inw && (inw.guaranteeNo || inw.blNumber)) || '',
+    date: icFmtDMY(ic.date), time: icFmtTime12(ic.date),
+    container: ic.container || '', agent,
+    finalDest: X.final_destination || (trip && trip.dest && trip.dest !== '—' ? trip.dest : ''),
+    releaseNo: ic.releaseOrderNo || (trip && trip.releaseOrderNo) || '',
+    releaseDate: icFmtDMY(X.release_order_date),
+    iso: ic.isoCode || sv.iso_code || (inw && inw.isoCode) || '',
+    size: String(sz.size || '').replace(/ft$/i, ''), type: sz.type || '',
+    vessel: ic.vessel || (trip && trip.vessel) || '', voyage: ic.voyage || (trip && trip.voyage) || '',
+    mtwt: num(sv.tare_weight), mgwt: num(sv.mgwt) || num(inw && inw.grossWeight),
+    csc: X.csc_approval || sv.csc_approval || '',
+    transporter: ic.transporter || '',
+    lorry: [truckReg, ic.trailerNo].filter(Boolean).join('/'),
+    driver: ic.driver ? driverName(ic.driver) : (ic.driverNameText || ''),
+    driverId: ic.driverIdNumber || (drv && (drv.idNo || drv.id_no)) || '',
+    preparedBy: opts.printedBy || '', clerk: ic.clerkName || '',
+    remarks: [ic.condition, userRemark].filter(Boolean).join(' — '),
+    inDate: inw ? icFmtDMY(inw.date) : '', inEir: inw ? inw.eirNumber || '' : '', inVessel: inw ? inw.vessel || '' : '', inVoyage: inw ? inw.voyage || '' : '',
+  };
+
+  // ── drawing helpers (mm, A4) ────────────────────────────────────────────────────────────
+  const box = (x, y, w, h) => { doc.setDrawColor(LINE); doc.setLineWidth(0.25); doc.rect(x, y, w, h); };
+  const label = (t, x, y, sz, align) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(sz || 7.4); doc.setTextColor(INK); doc.text(t, x, y, align ? { align } : undefined); };
+  const fit = (t, x, y, w, size, o) => {
+    o = o || {}; let s = size;
+    doc.setFont('helvetica', o.bold ? 'bold' : 'normal'); doc.setFontSize(s); doc.setTextColor(o.ink || VAL);
+    while (s > 5 && doc.getTextWidth(t) > w) { s -= 0.25; doc.setFontSize(s); }
+    doc.text(t, x, y, o.align ? { align: o.align } : undefined);
+  };
+  const lv = (x, y, w, h, cap, val, o) => {                // caption on top, value beneath
+    box(x, y, w, h); label(cap, x + 2, y + 4.4);
+    if (val) fit((o && o.raw) ? String(val) : U(val), x + 2, y + h - 3.4, w - 4, (o && o.size) || 9, o);
+  };
+  const inline = (x, y, w, h, cap, val) => {              // caption and value on one line
+    box(x, y, w, h); label(cap, x + 2, y + h / 2 + 1.3, 8.4);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.4);
+    const off = doc.getTextWidth(cap) + 4;
+    if (val) fit(U(val), x + off, y + h / 2 + 1.7, w - off - 2, 11, { bold: true, ink: INK });
+  };
+  const strip = (x, y, w, hH, hV, cap, val) => {            // caption row + value row (ISO … CSC block)
+    box(x, y, w, hH); label(cap, x + w / 2, y + hH - 1.9, 7.2, 'center');
+    box(x, y + hH, w, hV); if (val) fit(U(val), x + w / 2, y + hH + hV - 2.6, w - 3, 9, { align: 'center' });
+  };
+
+  // ── page ───────────────────────────────────────────────────────────────────────────────
+  ghPdfLetterhead(doc, M, 8, W);
+  let y = 37;
+
+  box(M, y, 101, 11); label('CONTAINER INTERCHANGE REPORT / RECEIPT', M + 2, y + 6.9, 9.2);
+  box(M + 101, y, 81, 11); label('OUTWARD EIR NO.', M + 103, y + 6.9, 8.6);
+  if (D.eir) fit(U(D.eir), M + W - 3, y + 7.8, 38, 15, { bold: true, ink: INK, align: 'right' });
+  y += 11;
+
+  lv(M, y, 87, 13, 'SHIPPER NAME', D.shipper);
+  lv(M + 87, y, 47, 13, 'REFERENCE No', D.reference);
+  lv(M + 134, y, 25, 13, 'DATE', D.date, { size: 8.5, raw: true });
+  lv(M + 159, y, 23, 13, 'TIME', D.time, { size: 8.5, raw: true });
+  y += 13;
+
+  inline(M, y, 84, 11, 'CONTAINER NO. :', D.container);
+  inline(M + 84, y, 98, 11, 'AGENT / LINE :', D.agent);
+  y += 11;
+
+  lv(M, y, 90, 14, 'FINAL DESTINATION', D.finalDest);
+  lv(M + 90, y, 50, 14, 'RELEASE ORDER NO.', D.releaseNo);
+  lv(M + 140, y, 42, 14, 'R. ORDER DATE', D.releaseDate, { raw: true });
+  y += 14;
+
+  const strips = [['ISO', 20, D.iso], ['SIZE', 15, D.size], ['TYPE', 15, D.type], ['VESSEL NAME', 35, D.vessel], ['VOY NO.', 22, D.voyage],
+                  ['MTWT', 19, D.mtwt], ['MGWT', 20, D.mgwt], ['CSC Approval', 36, D.csc]];
+  let sx = M; strips.forEach(s => { strip(sx, y, s[1], 6, 8, s[0], s[2]); sx += s[1]; });
+  y += 14;
+
+  lv(M, y, 38, 13, 'TRANSPORTER', D.transporter);
+  lv(M + 38, y, 46, 13, 'TRUCK / TRAILER NO.', D.lorry);
+  lv(M + 84, y, 44, 13, 'DRIVER NAME', D.driver);
+  lv(M + 128, y, 34, 13, 'ID/DRIVING NO.', D.driverId);
+  lv(M + 162, y, 20, 13, 'SIGN.', '');
+  y += 13;
+
+  lv(M, y, 100, 13, 'EIR PREPARED / COMPILED BY :', D.preparedBy, { size: 9.5 });
+  lv(M + 100, y, 82, 13, 'LOADING / RELEASING CLERK :', D.clerk, { size: 9.5 });
+  y += 13;
+
+  lv(M, y, 100, 13, 'REMARKS :', D.remarks, { size: 9.5 });
+  lv(M + 100, y, 82, 13, 'GHD SIGN / STAMP :', '');
+  y += 13 + 6;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(INK);
+  doc.text(['NB: CONTAINER RELEASED / RECEIVED IN GOOD CONDITION.',
+            'IT IS THE RESPONSIBILITY OF THE SHIPPER / TRANSPORTER / AGENT FOR ANY LOSS / DAMAGE',
+            'OR CLEANLINESS OF THE EQUIPMENT AFTER IT HAS LEFT THE DEPOT.'], M, y, { lineHeightFactor: 1.35 });
+
+  // ── "came in on" block, fixed at the foot of the page ──────────────────────────────────────
+  const fy = 262, cols = [['DATE IN', 41, D.inDate], ['EIR IN', 42, D.inEir], ['VESSEL IN', 53, D.inVessel], ['VOYAGE IN', 46, D.inVoyage]];
+  let fx = M; cols.forEach(c => {
+    box(fx, fy, c[1], 7); label(c[0], fx + c[1] / 2, fy + 4.9, 8.4, 'center');
+    box(fx, fy + 7, c[1], 8); if (c[2]) fit(c[0] === 'DATE IN' ? String(c[2]) : U(c[2]), fx + c[1] / 2, fy + 12.4, c[1] - 3, 9, { align: 'center' });
+    fx += c[1];
+  });
+  doc.setTextColor(INK); doc.setDrawColor(INK);
+
+  return { doc, filename: `interchange-${String(ic.container || ic.id).replace(/\s+/g, '')}.pdf` };
+}
+
+/* Small editor for the boxes the dispatch / gate records do not capture. Saves with a targeted update, so a record that was
+   loaded without its photos (on-demand mode) is never overwritten. */
+async function icEditOutwardDetails(id) {
+  let ic = (state.db.interchange || []).find(i => i.id === id);
+  if (!ic && window.ICR) { try { ic = await ICR.ensureRow(id); } catch (e) { /* fall through */ } }
+  if (!ic) { toast('Record not found on this device', 'error'); return; }
+  await icSlipPrefetch(ic);
+  const S = ic._slip || {}, X = S.extra || {}, sv = S.survey || {}, trip = S.trip || null;
+  const f = (k, l, v, ex) => `<div class="fg"><label>${l}</label><input id="oe_${k}" value="${sanitize(v || '')}" ${ex || ''}/></div>`;
+  openModal('Outward EIR details — ' + sanitize(ic.container), `
+    <div class="ops-notice" style="margin-bottom:12px">These print in the matching boxes of the outward EIR. Leave a box empty to print it blank.</div>
+    ${f('shipper', 'Shipper name', ic.receivingParty || (trip && trip.receivingParty) || ic.deliveringParty)}
+    <div class="form-row-2">${f('dest', 'Final destination', X.final_destination || (trip && trip.dest !== '—' ? trip.dest : ''), 'placeholder="e.g. Shippers own"')}
+    ${f('rel', 'Release order no.', ic.releaseOrderNo || (trip && trip.releaseOrderNo))}</div>
+    <div class="form-row-2">${f('reldate', 'Release order date', X.release_order_date ? String(X.release_order_date).slice(0, 10) : '', 'type="date"')}
+    ${f('csc', 'CSC approval', X.csc_approval || sv.csc_approval, 'placeholder="e.g. USA/AB-077/10-10"')}</div>
+    <div class="form-row-2">${f('trp', 'Transporter', ic.transporter)}${f('trl', 'Trailer no.', ic.trailerNo)}</div>
+    ${f('did', 'Driver ID / driving licence no.', ic.driverIdNumber)}
+    <button class="submit-btn" onclick="icEditOutwardSave('${sanitize(id)}')">Save details →</button>`);
+}
+async function icEditOutwardSave(id) {
+  const ic = (state.db.interchange || []).find(i => i.id === id);
+  if (!ic) { closeModal(); return; }
+  if (!navigator.onLine) { toast('You are offline — connect to save these details.', 'error'); return; }
+  const v = k => sanitize(((document.getElementById('oe_' + k) || {}).value || '').trim());
+  const patch = {
+    receiving_party: v('shipper') || null, final_destination: v('dest') || null, release_order_no: v('rel') || null,
+    release_order_date: v('reldate') || null, csc_approval: v('csc') || null,
+    transporter: v('trp') || null, trailer_no: v('trl') || null, driver_id_number: v('did') || null,
+  };
+  const { error } = await supabase.from('interchange').update(patch).eq('id', id);
+  if (error) {
+    const missing = /release_order_date|final_destination|csc_approval/i.test(error.message || '');
+    toast(missing ? 'Database not updated yet — run supabase_outward_eir_migration.sql first.' : 'Could not save: ' + error.message, 'error', 8000);
+    return;
+  }
+  ic.receivingParty = patch.receiving_party || ''; ic.releaseOrderNo = patch.release_order_no || '';
+  ic.transporter = patch.transporter || ''; ic.trailerNo = patch.trailer_no || ''; ic.driverIdNumber = patch.driver_id_number || '';
+  if (ic._slip) ic._slip.extra = { release_order_date: patch.release_order_date, final_destination: patch.final_destination, csc_approval: patch.csc_approval };
+  try { addAudit(state.profile.username, 'Outward EIR Details Edited', `${ic.container} · ${ic.eirNumber || ''}`); } catch (e) {}
+  closeModal(); toast('Outward EIR details saved', 'success');
+  if (window.GargoDocs) GargoDocs.eir(id, 'preview');
+}
+
 /* Asks whoever is printing for their two names and logs it. Returns the name, or null if cancelled. */
 async function icPrinter(ic, what) {
   if (typeof ghAskPrinter !== 'function') return '';
@@ -757,6 +979,7 @@ async function icPrinter(ic, what) {
 async function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
+  if (ic) { try { await icSlipPrefetch(ic); } catch (e) { console.warn('slip data', e); } }
   const by = await icPrinter(ic); if (by === null) return;
   const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) r.doc.save(r.filename);
@@ -765,6 +988,7 @@ async function downloadInterchangeSlip(icId) {
 async function printInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
+  if (ic) { try { await icSlipPrefetch(ic); } catch (e) { console.warn('slip data', e); } }
   const by = await icPrinter(ic); if (by === null) return;
   const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) ghPrintPdf(r.doc);

@@ -15,7 +15,7 @@
       ['sv_container', 'Container No.', { locked: 1 }], ['sv_ctype', 'Type / Size', { locked: 1 }], ['sv_condition', 'Overall Condition', { locked: 1 }],
       ['sv_datein', 'Date IN'], ['sv_line', 'Shipping Line'], ['sv_consignee', 'Consignee / C&F'], ['sv_bl', 'Guarantee / B/L Number'],
       ['sv_vessel', 'Ex Vessel'], ['sv_voyage', 'Voyage'], ['sv_transporter', 'Transporter'],
-      ['sv_iso', 'ISO Code', { cfg: 'survey.requireIso', def: false }], ['sv_mgwt', 'Max Gross Weight (kg)'], ['sv_tare', 'Tare Weight (kg)'],
+      ['sv_iso', 'ISO Code', { cfg: 'survey.requireIso', def: false }], ['sv_mgwt', 'Max Gross Weight (kg)'], ['sv_tare', 'Tare Weight (kg)'], ['sv_csc', 'CSC Approval'],
       ['sv_gross', 'Gross Weight (kg)', { cfg: 'survey.requireWeight', def: false }],
       ['sv_dom', 'Date of Manufacture', { cfg: 'survey.requireManufactureDate', def: false }],
       ['sv_cargo', 'Cargo Status', { cfg: 'survey.requireCargoStatus', def: false }],

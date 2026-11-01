@@ -54,6 +54,7 @@
       const ic = (state.db.interchange || []).find(x => x.id === id);
       if (!ic) return toast('Record not found on this device', 'error');
       if (typeof icAwaitingSurvey === 'function' && !icAwaitingSurvey(ic) && typeof ensureEirNumber === 'function') await ensureEirNumber(ic);
+      if (typeof icSlipPrefetch === 'function') { try { await icSlipPrefetch(ic); } catch (x) { /* print what we have */ } }
       const by = await icPrinter(ic); if (by === null) return;
       const r = buildInterchangeSlip(id, { printedBy: by });
       act(r, mode, (/^(Gate|Depot)-In$/.test(ic.type) ? 'Inward' : 'Outward') + ' EIR — ' + ic.container + (ic.eirNumber ? ' · ' + ic.eirNumber : ''));
@@ -82,7 +83,7 @@
       const hasPhotos = !!(i.img || i.hasImg || i.hasPhotos || (i.photos && i.photos.length));
       h += '<div class="gxd-row"><div><b>' + (inward ? 'Inward' : 'Outward') + ' EIR</b> ' + (i.eirNumber ? '<span class="mono">' + e(i.eirNumber) + '</span>' : '<span style="color:var(--amber)">' + (pending ? 'issued after survey' : 'number pending') + '</span>') +
         '<div class="gxd-meta">' + e(i.type) + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(i.date) : i.date) + (i.condition ? ' · ' + e(i.condition) : '') + (i.vessel ? ' · ' + e(i.vessel) + (i.voyage ? ' / ' + e(i.voyage) : '') : '') + '</div></div>' +
-        '<div class="gxd-btns">' + trio('eir', i.id) + (hasPhotos ? '<button type="button" class="tbl-btn" onclick="closeModal();showContainerPhotos(\'' + e(i.id) + '\')">🖼 Photos</button>' : '') + '</div></div>';
+        '<div class="gxd-btns">' + trio('eir', i.id) + (inward ? '' : '<button type="button" class="tbl-btn" onclick="closeModal();icEditOutwardDetails(\'' + e(i.id) + '\')">✎ Slip details</button>') + (hasPhotos ? '<button type="button" class="tbl-btn" onclick="closeModal();showContainerPhotos(\'' + e(i.id) + '\')">🖼 Photos</button>' : '') + '</div></div>';
       if (i.surveyId) h += '<div class="gxd-row" style="padding-left:14px"><div><b>Inspection report</b><div class="gxd-meta">Survey for the ' + (inward ? 'inward' : 'outward') + ' record above</div></div><div class="gxd-btns">' + trio('inspection', i.surveyId) + '</div></div>';
     });
     if (trips.length) {
@@ -105,6 +106,7 @@
     const b = (mode, label) => '<button type="button" class="modal-btn' + (mode === 'preview' ? '' : ' ghost') + '" onclick="GargoDocs.eir(\'' + e(ic.id) + '\',\'' + mode + '\')">' + label + '</button>';
     openModal('Outward EIR issued', '<div style="font-size:13px;line-height:1.6;color:var(--text-2)"><div style="margin-bottom:12px">The outward interchange for <b class="mono" style="color:var(--gold)">' + e(ic.container) + '</b> was issued automatically as <b>' + e(ic.eirNumber) + '</b>' + (ic.condition ? ' (' + e(ic.condition) + ')' : '') + '.</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' + b('preview', '👁 Preview') + b('download', '⬇ Download') + b('print', '🖨 Print') +
+      '<button type="button" class="modal-btn ghost" onclick="icEditOutwardDetails(\'' + e(ic.id) + '\')">✎ Slip details</button>' +
       '<button type="button" class="modal-btn ghost" onclick="GargoDocs.open(\'' + e(ic.container) + '\')">All documents for this container</button></div></div>');
   };
 

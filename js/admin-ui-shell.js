@@ -2,13 +2,13 @@
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','finance','hr','workshop'],
-  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport'],
-  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport','fuel'],
-  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','workshop'],
-  finance:  ['finance','trips','shippinglines'],
-  hr:       ['hr','drivers'],
-  viewer:   ['trucks','drivers','trips'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','finance','approvals','hr','workshop','reportcentre'],
+  clerk:    ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport','reportcentre'],
+  dispatch: ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','shutout','interchange','prestaking','depotreport','fuel','reportcentre'],
+  ops:      ['trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','prestaking','depotreport','shippinglines','requisitions','workshop','reportcentre'],
+  finance:  ['finance','approvals','trips','shippinglines','reportcentre'],
+  hr:       ['hr','approvals','drivers','reportcentre'],
+  viewer:   ['trucks','drivers','trips','reportcentre'],
 };
 
 function buildBadges() {
@@ -102,6 +102,7 @@ const SECTION_META = {
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
   finance:['Finance','Finance Hub'], hr:['Human Resources','HR Hub'],
+  approvals:['Finance','Approvals'], reportcentre:['Insights','Data Hub'],
   
 };
 
@@ -374,10 +375,10 @@ function renderUserMgmt() {
   }
   const roles=[
     {name:'System Administrator',perms:'Full access — all modules including Settings, Finance & Invoicing'},
-    {name:'Operations Officer',  perms:'Dashboard, Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange'},
+    {name:'Operations Officer',  perms:'Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange, Depot Report and the Data Hub'},
     {name:'Finance Manager',     perms:'Revenue Reports (admin only), Billing Rates (admin only)'},
     {name:'Dispatch Controller', perms:'Dispatch Console, Active Trips, Driver/Truck visibility'},
-    {name:'Read-Only Viewer',    perms:'Dashboard and reports only — no edit access'},
+    {name:'Read-Only Viewer',    perms:'Trucks, drivers, trips and the Data Hub reports — no edit access'},
   ];
   const rl = document.getElementById('roleList');
   if (rl) {
@@ -411,7 +412,7 @@ async function toggleUserActive(id) {
 }
 
 /* ── Section-access checkbox grid, shared by Create User + Edit Access ── */
-const ALL_SIDEBAR_SECTIONS = ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop'];
+const ALL_SIDEBAR_SECTIONS = ['dashboard','trucks','drivers','trips','dispatch','inward','publicbookings','depops','maintenance','fuel','shutout','interchange','depotreport','shippinglines','requisitions','workshop','prestaking','finance','approvals','hr','reportcentre'];
 
 const ALL_ADMINRAIL_SECTIONS = ['invoicing','allocation','workanalysis','reports','tripreports','livetracking','usermgmt','settings'];
 
@@ -537,7 +538,7 @@ function showEditAccessModal(id) {
   const admin = Array.isArray(u.adminSections) ? u.adminSections : (ROLE_ADMINRAIL[u.role] || []);
   openModal(`Edit Access — ${u.name}`, `
     <div class="fg"><label>Role</label><select id="ea_role" onchange="refreshAccessCheckboxesForRole('ea', this.value)">
-      ${['ops','dispatch','clerk','finance','viewer','driver','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}
+      ${['ops','dispatch','clerk','finance','hr','viewer','driver','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}
     </select></div>
     <div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">Tick exactly which nav bar and admin sections ${u.name} can access. Changing role does not reset your ticks unless you use the checkboxes yourself.</div>
     ${(function(){ // build with this user's actual current selection, not the plain role default

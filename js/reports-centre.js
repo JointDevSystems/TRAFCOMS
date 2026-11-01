@@ -619,7 +619,14 @@
   const ORDER = ['Overview', 'Depot registers', 'Yard', 'Movements', 'Survey & repairs', 'Exceptions', 'Trips & dispatch', 'Fleet & drivers', 'Maintenance & fuel', 'Finance', 'People (HR)'];
   /* who may open a report: everyone except drivers; a report with roles[] is for those roles and administrators */
   const ROLE = () => (state.profile && state.profile.role) || (state.currentUser && state.currentUser.role) || '';
-  const canSee = rep => { if (!rep) return false; const r = ROLE(); if (r === 'driver') return false; if (!rep.roles || r === 'admin') return true; return rep.roles.indexOf(r) > -1; };
+  const canSee = rep => {
+    if (!rep) return false; const r = ROLE(); if (r === 'driver') return false; if (r === 'admin') return true;
+    /* linked to User Management: the Data Hub itself must be ticked for this user, and the Finance / HR reports follow their Finance / HR ticks
+       (a report's "roles" names the section that unlocks it). Without the access helpers, fall back to the plain role check. */
+    if (typeof canSeeSection !== 'function') return !rep.roles || rep.roles.indexOf(r) > -1;
+    if (!canSeeSection('reportcentre')) return false;
+    return !rep.roles || rep.roles.some(sec => canSeeSection(sec));
+  };
   /* first preview puts the shipping line first: reports that can be grouped by line open grouped by line */
   const defGroupOf = rep => { const g = (rep.groups || []).find(x => /(^|\.)line$/.test(x[0])); return g ? g[0] : rep.defGroup; };
   /* reports that read well after this one; they open with the same shipping line and dates */
