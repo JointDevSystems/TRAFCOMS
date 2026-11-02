@@ -260,7 +260,7 @@
     return { head: cols.map(c => c.h), align: cols.map(c => (c.num ? 'n' : (c.wrap ? 'wrap' : ''))), numbered: o.numbered !== false, hideLabels: !!o.hideLabels, box: !!o.box, title: o.title, pb: o.pb, empty: o.empty,
       groups: ents.map(([label, rs]) => ({ label, rows: rs.map(r => cols.map(c => c.get(r))), foot: o.foot ? o.foot(label, rs) : null })), foot: o.grand ? o.grand(rows) : null };
   }
-  const pickCols = (rep, f) => { const sel = f.cols && f.cols.length ? f.cols : null; return rep.cols.filter(c => (sel ? sel.indexOf(c.k) > -1 : c.on)); };
+  const pickCols = (rep, f) => { const sel = f.cols && f.cols.length ? f.cols : null; return rep.cols.filter(c => c.must || (sel ? sel.indexOf(c.k) > -1 : c.on)); };
   const subFoot = g => (g.id !== 'sizetype' && g.id !== 'none' ? (label, rs) => ({ text: 'Sub-total : ' + rs.length }) : null);
   const lineText = f => {
     if (!f.line || !f.line.length) return 'ALL SHIPPING LINES';
@@ -273,21 +273,21 @@
   /* ───────────────────────── report builders ───────────────────────── */
   const C = (k, h, get, x) => Object.assign({ k, h, get }, x || {});
   const IN_COLS = [
-    C('date', 'Date In', r => fd(r.at, r.sty), { on: 1 }), C('party', 'Deliver Party', r => r.party, { on: 1 }), C('container', 'Cont No.', r => r.container, { on: 1 }),
+    C('date', 'Date In', r => fd(r.at, r.sty), { on: 1 }), C('party', 'Deliver Party', r => r.party, { on: 1 }), C('container', 'Cont No.', r => r.container, { on: 1 }), C('line', 'Shipping Line', r => lineLabel(r.line), { on: 1, must: 1 }),
     C('size', 'Size', r => r.size, { on: 1 }), C('type', 'Type', r => r.type, { on: 1 }), C('eir', 'EIR No.', r => r.eir, { on: 1 }), C('dom', 'DOM', r => r.dom, { on: 1 }),
     C('remarks', 'Remarks', r => r.remarks, { on: 1, wrap: 1 }), C('lorry', 'Lorry No.', r => r.lorry, { on: 1 }), C('vessel', 'Vessel', r => r.vessel, { on: 1 }),
     C('voyage', 'Voyage', r => r.voyage, { on: 1 }), C('gno', 'GNo.', r => r.gno, { on: 1 }), C('transporter', 'Transporter', r => r.transporter, { on: 1 }),
-    C('time', 'Time In', r => ft(r.at)), C('line', 'Line', r => lineLabel(r.line)), C('driver', 'Driver', r => r.driver), C('clerk', 'Clerk', r => r.clerk), C('zone', 'Yard Slot', r => r.zone),
+    C('time', 'Time In', r => ft(r.at)), C('driver', 'Driver', r => r.driver), C('clerk', 'Clerk', r => r.clerk), C('zone', 'Yard Slot', r => r.zone),
     C('iso', 'ISO', r => up(r.ic && r.ic.isoCode)), C('weight', 'Gross Wt', r => (r.ic && r.ic.grossWeight) || ''), C('cargo', 'Cargo', r => up(r.ic && r.ic.cargoStatus)),
     C('days', 'Days in Yard', r => r.days, { num: 1 }), C('yard', 'In Yard?', r => (r.inYard ? 'YES' : 'NO')),
   ];
   const OUT_COLS = [
-    C('date', 'Date Out', r => fd(r.at, r.sty), { on: 1 }), C('eir', 'Out EIR No.', r => r.eir, { on: 1 }), C('container', 'Container No.', r => r.container, { on: 1 }),
+    C('date', 'Date Out', r => fd(r.at, r.sty), { on: 1 }), C('eir', 'Out EIR No.', r => r.eir, { on: 1 }), C('container', 'Container No.', r => r.container, { on: 1 }), C('line', 'Shipping Line', r => lineLabel(r.line), { on: 1, must: 1 }),
     C('party', 'Collecting Party', r => r.party, { on: 1 }), C('vessel', 'Vessel', r => r.vessel, { on: 1 }), C('voyage', 'Voy', r => r.voyage, { on: 1 }),
     C('ref', 'Release Order No', r => r.ref, { on: 1 }), C('datein', 'Date In', r => (isFinite(r.dateIn) ? fd(r.dateIn, r.sty) : ''), { on: 1 }), C('ineir', 'In EIR No', r => r.inEir, { on: 1 }),
     C('dest', 'Final Destination', r => r.dest, { on: 1 }), C('transporter', 'Transporter', r => r.transporter, { on: 1 }), C('lorry', 'Lorry No', r => r.lorry, { on: 1 }),
     C('driver', 'Driver', r => r.driver, { on: 1 }), C('remarks', 'Remarks', r => r.remarks, { on: 1, wrap: 1 }),
-    C('time', 'Time Out', r => ft(r.at)), C('line', 'Line', r => lineLabel(r.line)), C('size', 'Size', r => r.size), C('type', 'Type', r => r.type), C('clerk', 'Clerk', r => r.clerk),
+    C('time', 'Time Out', r => ft(r.at)), C('size', 'Size', r => r.size), C('type', 'Type', r => r.type), C('clerk', 'Clerk', r => r.clerk),
     C('days', 'Days in Yard', r => r.days, { num: 1 }), C('outtype', 'Outward Type', r => up(outwardTypeLabel(r.trip && r.trip.outwardType))), C('source', 'Source', r => (r.synth ? 'DISPATCH TRIP' : 'GATE-OUT')),
   ];
   function dailyBuild(isIn) {
