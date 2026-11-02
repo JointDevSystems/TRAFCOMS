@@ -399,3 +399,33 @@
     body.insertAdjacentHTML('beforeend', `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px"><span style="font-size:12px;color:var(--text-2)">${e ? `HR record: <b>${esc(e.full_name)}</b> · ${esc(e.staff_no || '')} · ${esc(e.department || '')}` : 'No matching HR record'}</span><button class="action-btn" onclick="erpOpenEmployeeForDriver('${id}')" ${e ? '' : 'disabled'}>Open HR profile →</button></div>`);
   };
 })();
+
+/* Safety net: if index.html was not updated / js/hr-records.js did not load, fetch it now and say so if it is missing. */
+(function () {
+  const NAMES = ['hrFiles', 'hrMoveDept', 'hrFileForm', 'hrDeptNew'];
+  const real = () => typeof window.hrFiles === 'function' && !window.hrFiles._stub;
+  let loading = null;
+  function load() {
+    if (real()) return Promise.resolve(true);
+    if (loading) return loading;
+    loading = new Promise(res => {
+      const s = document.createElement('script'); s.src = 'js/hr-records.js?v=63';
+      s.onload = () => { loading = null; try { if (document.getElementById('hrTabs') && typeof hrBuildTabs === 'function') hrBuildTabs(); } catch (e) {} res(real()); };
+      s.onerror = () => { loading = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+  NAMES.forEach(n => {
+    if (typeof window[n] === 'function') return;
+    const stub = function () {
+      const a = arguments;
+      load().then(ok => {
+        if (ok && window[n] && !window[n]._stub) return window[n].apply(null, a);
+        toast('HR records module not found on the server. Upload js/hr-records.js next to hr.js, redeploy, then reload.', 'error', 9000);
+      });
+    };
+    stub._stub = true; window[n] = stub;
+  });
+  window.addEventListener('load', () => { setTimeout(() => { if (!real()) load(); }, 500); });
+})();
