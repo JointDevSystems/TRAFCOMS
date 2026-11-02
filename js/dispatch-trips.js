@@ -952,20 +952,20 @@ function switchDispatchTab(tab, btn) {
 function previewContainerImgs(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
-  const room = GX_MAX_PHOTOS - _dispatchContainerImages.length;
-  if (room <= 0) { toast(`Maximum ${GX_MAX_PHOTOS} photos — remove one to add another`, 'error'); e.target.value = ''; return; }
+  const room = GX_MAX_DISPATCH_PHOTOS - _dispatchContainerImages.length;
+  if (room <= 0) { toast(`Maximum ${GX_MAX_DISPATCH_PHOTOS} photos — remove one to add another`, 'error'); e.target.value = ''; return; }
   files.slice(0, room).forEach(file => {
     const problem = gxPhotoProblem(file);
     if (problem) { toast(`${file.name} skipped — ${problem}`, 'error'); return; }
     const reader = gxImageReader();
     reader.onload = ev => {
-      if (_dispatchContainerImages.length >= GX_MAX_PHOTOS) return;
+      if (_dispatchContainerImages.length >= GX_MAX_DISPATCH_PHOTOS) return;
       _dispatchContainerImages.push(ev.target.result);
       renderContainerImgGrid();
     };
     reader.readAsDataURL(file);
   });
-  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max ${GX_MAX_PHOTOS})`, 'warning');
+  if (files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} could be added (max ${GX_MAX_DISPATCH_PHOTOS})`, 'warning');
   e.target.value = ''; 
 }
 

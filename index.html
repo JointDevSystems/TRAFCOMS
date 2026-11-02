@@ -285,6 +285,10 @@
                         <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
                         Interchange <span class="nav-badge" id="badge-interchange"></span>
                     </button>
+                    <button class="nav-item" onclick="showSection('gatesecurity',this)" data-section="gatesecurity">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 3l7.5 2.8v5.6c0 4.3-3 7.6-7.5 9.6-4.5-2-7.5-5.3-7.5-9.6V5.8z"/><path d="M8.5 12h7M12.5 9l3 3-3 3"/></svg>
+                        Gate Security
+                    </button>
                     <button class="nav-item" onclick="showSection('prestaking',this)" data-section="prestaking">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M5 20V9l7-6 7 6v11"/><path d="M9 20v-6h6v6"/></svg>
                         Vessel Prestaking <span class="nav-badge" id="badge-prestaking"></span>
@@ -931,6 +935,27 @@
                             </div>
                         </div>
                         <div id="interchangeList"></div>
+                    </section>
+
+                    <!-- GATE SECURITY -->
+                    <section class="section" id="sec-gatesecurity">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Gate Security</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="GateSec.filter('all',this)">All</button>
+                                <button class="filter-btn" onclick="GateSec.filter('in',this)">In</button>
+                                <button class="filter-btn" onclick="GateSec.filter('out',this)">Out</button>
+                                <button class="action-btn" id="gsAddIn" onclick="GateSec.add('in')">+ Vehicle In</button>
+                                <button class="action-btn" id="gsAddOut" onclick="GateSec.add('out')">+ Vehicle Out</button>
+                            </div>
+                        </div>
+                        <div class="two-col-grid" id="gateSecKpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
+                        <div class="gs-bar">
+                            <input class="gs-q" id="gsQ" type="search" placeholder="Search vehicle, driver, ID, container, gate pass" oninput="GateSec.search()" autocomplete="off"/>
+                            <label>From <input id="gsFrom" type="date" onchange="GateSec.search()"/></label>
+                            <label>To <input id="gsTo" type="date" onchange="GateSec.search()"/></label>
+                        </div>
+                        <div id="gateSecList"></div>
                     </section>
 
                     <!-- VESSEL PRESTAKING -->
@@ -1738,5 +1763,6 @@
     <script defer src="js/survey-currency.js"></script>
     <script defer src="js/reports-centre.js"></script>
     <script defer src="js/documents.js"></script>
+    <script defer src="js/gate-security.js"></script>
 </body>
 </html>

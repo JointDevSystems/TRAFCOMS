@@ -535,6 +535,7 @@ var GX_PHOTO_RAW_MAX = 25 * 1024 * 1024;       // biggest original file we will 
 var GX_PHOTO_TARGET = 450 * 1024;              // shrink until the stored text is about this size (~330 KB of image)
 var GX_PHOTO_STORED_MAX = 2.8 * 1024 * 1024;   // if an image still is not smaller than this after shrinking, refuse it
 var GX_MAX_PHOTOS = 6;                         // every photo section except surveys
+var GX_MAX_DISPATCH_PHOTOS = 4;                // dispatch container photos (the database enforces the same limit)
 var GX_MAX_SURVEY_PHOTOS = 10;                 // survey photos
 
 /* '' = usable; otherwise the reason this file cannot be used as a photo */

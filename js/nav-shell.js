@@ -39,7 +39,7 @@
   const AREAS = [
     { id: 'home', label: 'Home', short: 'Home', blurb: 'Where you start', hue: '#D9B23A', icon: IC.home, groups: [['', ['dashboard']]] },
     { id: 'depot', label: 'Depot', short: 'Depot', blurb: 'Gate, yard and shipping lines', hue: '#D9B23A', icon: IC.depot,
-      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout']], ['Vessels and lines', ['prestaking', 'depotreport', 'shippinglines']]] },
+      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout', 'gatesecurity']], ['Vessels and lines', ['prestaking', 'depotreport', 'shippinglines']]] },
     { id: 'fleet', label: 'Fleet', short: 'Fleet', blurb: 'Trucks, drivers and trips', hue: '#38BDF8', icon: IC.fleet,
       groups: [['Movement', ['dispatch', 'trips', 'livetracking']], ['Assets', ['trucks', 'drivers', 'maintenance', 'fuel']]] },
     { id: 'compliance', label: 'Compliance', short: 'Compliance', blurb: 'Requests and workshop jobs', hue: '#2DD4BF', icon: IC.compliance,
@@ -60,6 +60,7 @@
     publicbookings: 'Bookings sent in through the public booking page',
     interchange: 'Gate-in and gate-out records',
     shutout: 'Containers turned away at the gate',
+    gatesecurity: 'Vehicles coming in and going out of the gate',
     prestaking: 'Containers staged ahead of a vessel',
     depotreport: 'Inward and outward register',
     shippinglines: 'Shipping lines, contacts and portal links',
@@ -86,7 +87,7 @@
     settings: 'System settings and thresholds',
   };
   const KW = {
-    interchange: 'gate in out eir receipt', inward: 'receive arrival gate in', shutout: 'refused rejected', trips: 'journey haulage',
+    interchange: 'gate in out eir receipt', gatesecurity: 'guard vehicle truck trailer driver register gate pass log', inward: 'receive arrival gate in', shutout: 'refused rejected', trips: 'journey haulage',
     livetracking: 'map gps position wialon', finance: 'receipts bills expenses suppliers money', hr: 'leave payroll attendance staff',
     people: 'employees staff', invoicing: 'billing rates customers', approvals: 'inbox pending authorise', trucks: 'vehicles fleet',
     drivers: 'licence duty', dispatch: 'assign allocate', depops: 'yard zones surveys master', reports: 'analytics export', reportcentre: 'data hub stock advising daily in out lift yard fleet payroll', settings: 'configuration admin',
