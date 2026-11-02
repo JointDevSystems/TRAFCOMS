@@ -82,13 +82,13 @@
       const inward = /^(Gate|Depot)-In$/.test(i.type), pending = typeof icAwaitingSurvey === 'function' && icAwaitingSurvey(i);
       const hasPhotos = !!(i.img || i.hasImg || i.hasPhotos || (i.photos && i.photos.length));
       h += '<div class="gxd-row"><div><b>' + (inward ? 'Inward' : 'Outward') + ' EIR</b> ' + (i.eirNumber ? '<span class="mono">' + e(i.eirNumber) + '</span>' : '<span style="color:var(--amber)">' + (pending ? 'issued after survey' : 'number pending') + '</span>') +
-        '<div class="gxd-meta">' + e(i.type) + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(i.date) : i.date) + (i.condition ? ' · ' + e(i.condition) : '') + (i.vessel ? ' · ' + e(i.vessel) + (i.voyage ? ' / ' + e(i.voyage) : '') : '') + '</div></div>' +
+        '<div class="gxd-meta">' + e(i.type) + ' · <b>Line:</b> ' + e(i.line && typeof lineName === 'function' ? lineName(i.line) : '— not set') + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(i.date) : i.date) + (i.condition ? ' · ' + e(i.condition) : '') + (i.vessel ? ' · ' + e(i.vessel) + (i.voyage ? ' / ' + e(i.voyage) : '') : '') + '</div></div>' +
         '<div class="gxd-btns">' + trio('eir', i.id) + (inward ? '' : '<button type="button" class="tbl-btn" onclick="closeModal();icEditOutwardDetails(\'' + e(i.id) + '\')">✎ Slip details</button>') + (hasPhotos ? '<button type="button" class="tbl-btn" onclick="closeModal();showContainerPhotos(\'' + e(i.id) + '\')">🖼 Photos</button>' : '') + '</div></div>';
       if (i.surveyId) h += '<div class="gxd-row" style="padding-left:14px"><div><b>Inspection report</b><div class="gxd-meta">Survey for the ' + (inward ? 'inward' : 'outward') + ' record above</div></div><div class="gxd-btns">' + trio('inspection', i.surveyId) + '</div></div>';
     });
     if (trips.length) {
       h += '<div class="gxd-h">Trips and dispatch</div>';
-      trips.forEach(t => { h += '<div class="gxd-row"><div><b>' + e(t.origin || '—') + ' → ' + e(t.dest || '—') + '</b><div class="gxd-meta">' + e(t.workType || '') + ' · ' + e(t.status || '') + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(t.startTime) : t.startTime) + '</div></div><div class="gxd-btns"><button type="button" class="tbl-btn" onclick="closeModal();showTripDetail(\'' + e(t.id) + '\')">Open trip</button></div></div>'; });
+      trips.forEach(t => { h += '<div class="gxd-row"><div><b>' + e(t.origin || '—') + ' → ' + e(t.dest || '—') + '</b><div class="gxd-meta">' + e(t.workType || '') + (t.shippingLine && typeof lineName === 'function' ? ' · <b>Line:</b> ' + e(lineName(t.shippingLine)) : '') + ' · ' + e(t.status || '') + ' · ' + e(typeof fmtDate === 'function' ? fmtDate(t.startTime) : t.startTime) + '</div></div><div class="gxd-btns"><button type="button" class="tbl-btn" onclick="closeModal();showTripDetail(\'' + e(t.id) + '\')">Open trip</button></div></div>'; });
     }
     h += '<div id="gxpDocHost"></div>';
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="modal-btn" onclick="closeModal();ReportCentre.open(\'history\',{container:\'' + e(cont) + '\'},true)">Open full history in Data Hub</button></div>';
