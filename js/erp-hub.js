@@ -1,11 +1,5 @@
 'use strict';
-/* Gargo ERP layer. Loads after finance.js, hr.js and finance-suite.js (uses GARGO_HUB / GARGO_FIN).
-   HR: employee database, 360° profile, org chart, loans & advances (recovered through payroll), onboarding / exit
-       checklists, public holidays, HR analytics, payroll posting to Finance.
-   Finance: receivables from Invoicing, petty cash ledger, bank reconciliation, fleet running costs, budgets,
-       supplier statements, cash-flow chart on the overview.
-   Also: HR / Finance counters on the main dashboard and staff in global search.
-   Approval rules and ledger posting are enforced by the database; this file only presents them. */
+
 (function () {
   const H = GARGO_HUB, F = GARGO_FIN, FIN = F.FIN, FIN_CATS = F.FIN_CATS, $ = id => document.getElementById(id), T = () => today10(), M = n => H.money(n), N = v => Number(v || 0);
   const sbadge = s => H.badge(s);
@@ -384,6 +378,7 @@
   window.handleSearch = function (q) {
     _hs(q); const ql = low(q), panel = $('searchResults'); if (!ql || !panel || !(isAdmin() || hrCan())) return;
     loadEmps().then(emps => {
+      const gi = $('globalSearch'); if (gi && low(gi.value) !== ql) return;   // user already typed something else: do not mix old results in
       const hit = emps.filter(e => [e.full_name, e.staff_no, e.id_no, e.phone, e.kra_pin, e.job_title, e.email].some(v => low(v).includes(ql))).slice(0, 5); if (!hit.length) return;
       const acts = window._searchResults || [], emptyEl = panel.querySelector('.search-result-empty'); if (emptyEl) emptyEl.remove();
       hit.forEach(e => { acts.push(() => { showSection('hr', document.querySelector('[data-section=hr]')); hrProfile(e.id); });

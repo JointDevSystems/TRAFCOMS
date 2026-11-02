@@ -755,6 +755,7 @@ function closeModal(e) {
 function handleSearch(q) {
   q = (q || '').toLowerCase().trim();
   const panel = document.getElementById('searchResults');
+  if (!panel) return;
   if (!q || !state.db) { panel.style.display = 'none'; return; }
   const db = state.db;
   const results = [];
@@ -774,9 +775,9 @@ function handleSearch(q) {
   const containers = new Set();
   db.trips.forEach(t => { if ((t.container||'').toLowerCase().includes(q)) containers.add(t.container.toUpperCase()); });
   db.shutouts.forEach(s => { if ((s.container||'').toLowerCase().includes(q)) containers.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i => {
+  (db.interchange || []).forEach(i => {
     if ((i.container||'').toLowerCase().includes(q) || (i.eirNumber||'').toLowerCase().includes(q) || (i.vessel||'').toLowerCase().includes(q) || (i.voyage||'').toLowerCase().includes(q) || (i.blNumber||'').toLowerCase().includes(q))
-      containers.add(i.container.toUpperCase());
+      { if (i.container) containers.add(String(i.container).toUpperCase()); }   // rows matched on EIR/vessel/BL may have no container
   });
   [...containers].forEach(c => {
     const tripCount = db.trips.filter(t => (t.container||'').toUpperCase() === c).length;
@@ -801,6 +802,22 @@ function handleSearch(q) {
   ).join('') : `<div class="search-result-item search-result-empty">No matches</div>`;
   window._searchResults = shown.map(r => r.action);
   panel.style.display = 'block';
+
+  /* Interchange rows are loaded on demand (ic-remote.js), so the lines above only see what is already on this device.
+     Ask the server once per search text, merge what it returns, and redraw only if new rows arrived. */
+  const sent = window._icSearched || (window._icSearched = {});
+  if (window.ICR && ICR.enabled && navigator.onLine && q.length >= 3 && !sent[q]) {
+    clearTimeout(window._icSearchT);
+    window._icSearchT = setTimeout(() => {
+      if (Object.keys(sent).length > 60) window._icSearched = {};
+      (window._icSearched)[q] = true;
+      const n0 = (state.db.interchange || []).length;
+      ICR.search({ q, limit: 10 }).then(() => {
+        const gs = document.getElementById('globalSearch');
+        if ((state.db.interchange || []).length > n0 && gs && gs.value.toLowerCase().trim() === q) window.handleSearch(gs.value);
+      }).catch(e => console.warn('search: server lookup failed', e && e.message));
+    }, 300);
+  }
 }
 
 function runSearchResult(i) {

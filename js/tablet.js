@@ -70,22 +70,55 @@
 
   function $(id) { return document.getElementById(id); }
 
-  /* ── Tablet search: below 900px the top-bar search box is hidden, so add a button that opens the
-     existing #globalSearch + #searchResults as a full-width sheet (live results, "Jump to a page" shortcut). ── */
+  /* ── Search. One input (#globalSearch) serves every screen size.
+     >= 901px: it sits in the top bar and the results drop down under it.
+     <= 900px: the top-bar box is hidden, so a button opens the SAME box as a full-width sheet.
+     The box is moved to <body> while the sheet is open. Reason: the top bar has backdrop-filter, and any
+     position:fixed element inside it is positioned against the bar instead of the screen (broken sheet on iPads
+     and newer Android tablets). Moving it out fixes that on every engine. ── */
+  var home = null, homeNext = null;
+  function vvh() {   /* visible height (shrinks when the on-screen keyboard is up); drives the results panel height */
+    var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 600;
+    d.style.setProperty('--gx-vvh', Math.round(h) + 'px');
+  }
+  vvh();
+  window.addEventListener('resize', vvh);
+  window.addEventListener('orientationchange', function () { setTimeout(vvh, 250); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', vvh);
+  function dock() {
+    var w = document.querySelector('.search-wrap');
+    if (w && home && w.parentNode !== home) home.insertBefore(w, (homeNext && homeNext.parentNode === home) ? homeNext : null);
+  }
   function closeSearch() {
     document.body.className = document.body.className.replace(/\s*gx-search-open/g, '');
     var p = $('searchResults'); if (p) p.style.display = 'none';
     var g = $('globalSearch'); if (g) g.blur();
+    dock();
   }
   function openSearch() {
-    var g = $('globalSearch'); if (!g) return;
+    var g = $('globalSearch'), w = document.querySelector('.search-wrap'); if (!g || !w) return;
+    if (w.parentNode !== document.body) { home = w.parentNode; homeNext = w.nextSibling; document.body.appendChild(w); }
     if (document.body.className.indexOf('gx-search-open') < 0) document.body.className += ' gx-search-open';
     var j = $('gxJump'); if (j) j.style.display = $('nxJump') ? '' : 'none';
-    setTimeout(function () { g.focus(); if (g.value && window.handleSearch) window.handleSearch(g.value); }, 60);
+    vvh();
+    g.focus();   /* straight inside the tap: iOS only opens the keyboard for a focus() made during a user gesture */
+    if (g.value && window.handleSearch) window.handleSearch(g.value);
   }
   document.addEventListener('DOMContentLoaded', function () {
     var wrap = document.querySelector('.search-wrap'), g = $('globalSearch'), anchor = $('themeBtn');
-    if (!wrap || !g || !anchor || $('gxSearchBtn')) return;
+    if (!wrap || !g) return;
+    var t;   /* search as you type on EVERY screen size (soft keyboards do not always send a clean Enter) */
+    g.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () { if (window.handleSearch) window.handleSearch(g.value); }, 200);
+    });
+    g.setAttribute('autocomplete', 'off'); g.setAttribute('autocorrect', 'off'); g.setAttribute('autocapitalize', 'off');
+    g.setAttribute('spellcheck', 'false'); g.setAttribute('enterkeyhint', 'search'); g.setAttribute('inputmode', 'search');
+    var res = $('searchResults');
+    if (res) res.addEventListener('click', function () { setTimeout(closeSearch, 0); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSearch(); });
+    window.addEventListener('resize', function () { if (window.innerWidth > 900) closeSearch(); });
+    if (!anchor || $('gxSearchBtn')) return;
     var btn = document.createElement('button');
     btn.id = 'gxSearchBtn'; btn.type = 'button'; btn.className = 'gx-search-btn';
     btn.setAttribute('aria-label', 'Search trucks, drivers, containers');
@@ -98,15 +131,6 @@
     jump.id = 'gxJump'; jump.type = 'button'; jump.className = 'gx-jump'; jump.textContent = 'Jump to page';
     jump.onclick = function () { closeSearch(); var n = $('nxJump'); if (n) n.click(); };
     wrap.appendChild(jump);
-    var t;   /* search as you type: soft keyboards do not always send a clean Enter */
-    g.addEventListener('input', function () {
-      clearTimeout(t);
-      t = setTimeout(function () { if (window.handleSearch && document.body.className.indexOf('gx-search-open') > -1) window.handleSearch(g.value); }, 250);
-    });
-    var res = $('searchResults');
-    if (res) res.addEventListener('click', function () { setTimeout(closeSearch, 0); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSearch(); });
-    window.addEventListener('resize', function () { if (window.innerWidth > 900) closeSearch(); });
   });
 
   /* ── Install button. The app only shows #installAppBtn when Chrome fires beforeinstallprompt, which can
