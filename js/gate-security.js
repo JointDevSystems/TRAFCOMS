@@ -100,6 +100,7 @@
   /* ── screen ── */
   G.render = async function () {
     css();
+    if (window.GateDesk && GateDesk.mount) GateDesk.mount();
     const host = $('gateSecList'); if (!host) return;
     if (!can()) { host.innerHTML = '<div class="empty-state"><div class="empty-state-label">You do not have access to Gate Security</div></div>'; return; }
     const addIn = $('gsAddIn'), addOut = $('gsAddOut');
@@ -143,8 +144,8 @@
   G.sync = async function () { const n = await flush(); if (!n && qRead().length) toast('Still offline. Entries are safe on this device.', 'warning'); G.render(); };
 
   /* ── entry form (new entry, or an administrator's correction) ── */
-  function form(rec, newDir) {
-    const r = rec || {}, dir = r.direction || newDir || 'in';
+  function form(rec, newDir, pre) {
+    const r = rec || pre || {}, dir = r.direction || newDir || 'in';
     const f = (id, label, v, extra) => '<div class="fg"><label>' + label + '</label><input id="gs_' + id + '" value="' + esc(v) + '" ' + (extra || '') + '/></div>';
     openModal((rec ? 'Edit gate entry' : (dir === 'out' ? 'Vehicle going out' : 'Vehicle coming in')),
       '<div class="fg"><label>Movement</label><select id="gs_dir" onchange="GateSec.dirChanged()"><option value="in"' + (dir === 'in' ? ' selected' : '') + '>Vehicle in</option><option value="out"' + (dir === 'out' ? ' selected' : '') + '>Vehicle out</option></select></div>' +
@@ -159,7 +160,7 @@
     setTimeout(() => { const v = $('gs_veh'); if (v && !rec) v.focus(); }, 80);
   }
   G.dirChanged = function () { const w = $('gs_cwrap'); if (w) w.style.display = val('gs_dir') === 'out' ? '' : 'none'; };
-  G.add = function (dir) { if (!can()) return toast('You do not have access to Gate Security', 'error'); form(null, dir === 'out' ? 'out' : 'in'); };
+  G.add = function (dir, pre) { if (!can()) return toast('You do not have access to Gate Security', 'error'); form(null, dir === 'out' ? 'out' : 'in', pre || null); };
   G.edit = function (id) { if (!canFix()) return toast('Only an administrator can correct a gate entry', 'error'); const r = S.rows.find(x => x.id === id); if (r) form(r); };
 
   G.save = async function (editId) {
@@ -191,7 +192,7 @@
           closeModal(); toast('No connection. Entry saved on this device and will be sent automatically.', 'warning', 5000);
         }
       }
-      await G.reload();
+      await G.reload(); if (window.GateDesk && GateDesk.refresh) GateDesk.refresh();
     } catch (e) {
       console.warn('Gate entry failed:', e);
       err.textContent = /row-level security|permission/i.test(String(e && e.message)) ? 'You are not allowed to save gate entries. Ask an administrator to tick Gate Security for your account.' : ('Could not save: ' + ((e && e.message) || 'error'));

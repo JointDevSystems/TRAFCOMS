@@ -10,8 +10,13 @@
   const TYPES = ['DV', 'HD', 'OT', 'LC', 'HC', 'FR', 'TANK'];
   const BOXES = [['1x20', '1 x 20ft'], ['2x20', '2 x 20ft'], ['1x40', '1 x 40ft']];
 
+  const role = () => { try { return (state.profile && state.profile.role) || ''; } catch (e) { return ''; } };
   const canWrite = () => { try { return isAdmin() || canSeeSection('dispatch'); } catch (e) { return false; } };
-  const canView = () => { try { return canWrite() || canSeeSection('gatesecurity'); } catch (e) { return false; } };
+  const isFloor = () => { try { return role() === 'loading_clerk' || role() === 'field_marshal' || canSeeSection('loadingdesk'); } catch (e) { return false; } };
+  const isGuard = () => { try { return role() === 'security' || canSeeSection('gatesecurity'); } catch (e) { return false; } };
+  const canView = () => canWrite() || isFloor() || isGuard();
+  const canVerify = () => { try { return isAdmin() || isGuard(); } catch (e) { return false; } };
+  const canComplete = () => canWrite() || isFloor();
   const canDelete = () => { try { return isAdmin(); } catch (e) { return false; } };
 
   /* ── helpers ── */
@@ -61,7 +66,7 @@
       '.li-chip{display:inline-block;padding:2px 9px;border-radius:999px;font:600 10px var(--font-mono,monospace);letter-spacing:.6px;border:1px solid var(--border)}' +
       '.li-chip.issued{color:var(--amber);background:var(--amber-dim);border-color:var(--amber)}' +
       '.li-chip.loaded{color:var(--green);background:var(--green-dim);border-color:var(--green)}' +
-      '.li-chip.cancelled{color:var(--text-3)}' +
+      '.li-chip.cancelled{color:var(--text-3)}.li-chip.rej{color:var(--red);background:var(--red-dim);border-color:var(--red)}.li-chip.pend{color:var(--text-2);background:var(--surface-2)}' +
       '.li-mono{font-family:var(--font-mono,monospace);font-weight:600;color:var(--text)}.li-dim{color:var(--text-3)}' +
       '.li-serial{font:700 13px var(--font-mono,monospace);color:var(--red)}' +
       '.li-queue{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:0 0 12px;padding:10px 14px;border:1px solid var(--amber);border-radius:10px;background:var(--amber-dim);color:var(--amber);font-size:12.5px}' +
@@ -199,7 +204,8 @@
       '<div class="fg"><label>Status</label><select id="li_status"><option value="issued"' + (r.status !== 'loaded' && r.status !== 'cancelled' ? ' selected' : '') + '>Issued, awaiting loading</option><option value="loaded"' + (r.status === 'loaded' ? ' selected' : '') + '>Loaded and released</option><option value="cancelled"' + (r.status === 'cancelled' ? ' selected' : '') + '>Cancelled</option></select></div>' +
       '<div id="li_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>' +
       '<div class="li-acts"><button type="button" class="submit-btn" id="li_go" style="flex:1;min-width:150px" onclick="GargoLI.save(false)">' + (r.id ? 'Save changes' : 'Save') + '</button>' +
-      '<button type="button" class="action-btn" onclick="GargoLI.save(true)">Save &amp; print</button>' +
+      '<button type="button" class="action-btn" onclick="GargoLI.save(\'preview\')">Save &amp; preview</button><button type="button" class="action-btn ghost" onclick="GargoLI.save(true)">Save &amp; print</button>' +
+      '<button type="button" class="action-btn ghost" onclick="GargoLI.previewForm()">👁 Preview this form</button>' +
       '<button type="button" class="action-btn ghost" onclick="GargoLI.blank()">Print blank form</button>' +
       (r.id ? '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Cancel edit</button>' : '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Clear</button>') + '</div></div>';
   }
@@ -252,7 +258,7 @@
     if (!$('li_plist')) return;
     if (!items.length) { $('li_plist').innerHTML = '<div class="empty-state-label" style="padding:12px 0">No containers in the yard match. Close this and type the number instead.</div>'; return; }
     const open = new Map();
-    S.rows.forEach(r => { if (r.status === 'issued') conts(r).forEach(c => { if (r.id !== S.editId) open.set(cleanNo(c.no), r.serial_no); }); });
+    S.rows.concat(S.desk || [], S.gate || []).forEach(r => { if (r.status === 'issued') conts(r).forEach(c => { if (r.id !== (S.editId || S.lcId)) open.set(cleanNo(c.no), r.serial_no); }); });
     const age = d => { const n = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return isNaN(n) ? '' : n + ' d in yard'; };
     const code = id => { const l = (state.db.shippingLines || []).find(x => x.id === id); return l ? (l.code || l.name) : ''; };
     $('li_plist').innerHTML = items.map(i => {
@@ -340,7 +346,7 @@
       }
       await LI.reload();
       LI.resetForm();
-      if (thenPrint && saved) LI.doc(saved, 'print');
+      if (thenPrint && saved) LI.doc(saved, thenPrint === 'preview' ? 'preview' : 'print');
     } catch (e) {
       console.warn('Loading instruction failed:', e);
       const m = String((e && e.message) || '');
@@ -385,6 +391,10 @@
   LI.search = function () { clearTimeout(st); st = setTimeout(() => { S.q = val('li_q'); S.status = val('li_sf') || 'all'; S.limit = PAGE; LI.reload(); }, 300); };
 
   const chip = s => '<span class="li-chip ' + esc(s) + '">' + (s === 'issued' ? 'Awaiting loading' : s === 'loaded' ? 'Loaded' : 'Cancelled') + '</span>';
+  const hhmm = iso => { try { const d = new Date(iso); return d.toLocaleDateString('en-KE', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  const vchip = r => r.verify_result === 'verified' ? '<span class="li-chip loaded" title="' + esc((r.verified_by_name || '') + ' · ' + hhmm(r.verified_at)) + '">✓ Verified at gate</span>'
+    : r.verify_result === 'rejected' ? '<span class="li-chip rej" title="' + esc(r.verify_note || '') + '">✖ Rejected at gate</span>'
+    : (r.status === 'cancelled' ? '' : '<span class="li-chip pend">Not yet verified</span>');
   const contCell = r => conts(r).map(c => '<span class="li-mono">' + esc(c.no) + '</span>').join('<br>') || '<span class="li-dim">not yet entered</span>';
   const typeCell = r => { const t = asList(r.container_types); return t.length ? esc(t.join(', ')) : '<span class="li-dim">—</span>'; };
 
@@ -400,8 +410,8 @@
     const w = canWrite();
     host.innerHTML = '<div class="table-wrap"><table class="data-table"><thead><tr><th>Serial</th><th>Date</th><th>Truck</th><th>Shipper</th><th>Containers</th><th>Type</th><th>Release order</th><th>Status</th><th></th></tr></thead><tbody>' +
       S.rows.map(r => '<tr><td><span class="li-serial">' + esc(r.serial_no) + '</span></td><td>' + esc(dshort(r.issue_date)) + '</td><td class="li-mono">' + esc(r.truck_no) + '</td><td>' + esc(r.shipper) + '</td>' +
-        '<td>' + contCell(r) + '<div class="li-dim" style="font-size:10.5px">' + esc(boxLabel(r.box_count)) + '</div></td><td>' + typeCell(r) + '</td><td>' + (esc(r.release_order_no) || '<span class="li-dim">—</span>') + '</td><td>' + chip(r.status) + '</td>' +
-        '<td><div class="li-acts"><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'preview\')">Preview</button><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'print\')">Print</button>' +
+        '<td>' + contCell(r) + '<div class="li-dim" style="font-size:10.5px">' + esc(boxLabel(r.box_count)) + '</div></td><td>' + typeCell(r) + '</td><td>' + (esc(r.release_order_no) || '<span class="li-dim">—</span>') + '</td><td>' + chip(r.status) + '<div style="margin-top:3px">' + vchip(r) + '</div></td>' +
+        '<td><div class="li-acts"><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'preview\')">👁 Preview</button><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'print\')">Print</button>' +
         (w ? '<button type="button" class="tbl-btn" onclick="GargoLI.edit(\'' + esc(r.id) + '\')">Edit</button>' + (r.status === 'issued' ? '<button type="button" class="tbl-btn" onclick="GargoLI.markLoaded(\'' + esc(r.id) + '\')">Mark loaded</button>' : '') : '') +
         (canDelete() ? '<button type="button" class="tbl-btn" onclick="GargoLI.remove(\'' + esc(r.id) + '\')">Delete</button>' : '') + '</div></td></tr>').join('') +
       '</tbody></table></div>' + (S.rows.length < S.total ? '<div class="li-more"><button type="button" class="action-btn ghost" onclick="GargoLI.more()">Show more</button></div>' : '');
@@ -472,6 +482,18 @@
     line('NAME OF CLERK:', r.release_clerk, M, y, 170); line('SIGN:', '', M + 180, y, W - 180); y += 12;
     line('ALL ABOVE COUNTER CHECKED BY: DEPOT MANAGER IN CHARGE:', r.manager_name, M, y, 200); line('SIGN:', '', M + 210, y, W - 210);
 
+    /* gate verification stamp (only when a security officer has verified or rejected this slip) */
+    if (r.verify_result) {
+      const ok = r.verify_result === 'verified', sx = M, sy = 192.5, sw = 170, sh = 9.5;
+      doc.setLineWidth(0.5); doc.setDrawColor(ok ? 20 : 190, ok ? 130 : 30, ok ? 60 : 30); doc.setTextColor(ok ? 20 : 190, ok ? 130 : 30, ok ? 60 : 30);
+      doc.roundedRect(sx, sy, sw, sh, 1.5, 1.5);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+      doc.text(ok ? 'VERIFIED AT GATE' : 'REJECTED AT GATE', sx + 3, sy + 4);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.text(String((r.verified_by_name || '') + (r.verified_at ? ' · ' + hhmm(r.verified_at) : '') + (r.verified_vehicle ? ' · vehicle ' + r.verified_vehicle : '') + (!ok && r.verify_note ? ' · ' + r.verify_note : '')).slice(0, 118), sx + 3, sy + 8);
+      ink();
+    }
+
     /* footer: who printed, when. Not part of the paper pad, kept small. */
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(120);
     const when = new Date();
@@ -499,38 +521,188 @@
     if (r) LI.doc(r, mode); else toast('Record not found on this screen. Refresh and try again.', 'error');
   };
   LI.blank = function () { LI.doc(null, 'print', true); };
-
-  /* ── Gate Security: read-only panel (view, preview, print) ── */
-  LI.renderGate = async function () {
-    const sec = $('sec-gatesecurity'); if (!sec) return;
-    css();
-    let host = $('gsLiPanel');
-    if (!host) {
-      host = document.createElement('div'); host.id = 'gsLiPanel'; host.className = 'panel'; host.style.marginBottom = '14px';
-      const list = $('gateSecList'); if (list && list.parentNode) list.parentNode.insertBefore(host, list); else sec.appendChild(host);
-    }
-    if (!canView()) { host.style.display = 'none'; return; }
-    host.style.display = '';
-    if (!S.gateBusy) {
-      S.gateBusy = true;
-      try {
-        const from = new Date(Date.now() - 3 * 86400000), fromIso = from.getFullYear() + '-' + pad(from.getMonth() + 1) + '-' + pad(from.getDate());
-        const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled')
-          .order('status', { ascending: true }).order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(60);
-        if (error) throw error;
-        S.gate = data || [];
-      } catch (e) { console.warn('Gate loading-instruction view failed:', e && e.message); S.gate = S.gate || []; }
-      finally { S.gateBusy = false; }
-    }
-    const open = S.gate.filter(r => r.status === 'issued').length;
-    host.innerHTML = '<div class="panel-head"><span class="panel-title">Loading instructions</span><span class="panel-meta">' + open + ' awaiting loading · last 3 days</span></div>' +
-      (S.gate.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Serial</th><th>Date</th><th>Truck</th><th>Shipper</th><th>Containers</th><th>Release order</th><th>Status</th><th></th></tr></thead><tbody>' +
-        S.gate.map(r => '<tr><td><span class="li-serial">' + esc(r.serial_no) + '</span></td><td>' + esc(dshort(r.issue_date)) + '</td><td class="li-mono">' + esc(r.truck_no) + '</td><td>' + esc(r.shipper) + '</td>' +
-          '<td>' + contCell(r) + '<div class="li-dim" style="font-size:10.5px">' + esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? ' · ' + esc(asList(r.container_types).join(', ')) : '') + '</div></td>' +
-          '<td>' + (esc(r.release_order_no) || '<span class="li-dim">—</span>') + '</td><td>' + chip(r.status) + '</td>' +
-          '<td><div class="li-acts"><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'preview\')">View</button><button type="button" class="tbl-btn" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'print\')">Print</button></div></td></tr>').join('') +
-        '</tbody></table></div>' : '<div class="empty-state" style="padding:16px"><div class="empty-state-label">No loading instructions in the last 3 days</div></div>');
+  LI.blankPreview = function () { LI.doc(null, 'preview', true); };
+  /* live preview of what is typed in the form, before anything is saved */
+  LI.previewForm = function () {
+    const rec = readForm(); rec.id = S.editId || ''; const prev = S.rows.find(x => x.id === S.editId) || {};
+    LI.doc(Object.assign({}, prev, rec), 'preview');
   };
+
+  /* ── Gate Security: the guard desk (js/security-desk.js) draws the cards; this file supplies the data and the Verify action ── */
+  LI.renderGate = function () { if (window.GateDesk && GateDesk.render) return GateDesk.render(); };
+  LI.gateRows = async function () {
+    if (!sb() || !canView()) return [];
+    const from = new Date(Date.now() - 3 * 86400000), fromIso = from.getFullYear() + '-' + pad(from.getMonth() + 1) + '-' + pad(from.getDate());
+    const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled')
+      .order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(120);
+    if (error) throw error;
+    S.gate = data || []; return S.gate;
+  };
+  LI.get = id => S.rows.find(x => x.id === id) || S.gate.find(x => x.id === id) || S.desk.find(x => x.id === id) || null;
+  LI.forContainer = async function (cont) {
+    const key = cleanNo(cont); if (!key || !canView() || !sb()) return [];
+    try { const { data } = await sb().from(TABLE).select('*').ilike('container_text', '%' + key + '%').neq('status', 'cancelled').order('issue_date', { ascending: false }).limit(10); return data || []; } catch (e) { return []; }
+  };
+  LI.goto = function () {
+    try { if (canWrite()) { showSection('dispatch', document.querySelector('.nav-item[data-section="dispatch"]')); setTimeout(() => { if (typeof switchDispatchTab === 'function') switchDispatchTab('li', $('liTabBtn')); }, 30); }
+          else if (isFloor()) showSection('loadingdesk'); else showSection('gatesecurity'); } catch (e) {}
+  };
+
+  /* Verify at the gate: the guard checks the truck in front of them against the slip */
+  LI.verifyDialog = function (id) {
+    const r = LI.get(id); if (!r) return toast('Record not found on this screen. Refresh and try again.', 'error');
+    if (!canVerify()) return toast('Only security officers can verify at the gate', 'error');
+    css(); S.vid = id;
+    const cs = conts(r), done = !!r.verify_result;
+    const row = (k, v) => '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text-3)">' + k + '</span><b style="text-align:right;color:var(--text)">' + (v || '—') + '</b></div>';
+    openModal('Verify loading instruction ' + r.serial_no,
+      '<div style="margin-bottom:12px"><span class="li-serial" style="font-size:20px">' + esc(r.serial_no) + '</span> ' + chip(r.status) + ' ' + vchip(r) + '</div>' +
+      row('Shipper', esc(r.shipper)) + row('Truck number', '<span class="li-mono" style="font-size:16px">' + esc(r.truck_no) + '</span>') +
+      row('Containers to load', esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? ' · ' + esc(asList(r.container_types).join(', ')) : '')) +
+      row('Container number(s)', cs.map(c => '<span class="li-mono">' + esc(c.no) + '</span>').join('<br>') || '<span class="li-dim">not yet entered</span>') +
+      row('Release order', esc(r.release_order_no)) + row('Commodity', esc(r.commodity)) + row('Issued by', esc(r.clerk_name) + ' · ' + esc(dshort(r.issue_date))) +
+      (done ? '<div class="ops-notice" style="margin:12px 0">' + (r.verify_result === 'verified' ? 'Verified' : 'Rejected') + ' by <b>' + esc(r.verified_by_name || '') + '</b> · ' + esc(hhmm(r.verified_at)) + (r.verify_note ? '<br>' + esc(r.verify_note) : '') + '</div>' : '') +
+      (done && r.verify_result === 'verified' ? '' :
+      '<div class="li-part">CHECK AT THE GATE</div>' +
+      '<div class="fg"><label>Plate on the vehicle in front of you *</label><input id="lv_veh" autocapitalize="characters" autocomplete="off" placeholder="Type the plate" oninput="GargoLI.verifyCheck()" style="font-size:18px;font-weight:700;letter-spacing:1px"/><div id="lv_match" class="li-hint"></div></div>' +
+      (cs.length ? '<div class="fg"><label>Container number on the box <span class="label-optional">(optional check)</span></label><input id="lv_con" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567" oninput="GargoLI.verifyCheck()"/></div>' : '') +
+      '<div class="fg"><label>Note <span class="label-optional">(required to reject)</span></label><input id="lv_note" autocomplete="off" placeholder="e.g. driver ID checked, seal 123456"/></div>' +
+      '<div id="lv_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>' +
+      '<div class="li-acts"><button type="button" class="submit-btn" id="lv_ok" style="flex:2;min-width:180px;min-height:50px" onclick="GargoLI.verify(\'' + esc(id) + '\',\'verified\')">✔ Verify and allow</button>' +
+      '<button type="button" class="action-btn" id="lv_no" style="min-height:50px;color:var(--red);border-color:var(--red)" onclick="GargoLI.verify(\'' + esc(id) + '\',\'rejected\')">✖ Reject</button>' +
+      '<button type="button" class="action-btn ghost" style="min-height:50px" onclick="GargoLI.docById(\'' + esc(id) + '\',\'preview\')">👁 View slip</button></div>') +
+      (done && r.verify_result === 'verified' ? '<div class="li-acts" style="margin-top:12px"><button type="button" class="action-btn" onclick="GargoLI.recordOut(\'' + esc(id) + '\')">Record vehicle out</button><button type="button" class="action-btn ghost" onclick="GargoLI.docById(\'' + esc(id) + '\',\'preview\')">👁 View slip</button></div>' : ''));
+    setTimeout(() => { const v = $('lv_veh'); if (v) v.focus(); }, 80);
+  };
+  LI.verifyCheck = function () {
+    const m = $('lv_match'); if (!m) return;
+    const r = LI.get(S.vid); if (!r) return;
+    const a = cleanNo(val('lv_veh')), b = cleanNo(r.truck_no), c = cleanNo(val('lv_con')), list = conts(r).map(x => cleanNo(x.no));
+    let t = '';
+    if (a) t += a === b ? '<span style="color:var(--green)">✔ Plate matches ' + esc(r.truck_no) + '</span>' : '<span style="color:var(--red)">✖ Does NOT match. The slip is for ' + esc(r.truck_no) + '</span>';
+    if (c && list.length) t += (t ? '<br>' : '') + (list.indexOf(c) > -1 ? '<span style="color:var(--green)">✔ Container is on the slip</span>' : '<span style="color:var(--red)">✖ Container is not on the slip</span>');
+    m.innerHTML = t;
+  };
+  LI.verify = async function (id, result) {
+    const r = LI.get(id); if (!r) return;
+    if (!navigator.onLine) { $('lv_err').textContent = 'You are offline. Verification needs a connection so the office sees it at once.'; return; }
+    const veh = val('lv_veh'), note = val('lv_note'), err = $('lv_err');
+    if (result === 'verified') {
+      if (!veh) { err.textContent = 'Type the plate of the vehicle in front of you.'; return; }
+      if (cleanNo(veh) !== cleanNo(r.truck_no) && !confirm('The plate you typed (' + veh.toUpperCase() + ') is not the truck on the slip (' + r.truck_no + '). Verify anyway?')) return;
+    } else if (!note) { err.textContent = 'Write the reason for rejecting.'; return; }
+    ['lv_ok', 'lv_no'].forEach(b => { if ($(b)) $(b).disabled = true; });
+    const { data, error } = await sb().rpc('li_verify', { p_id: id, p_result: result, p_note: note || null, p_vehicle: veh || null });
+    ['lv_ok', 'lv_no'].forEach(b => { if ($(b)) $(b).disabled = false; });
+    if (error) { err.textContent = String(error.message || 'Could not save'); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    [S.rows, S.gate, S.desk].forEach(arr => { const i = arr.findIndex(x => x.id === id); if (i > -1) arr[i] = Object.assign(arr[i], row || {}); });
+    try { addAudit(state.profile.username, result === 'verified' ? 'Loading Instruction Verified' : 'Loading Instruction Rejected', r.serial_no + ' · ' + r.truck_no + (note ? ' · ' + note : '')); } catch (e) {}
+    try { if (navigator.vibrate) navigator.vibrate(result === 'verified' ? 60 : [80, 60, 80]); } catch (e) {}
+    toast(result === 'verified' ? 'Verified: ' + r.serial_no + ' · ' + r.truck_no : 'Rejected: ' + r.serial_no, result === 'verified' ? 'success' : 'warning');
+    LI.verifyDialog(id);
+    if (window.GateDesk && GateDesk.refresh) GateDesk.refresh();
+  };
+  LI.recordOut = function (id) {
+    const r = LI.get(id); if (!r) return; closeModal();
+    if (window.GateSec) GateSec.add('out', { vehicle_no: r.truck_no, container_no: (conts(r)[0] || {}).no || '', gate_pass_no: r.serial_no });
+  };
+
+  /* ── Part 2 by the loading clerk / field marshal (Loading Desk) ── */
+  LI.completeDialog = function (id) {
+    const r = LI.get(id); if (!r) return;
+    if (!canComplete()) return toast('You do not have access to complete loading instructions', 'error');
+    css(); S.lcId = id; const cs = conts(r), need = r.box_count === '2x20' ? 2 : 1;
+    const slot = n => '<div class="li-slot"><div class="fg"><label>Container number ' + n + (n <= need ? ' *' : '') + '</label><input id="lc_c' + n + '" value="' + esc((cs[n - 1] || {}).no || '') + '" data-ic="' + esc((cs[n - 1] || {}).ic_id || '') + '" data-ct="' + esc((cs[n - 1] || {}).ctype || '') + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><button type="button" class="action-btn ghost" onclick="GargoLI.pickFor(' + n + ')">Pick from yard</button></div>';
+    openModal('Complete loading · ' + r.serial_no,
+      '<div style="font-size:13px;color:var(--text-2);margin-bottom:10px"><b class="li-mono" style="font-size:16px">' + esc(r.truck_no) + '</b> · ' + esc(r.shipper) + ' · ' + esc(boxLabel(r.box_count)) + (r.release_order_no ? ' · RO ' + esc(r.release_order_no) : '') + '<div style="margin-top:4px">' + vchip(r) + '</div></div>' +
+      '<div class="li-part">PART 2 · CONTAINERS LOADED</div>' + slot(1) + (need === 2 ? '<div style="height:8px"></div>' + slot(2) : '') +
+      '<div class="form-row-2" style="margin-top:10px"><div class="fg"><label>Releasing clerk *</label><input id="lc_clerk" value="' + esc(r.release_clerk || (state.profile && state.profile.name) || '') + '" autocomplete="off"/></div><div class="fg"><label>Depot manager in charge</label><input id="lc_mgr" value="' + esc(r.manager_name || '') + '" autocomplete="off"/></div></div>' +
+      '<div id="lc_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>' +
+      '<div class="li-acts"><button type="button" class="submit-btn" id="lc_ok" style="flex:2;min-width:180px;min-height:50px" onclick="GargoLI.complete(\'' + esc(id) + '\',true)">✔ Mark loaded and released</button><button type="button" class="action-btn ghost" style="min-height:50px" onclick="GargoLI.complete(\'' + esc(id) + '\',false)">Save without finishing</button><button type="button" class="action-btn ghost" style="min-height:50px" onclick="GargoLI.docById(\'' + esc(id) + '\',\'preview\')">👁 View slip</button></div>');
+  };
+  LI.pickFor = function (n) {
+    const keep = { id: S.lcId }; ['lc_c1', 'lc_c2', 'lc_clerk', 'lc_mgr'].forEach(k => { if ($(k)) keep[k] = $(k).value; });
+    ['lc_c1', 'lc_c2'].forEach(k => { if ($(k)) { keep[k + '_ic'] = $(k).dataset.ic; keep[k + '_ct'] = $(k).dataset.ct; } });
+    S.lcDraft = keep; LI.pick(n); const l = $('li_plist'); if (l) l.dataset.target = 'lc';
+  };
+  const _use = LI.use;
+  LI.use = function (no, ctype, icId) {
+    const l = $('li_plist');
+    if (l && l.dataset.target === 'lc') {
+      const n = Number(l.dataset.slot) || 1, d = S.lcDraft || {}; d['lc_c' + n] = no; d['lc_c' + n + '_ic'] = icId || ''; d['lc_c' + n + '_ct'] = ctype || '';
+      LI.completeDialog(d.id);
+      ['lc_c1', 'lc_c2', 'lc_clerk', 'lc_mgr'].forEach(k => { if ($(k) && d[k] !== undefined) $(k).value = d[k]; });
+      ['lc_c1', 'lc_c2'].forEach(k => { if ($(k) && d[k + '_ic'] !== undefined) { $(k).dataset.ic = d[k + '_ic']; $(k).dataset.ct = d[k + '_ct']; } });
+      return;
+    }
+    return _use.apply(this, arguments);
+  };
+  LI.complete = async function (id, finish) {
+    const r = LI.get(id), err = $('lc_err'); if (!r) return;
+    if (!navigator.onLine) { err.textContent = 'You are offline. Connect to save.'; return; }
+    const list = []; [1, 2].forEach(n => { const el = $('lc_c' + n); if (el && el.value.trim()) list.push({ no: cleanNo(el.value), ctype: el.dataset.ct || '', ic_id: el.dataset.ic || '', src: el.dataset.ic ? 'yard' : 'manual' }); });
+    const need = r.box_count === '2x20' ? 2 : 1;
+    if (finish && list.length < need) { err.textContent = 'Enter ' + need + ' container number' + (need > 1 ? 's' : '') + '.'; return; }
+    if (finish && !val('lc_clerk')) { err.textContent = 'Releasing clerk is required.'; return; }
+    const odd = list.filter(c => !isoNo(c.no));
+    if (odd.length && !confirm(odd.map(c => c.no).join(', ') + ' does not look like a standard container number (4 letters and 7 digits). Save anyway?')) return;
+    $('lc_ok').disabled = true;
+    const { data, error } = await sb().rpc('li_complete', { p_id: id, p_containers: list, p_release_clerk: val('lc_clerk') || null, p_manager: val('lc_mgr') || null, p_mark_loaded: !!finish });
+    if ($('lc_ok')) $('lc_ok').disabled = false;
+    if (error) { err.textContent = String(error.message || 'Could not save'); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    [S.rows, S.gate, S.desk].forEach(arr => { const i = arr.findIndex(x => x.id === id); if (i > -1) arr[i] = Object.assign(arr[i], row || {}); });
+    try { addAudit(state.profile.username, finish ? 'Loading Instruction Loaded' : 'Loading Instruction Part 2 Saved', r.serial_no + ' · ' + r.truck_no + ' · ' + list.map(c => c.no).join(' ')); } catch (e) {}
+    closeModal(); toast(finish ? 'Marked loaded: ' + r.serial_no : 'Saved', 'success');
+    LI.renderDesk(); if (window.GateDesk && GateDesk.refresh) GateDesk.refresh(); if ($('liList')) LI.reload();
+    if (finish) LI.doc(LI.get(id), 'preview');
+  };
+
+  /* ── Loading Desk section (loading clerk / field marshal) ── */
+  S.desk = []; S.deskTab = 'open'; S.deskQ = ''; S.deskBusy = false;
+  LI.renderDesk = async function () {
+    const sec = $('sec-loadingdesk'); if (!sec) return; css();
+    if (!canView()) { sec.innerHTML = '<div class="empty-state"><div class="empty-state-label">You do not have access to the Loading Desk</div></div>'; return; }
+    if (!sec.dataset.built) {
+      sec.dataset.built = '1';
+      sec.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Loading Desk</div><div class="filter-row"><button class="filter-btn active" data-t="open" onclick="GargoLI.deskTab(\'open\',this)">To load</button><button class="filter-btn" data-t="done" onclick="GargoLI.deskTab(\'done\',this)">Loaded</button></div></div>' +
+        '<div class="li-bar"><input class="li-q" id="ld_q" type="search" placeholder="Search truck, serial, shipper, container" oninput="GargoLI.deskSearch()" autocomplete="off" style="font-size:16px;min-height:46px"/></div><div id="ldList"></div>';
+    }
+    if (!S.deskBusy) {
+      S.deskBusy = true;
+      try {
+        const from = new Date(Date.now() - 7 * 86400000), fromIso = from.getFullYear() + '-' + pad(from.getMonth() + 1) + '-' + pad(from.getDate());
+        const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled').order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(150);
+        if (error) throw error; S.desk = data || [];
+      } catch (e) { console.warn('Loading desk load failed:', e && e.message); if (navigator.onLine) toast('Could not load the loading desk: ' + ((e && e.message) || 'error'), 'error'); }
+      finally { S.deskBusy = false; }
+    }
+    LI.paintDesk();
+  };
+  LI.deskTab = function (t, btn) { S.deskTab = t; document.querySelectorAll('#sec-loadingdesk .filter-btn').forEach(b => b.classList.remove('active')); if (btn) btn.classList.add('active'); LI.paintDesk(); };
+  let dst = 0; LI.deskSearch = function () { clearTimeout(dst); dst = setTimeout(() => { S.deskQ = val('ld_q').toLowerCase(); LI.paintDesk(); }, 200); };
+  LI.paintDesk = function () {
+    const host = $('ldList'); if (!host) return;
+    const q = S.deskQ, want = S.deskTab === 'open' ? 'issued' : 'loaded';
+    const rows = S.desk.filter(r => r.status === want && (!q || [r.serial_no, r.truck_no, r.shipper, r.container_text, r.release_order_no].join(' ').toLowerCase().indexOf(q) > -1));
+    if (!rows.length) { host.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">' + (want === 'issued' ? 'Nothing waiting to be loaded' : 'No loaded instructions in the last 7 days') + '</div></div>'; return; }
+    host.innerHTML = '<div class="ld-grid">' + rows.map(r => '<div class="ld-card' + (r.verify_result === 'verified' ? ' ok' : '') + '"><div class="ld-top"><span class="li-serial">' + esc(r.serial_no) + '</span><span>' + chip(r.status) + ' ' + vchip(r) + '</span></div>' +
+      '<div class="ld-truck">' + esc(r.truck_no) + '</div><div class="ld-line">' + esc(r.shipper) + '</div>' +
+      '<div class="ld-line li-dim">' + esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? ' · ' + esc(asList(r.container_types).join(', ')) : '') + (r.release_order_no ? ' · RO ' + esc(r.release_order_no) : '') + '</div>' +
+      '<div class="ld-line">' + contCell(r) + '</div><div class="li-acts" style="margin-top:10px">' +
+      (r.status === 'issued' ? '<button type="button" class="submit-btn" style="flex:1;min-height:46px" onclick="GargoLI.completeDialog(\'' + esc(r.id) + '\')">Complete loading</button>' : '') +
+      '<button type="button" class="action-btn ghost" style="min-height:46px" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'preview\')">👁 Preview</button></div></div>').join('') + '</div>';
+  };
+  function deskCss() {
+    if ($('ldCss')) return; const s = document.createElement('style'); s.id = 'ldCss';
+    s.textContent = '.ld-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}.ld-card{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface)}' +
+      '.ld-card.ok{border-color:var(--green)}.ld-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}' +
+      '.ld-truck{font:800 24px var(--font-mono,monospace);color:var(--text);letter-spacing:1px}.ld-line{font-size:12.5px;margin-top:3px;color:var(--text-2)}';
+    document.head.appendChild(s);
+  }
+  deskCss();
+  setInterval(() => { try { if (document.visibilityState === 'visible' && state.currentSection === 'loadingdesk' && !$('modalOverlay').classList.contains('active')) LI.renderDesk(); } catch (e) {} }, 20000);
 
   /* ═══ GargoPrint: print buttons for reports that could only be exported ═══ */
   const P = window.GargoPrint = {};
@@ -584,13 +756,19 @@
     document.head.appendChild(s);
   }
 
+  /* a Loading Instructions shortcut on the Interchange (gate in / out) screen, for people who can reach Dispatch */
+  function mountShortcuts() {
+    const row = document.querySelector('#sec-interchange .sec-toolbar .filter-row');
+    if (row && !$('liIcBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'liIcBtn'; b.className = 'action-btn ghost'; b.textContent = '📋 Loading Instructions'; b.onclick = LI.goto; row.appendChild(b); }
+  }
   /* ── wire up ── */
   function wire() {
-    printCss(); mountTab();
+    printCss(); mountTab(); mountShortcuts();
     try {
       if (typeof sectionRenderers !== 'undefined') {
         const prev = sectionRenderers.gatesecurity;
         sectionRenderers.gatesecurity = function () { if (prev) prev.apply(this, arguments); LI.renderGate(); };
+        sectionRenderers.loadingdesk = function () { LI.renderDesk(); };
         const prevD = sectionRenderers.dispatch;
         if (prevD) sectionRenderers.dispatch = function () { const r = prevD.apply(this, arguments); const p = $('dispatchTabLI'); if (p && p.style.display !== 'none') LI.open(); return r; };
       }
