@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '6.6';
+const CACHE_VERSION = '6.7';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -19,6 +19,7 @@ const SHELL_FILES = [
   './tablet.css',
   './cameras.css',
   './js/tablet.js',
+  './js/blackbox.js',
   './js/branding.js',
   './js/core-state.js',
   './js/core-db.js',
@@ -55,12 +56,16 @@ const SHELL_FILES = [
   './js/finance-corp.js',
   './js/finance-billing.js',
   './js/hr-users.js',
+  './js/hr-records.js',
   './js/ic-remote.js',
   './js/cameras-p2p.js',
   './js/form-designer.js',
   './js/survey-currency.js',
   './js/gate-security.js',
   './js/loading-instructions.js',
+  './js/security-desk.js',
+  './js/roles-desk.js',
+  './js/live-cache.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -1,6 +1,8 @@
 'use strict';
-/* Gargo guard desk. Loads AFTER gate-security.js and loading-instructions.js.
-   The Gate Security section gets two tabs:
+/* Gargo Gate Processes desk (was the guard desk). Loads AFTER gate-security.js and loading-instructions.js.
+   The Gate Processes section has four tabs: Gate desk, Loading instructions (Part 1 form + register), Loading desk (Part 2) and Register.
+   Original description:
+   The Gate Processes section gets two tabs:
      "Gate desk"  - big, touch-friendly: Vehicle In / Vehicle Out, search by plate, and one card per loading instruction
                     (expected trucks) with Verify, View slip and Record out.
      "Register"   - the existing gate register (unchanged).
@@ -54,9 +56,13 @@
     const sec = $('sec-' + SEC); if (!sec) return; css();
     if (!$('gsTabs')) {
       const tabs = document.createElement('div'); tabs.id = 'gsTabs'; tabs.className = 'gd-tabs';
-      tabs.innerHTML = '<button type="button" class="gd-tab on" data-t="desk" onclick="GateDesk.tab(\'desk\')">Gate desk</button><button type="button" class="gd-tab" data-t="register" onclick="GateDesk.tab(\'register\')">Register</button>';
+      const T = (id, label) => '<button type=\"button\" class=\"gd-tab' + (id === 'desk' ? ' on' : '') + '\" data-t=\"' + id + '\" onclick=\"GateDesk.tab(\'' + id + '\')\">' + label + '</button>';
+      const LIc = window.GargoLI && GargoLI.can;
+      tabs.innerHTML = T('desk', 'Gate desk') + (LIc && LIc.view() ? T('li', 'Loading instructions') : '') + (LIc && LIc.complete() ? T('ld', 'Loading desk') : '') + T('register', 'Register');
       const desk = document.createElement('div'); desk.id = 'gsDesk';
-      sec.insertBefore(desk, sec.firstChild); sec.insertBefore(tabs, sec.firstChild);
+      const li = document.createElement('div'); li.id = 'gsLIHost'; li.style.display = 'none';
+      const ld = document.createElement('div'); ld.id = 'gsLDHost'; ld.style.display = 'none';
+      sec.insertBefore(ld, sec.firstChild); sec.insertBefore(li, sec.firstChild); sec.insertBefore(desk, sec.firstChild); sec.insertBefore(tabs, sec.firstChild);
       S.mounted = true;
     }
     applyTab();
@@ -65,28 +71,47 @@
     const sec = $('sec-' + SEC); if (!sec) return;
     Array.prototype.forEach.call(sec.children, ch => {
       if (ch.id === 'gsTabs') return;
-      ch.style.display = ch.id === 'gsDesk' ? (S.tab === 'desk' ? '' : 'none') : (S.tab === 'desk' ? 'none' : '');
+      const own = { gsDesk: 'desk', gsLIHost: 'li', gsLDHost: 'ld' }[ch.id];
+      ch.style.display = own ? (S.tab === own ? '' : 'none') : (S.tab === 'register' ? '' : 'none');
     });
     Array.prototype.forEach.call(document.querySelectorAll('#gsTabs .gd-tab'), b => b.classList.toggle('on', b.getAttribute('data-t') === S.tab));
   }
-  D.tab = function (t) { S.tab = t; applyTab(); if (t === 'desk') D.render(); else if (window.GateSec) GateSec.render(); };
+  D.tab = function (t) {
+    S.tab = t; applyTab();
+    if (t === 'desk') D.render();
+    else if (t === 'li') { if (window.GargoLI) GargoLI.open('gsLIHost'); }
+    else if (t === 'ld') { if (window.GargoLI) GargoLI.renderDesk('gsLDHost'); }
+    else if (window.GateSec) GateSec.render();
+  };
 
   /* ── data ── */
   async function load() {
     if (S.busy || !sb()) return; S.busy = true; S.err = '';
     try {
       S.rows = await GargoLI.gateRows();
+      if (GargoLI.gateAt) S.err = 'offline';                 // the list came from the device copy
       const d = new Date(); d.setHours(0, 0, 0, 0); const t0 = d.toISOString();
+      const CKEY = 'gargo-gd-counts', me = (state.currentUser && state.currentUser.id) || '';
       const [a, b] = await Promise.all([
         sb().from('gate_security_log').select('id', { count: 'exact', head: true }).eq('direction', 'in').gte('movement_at', t0),
         sb().from('gate_security_log').select('id', { count: 'exact', head: true }).eq('direction', 'out').gte('movement_at', t0)]);
-      S.inN = a.count || 0; S.outN = b.count || 0;
+      if (a.error || b.error || a.count == null || b.count == null) {          // no signal: keep the last good numbers instead of showing zeros
+        let c = null; try { c = JSON.parse(localStorage.getItem(CKEY) || 'null'); } catch (e) {}
+        if (!S.counted && c && c.uid === me && c.day === todayStr()) { S.inN = c.inN; S.outN = c.outN; S.counted = true; }
+        if (!S.err) S.err = navigator.onLine ? '' : 'offline';
+      } else {
+        S.inN = a.count; S.outN = b.count; S.counted = true;
+        try { localStorage.setItem(CKEY, JSON.stringify({ uid: me, day: todayStr(), inN: S.inN, outN: S.outN })); } catch (e) {}
+      }
     } catch (e) { S.err = navigator.onLine ? String((e && e.message) || 'Could not load') : 'offline'; console.warn('Gate desk load failed:', e && e.message); }
     finally { S.busy = false; }
   }
   D.refresh = async function () { if (S.tab !== 'desk' || state.currentSection !== SEC) return; await load(); paint(); };
   D.render = async function () {
-    css(); D.mount(); if (S.tab !== 'desk') return;
+    css(); D.mount();
+    if (S.tab === 'li') { if (window.GargoLI) GargoLI.open('gsLIHost'); return; }
+    if (S.tab === 'ld') { if (window.GargoLI) GargoLI.renderDesk('gsLDHost'); return; }
+    if (S.tab !== 'desk') return;
     const host = $('gsDesk'); if (!host) return;
     if (!host.dataset.built) { host.dataset.built = '1'; paintShell(host); }
     await load(); paint();

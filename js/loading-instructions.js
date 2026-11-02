@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id);
   const sb = () => (typeof supabase !== 'undefined' && supabase) || window.ghSupabase;
   const LI = window.GargoLI = {};
-  const S = { rows: [], total: 0, q: '', status: 'all', limit: PAGE, busy: false, editId: null, gate: [], gateBusy: false };
+  const S = { stale: 0, hostId: 'dispatchTabLI', rows: [], total: 0, q: '', status: 'all', limit: PAGE, busy: false, editId: null, gate: [], gateBusy: false };
 
   const TYPES = ['DV', 'HD', 'OT', 'LC', 'HC', 'FR', 'TANK'];
   const BOXES = [['1x20', '1 x 20ft'], ['2x20', '2 x 20ft'], ['1x40', '1 x 40ft']];
@@ -19,6 +19,7 @@
   const canComplete = () => canWrite() || isFloor();
   const canDelete = () => { try { return isAdmin(); } catch (e) { return false; } };
 
+  LI.can = { write: canWrite, complete: canComplete, view: canView, verify: canVerify };
   /* ── helpers ── */
   const val = id => ($(id) ? $(id).value : '').trim();
   const pad = n => String(n).padStart(2, '0');
@@ -81,6 +82,12 @@
   /* ── on-device queue (new entries made without a connection) ── */
   const qRead = () => { try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch (e) { return []; } };
   const qWrite = a => { try { localStorage.setItem(QKEY, JSON.stringify(a)); } catch (e) {} };
+  /* last good lists, kept on this device: a dropped signal or a reload with no signal must not blank the screens */
+  const CK = k => 'gargo-li-cache-' + k;
+  const uidNow = () => { try { return (state.currentUser && state.currentUser.id) || ''; } catch (e) { return ''; } };
+  const cGet = k => { try { const c = JSON.parse(localStorage.getItem(CK(k)) || 'null'); return c && c.uid === uidNow() ? c : null; } catch (e) { return null; } };
+  const cPut = (k, rows, total) => { try { localStorage.setItem(CK(k), JSON.stringify({ uid: uidNow(), at: Date.now(), rows: (rows || []).slice(0, 150), total: total || 0 })); } catch (e) {} };
+  const staleBar = at => at ? '<div class="li-queue"><span>No connection. Showing what was saved at ' + new Date(at).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }) + '. It refreshes by itself when the signal returns.</span></div>' : '';
   let flushing = false;
   async function flush() {
     if (flushing || !navigator.onLine || !sb()) return 0;
@@ -99,7 +106,7 @@
     if (sent) { try { toast(sent + ' loading ' + (sent === 1 ? 'instruction' : 'instructions') + ' sent', 'success'); } catch (e) {} }
     return sent;
   }
-  window.addEventListener('online', () => { flush().then(n => { if (n) { LI.reload(); LI.renderGate(); } }); });
+  window.addEventListener('online', () => { flush().then(n => { if (n) { LI.reload(); LI.renderGate(); } }); setTimeout(() => { try { if ($('liList') && $('liList').offsetParent) LI.reload(); const h = $(S.deskHost || 'sec-loadingdesk'); if (h && h.offsetParent) LI.renderDesk(); LI.renderGate(); } catch (e) {} }, 1500); });
 
   /* ── data ── */
   function applySearch(q) {
@@ -118,10 +125,12 @@
       const { data, error, count } = await applySearch(sb().from(TABLE).select('*', { count: 'exact' }))
         .order('issue_date', { ascending: false }).order('created_at', { ascending: false }).range(0, S.limit - 1);
       if (error) throw error;
-      S.rows = data || []; S.total = count || S.rows.length;
+      S.rows = data || []; S.total = count || S.rows.length; S.stale = 0;
+      if (!S.q && S.status === 'all') cPut('rows', S.rows, S.total);
     } catch (e) {
       console.warn('Loading instructions load failed:', e && e.message);
-      if (navigator.onLine) toast('Could not load loading instructions: ' + ((e && e.message) || 'error') + '. Has sql/loading_instructions.sql been run?', 'error', 6000);
+      const c = cGet('rows'); if (c) { if (!S.rows.length) { S.rows = c.rows; S.total = c.total || c.rows.length; } S.stale = c.at; }
+      if (navigator.onLine && !isNetErr(e)) toast('Could not load loading instructions: ' + ((e && e.message) || 'error') + '. Has sql/loading_instructions.sql been run?', 'error', 6000);
     } finally { S.busy = false; }
   }
   async function nextSerial() {
@@ -162,14 +171,19 @@
   }
 
   /* ── the form + register ── */
-  LI.open = async function () {
+  /* The form + register can live in Dispatch (tab) or in Gate Processes (tab). Only one copy is ever built, because the field ids are shared. */
+  const LI_HOSTS = ['dispatchTabLI', 'gsLIHost'];
+  LI.open = async function (hostId) {
     css();
-    const host = $('dispatchTabLI'); if (!host) return;
+    hostId = hostId || S.hostId || 'dispatchTabLI';
+    if (S.hostId !== hostId) { const old = $(S.hostId); if (old && old.dataset.built) { old.innerHTML = ''; delete old.dataset.built; } S.hostId = hostId; }
+    LI_HOSTS.forEach(h => { if (h !== hostId) { const o = $(h); if (o && o.dataset.built) { o.innerHTML = ''; delete o.dataset.built; } } });
+    const host = $(hostId); if (!host) return;
     if (!canView()) { host.innerHTML = '<div class="empty-state"><div class="empty-state-label">You do not have access to Loading Instructions</div></div>'; return; }
     if (!host.dataset.built) {
       host.dataset.built = '1';
       host.innerHTML = '<div class="ops-notice" style="margin-bottom:14px">Digital copy of the paper <b>Loading Instructions</b> form. Fill Part 1 when the release is authorised, pick the containers from the yard (or type them), then print the form for signatures. Part 2 is completed by the releasing clerk when the containers are loaded.</div>' +
-        '<div class="li-wrap"><div class="form-card" id="liFormCard"></div><div><div id="liListHead"></div><div id="liList"></div></div></div>';
+        '<div class="li-wrap"' + (canWrite() ? '' : ' style="grid-template-columns:minmax(0,1fr)"') + '>' + (canWrite() ? '<div class="form-card" id="liFormCard"></div>' : '') + '<div><div id="liListHead"></div><div id="liList"></div></div></div>';
       LI.resetForm();
     }
     await flush();
@@ -401,7 +415,7 @@
   LI.paint = function () {
     const head = $('liListHead'), host = $('liList'); if (!host) return;
     const waiting = qRead().length;
-    head.innerHTML = (waiting ? '<div class="li-queue"><span>' + waiting + ' ' + (waiting === 1 ? 'instruction is' : 'instructions are') + ' saved on this device and will be sent when the connection returns.</span><button type="button" class="tbl-btn" onclick="GargoLI.sync()">Send now</button></div>' : '') +
+    head.innerHTML = staleBar(S.stale) + (waiting ? '<div class="li-queue"><span>' + waiting + ' ' + (waiting === 1 ? 'instruction is' : 'instructions are') + ' saved on this device and will be sent when the connection returns.</span><button type="button" class="tbl-btn" onclick="GargoLI.sync()">Send now</button></div>' : '') +
       '<div class="li-bar"><input class="li-q" id="li_q" type="search" placeholder="Search serial, truck, shipper, container, release order" value="' + esc(S.q) + '" oninput="GargoLI.search()" autocomplete="off"/>' +
       '<select id="li_sf" onchange="GargoLI.search()"><option value="all"' + (S.status === 'all' ? ' selected' : '') + '>All</option><option value="issued"' + (S.status === 'issued' ? ' selected' : '') + '>Awaiting loading</option><option value="loaded"' + (S.status === 'loaded' ? ' selected' : '') + '>Loaded</option><option value="cancelled"' + (S.status === 'cancelled' ? ' selected' : '') + '>Cancelled</option></select></div>';
     const keep = document.activeElement && document.activeElement.id === 'li_q';
@@ -528,15 +542,22 @@
     LI.doc(Object.assign({}, prev, rec), 'preview');
   };
 
-  /* ── Gate Security: the guard desk (js/security-desk.js) draws the cards; this file supplies the data and the Verify action ── */
+  /* ── Gate Processes: the guard desk (js/security-desk.js) draws the cards; this file supplies the data and the Verify action ── */
   LI.renderGate = function () { if (window.GateDesk && GateDesk.render) return GateDesk.render(); };
   LI.gateRows = async function () {
     if (!sb() || !canView()) return [];
     const from = new Date(Date.now() - 3 * 86400000), fromIso = from.getFullYear() + '-' + pad(from.getMonth() + 1) + '-' + pad(from.getDate());
-    const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled')
-      .order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(120);
-    if (error) throw error;
-    S.gate = data || []; return S.gate;
+    LI.gateAt = 0;
+    try {
+      const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled')
+        .order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(120);
+      if (error) throw error;
+      S.gate = data || []; cPut('gate', S.gate); return S.gate;
+    } catch (e) {
+      const c = cGet('gate');
+      if (c && (!navigator.onLine || isNetErr(e))) { S.gate = c.rows; LI.gateAt = c.at; return S.gate; }   // offline: show the last good list
+      throw e;
+    }
   };
   LI.get = id => S.rows.find(x => x.id === id) || S.gate.find(x => x.id === id) || S.desk.find(x => x.id === id) || null;
   LI.forContainer = async function (cont) {
@@ -661,12 +682,16 @@
 
   /* ── Loading Desk section (loading clerk / field marshal) ── */
   S.desk = []; S.deskTab = 'open'; S.deskQ = ''; S.deskBusy = false;
-  LI.renderDesk = async function () {
-    const sec = $('sec-loadingdesk'); if (!sec) return; css();
+  const DESK_HOSTS = ['sec-loadingdesk', 'gsLDHost'];
+  LI.renderDesk = async function (hostId) {
+    hostId = typeof hostId === 'string' ? hostId : (S.deskHost || 'sec-loadingdesk');
+    if (S.deskHost !== hostId) { const old = $(S.deskHost); if (old && old.dataset.built) { old.innerHTML = ''; delete old.dataset.built; } S.deskHost = hostId; }
+    DESK_HOSTS.forEach(h => { if (h !== hostId) { const o = $(h); if (o && o.dataset.built) { o.innerHTML = ''; delete o.dataset.built; } } });
+    const sec = $(hostId); if (!sec) return; css();
     if (!canView()) { sec.innerHTML = '<div class="empty-state"><div class="empty-state-label">You do not have access to the Loading Desk</div></div>'; return; }
     if (!sec.dataset.built) {
       sec.dataset.built = '1';
-      sec.innerHTML = '<div class="sec-toolbar"><div class="sec-title">Loading Desk</div><div class="filter-row"><button class="filter-btn active" data-t="open" onclick="GargoLI.deskTab(\'open\',this)">To load</button><button class="filter-btn" data-t="done" onclick="GargoLI.deskTab(\'done\',this)">Loaded</button></div></div>' +
+      sec.innerHTML = '<div class="sec-toolbar"><div class="sec-title">' + (hostId === 'gsLDHost' ? 'Loading desk · Part 2 (loading clerk / field marshal)' : 'Loading Desk') + '</div><div class="filter-row"><button class="filter-btn active" data-t="open" onclick="GargoLI.deskTab(\'open\',this)">To load</button><button class="filter-btn" data-t="done" onclick="GargoLI.deskTab(\'done\',this)">Loaded</button></div></div>' +
         '<div class="li-bar"><input class="li-q" id="ld_q" type="search" placeholder="Search truck, serial, shipper, container" oninput="GargoLI.deskSearch()" autocomplete="off" style="font-size:16px;min-height:46px"/></div><div id="ldList"></div>';
     }
     if (!S.deskBusy) {
@@ -674,20 +699,21 @@
       try {
         const from = new Date(Date.now() - 7 * 86400000), fromIso = from.getFullYear() + '-' + pad(from.getMonth() + 1) + '-' + pad(from.getDate());
         const { data, error } = await sb().from(TABLE).select('*').or('status.eq.issued,issue_date.gte.' + fromIso).neq('status', 'cancelled').order('issue_date', { ascending: false }).order('created_at', { ascending: false }).limit(150);
-        if (error) throw error; S.desk = data || [];
-      } catch (e) { console.warn('Loading desk load failed:', e && e.message); if (navigator.onLine) toast('Could not load the loading desk: ' + ((e && e.message) || 'error'), 'error'); }
+        if (error) throw error; S.desk = data || []; S.deskStale = 0; cPut('desk', S.desk);
+      } catch (e) { console.warn('Loading desk load failed:', e && e.message); const c = cGet('desk'); if (c) { if (!S.desk.length) S.desk = c.rows; S.deskStale = c.at; } if (navigator.onLine && !isNetErr(e)) toast('Could not load the loading desk: ' + ((e && e.message) || 'error'), 'error'); }
       finally { S.deskBusy = false; }
     }
     LI.paintDesk();
   };
-  LI.deskTab = function (t, btn) { S.deskTab = t; document.querySelectorAll('#sec-loadingdesk .filter-btn').forEach(b => b.classList.remove('active')); if (btn) btn.classList.add('active'); LI.paintDesk(); };
+  LI.deskTab = function (t, btn) { S.deskTab = t; document.querySelectorAll('#' + (S.deskHost || 'sec-loadingdesk') + ' .filter-btn').forEach(b => b.classList.remove('active')); if (btn) btn.classList.add('active'); LI.paintDesk(); };
   let dst = 0; LI.deskSearch = function () { clearTimeout(dst); dst = setTimeout(() => { S.deskQ = val('ld_q').toLowerCase(); LI.paintDesk(); }, 200); };
   LI.paintDesk = function () {
     const host = $('ldList'); if (!host) return;
     const q = S.deskQ, want = S.deskTab === 'open' ? 'issued' : 'loaded';
     const rows = S.desk.filter(r => r.status === want && (!q || [r.serial_no, r.truck_no, r.shipper, r.container_text, r.release_order_no].join(' ').toLowerCase().indexOf(q) > -1));
-    if (!rows.length) { host.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">' + (want === 'issued' ? 'Nothing waiting to be loaded' : 'No loaded instructions in the last 7 days') + '</div></div>'; return; }
-    host.innerHTML = '<div class="ld-grid">' + rows.map(r => '<div class="ld-card' + (r.verify_result === 'verified' ? ' ok' : '') + '"><div class="ld-top"><span class="li-serial">' + esc(r.serial_no) + '</span><span>' + chip(r.status) + ' ' + vchip(r) + '</span></div>' +
+    const bar = staleBar(S.deskStale);
+    if (!rows.length) { host.innerHTML = bar + '<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">' + (want === 'issued' ? 'Nothing waiting to be loaded' : 'No loaded instructions in the last 7 days') + '</div></div>'; return; }
+    host.innerHTML = bar + '<div class="ld-grid">' + rows.map(r => '<div class="ld-card' + (r.verify_result === 'verified' ? ' ok' : '') + '"><div class="ld-top"><span class="li-serial">' + esc(r.serial_no) + '</span><span>' + chip(r.status) + ' ' + vchip(r) + '</span></div>' +
       '<div class="ld-truck">' + esc(r.truck_no) + '</div><div class="ld-line">' + esc(r.shipper) + '</div>' +
       '<div class="ld-line li-dim">' + esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? ' · ' + esc(asList(r.container_types).join(', ')) : '') + (r.release_order_no ? ' · RO ' + esc(r.release_order_no) : '') + '</div>' +
       '<div class="ld-line">' + contCell(r) + '</div><div class="li-acts" style="margin-top:10px">' +
@@ -702,7 +728,7 @@
     document.head.appendChild(s);
   }
   deskCss();
-  setInterval(() => { try { if (document.visibilityState === 'visible' && state.currentSection === 'loadingdesk' && !$('modalOverlay').classList.contains('active')) LI.renderDesk(); } catch (e) {} }, 20000);
+  setInterval(() => { try { const h = $(S.deskHost || 'sec-loadingdesk'); if (document.visibilityState === 'visible' && h && h.offsetParent && !$('modalOverlay').classList.contains('active')) LI.renderDesk(); } catch (e) {} }, 20000);
 
   /* ═══ GargoPrint: print buttons for reports that could only be exported ═══ */
   const P = window.GargoPrint = {};

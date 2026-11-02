@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script src="js/tablet.js"></script>
+    <script src="js/blackbox.js"></script>
     <title>Gargo · Fleet Operations</title>
     <script>
       (function(){
@@ -287,7 +288,11 @@
                     </button>
                     <button class="nav-item" onclick="showSection('gatesecurity',this)" data-section="gatesecurity">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 3l7.5 2.8v5.6c0 4.3-3 7.6-7.5 9.6-4.5-2-7.5-5.3-7.5-9.6V5.8z"/><path d="M8.5 12h7M12.5 9l3 3-3 3"/></svg>
-                        Gate Security
+                        Gate Processes
+                    </button>
+                    <button class="nav-item" onclick="showSection('loadingdesk',this)" data-section="loadingdesk">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="9" rx="1"/><path d="M16 10h3l2 3v3h-5"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/></svg>
+                        Loading Desk
                     </button>
                     <button class="nav-item" onclick="showSection('prestaking',this)" data-section="prestaking">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M5 20V9l7-6 7 6v11"/><path d="M9 20v-6h6v6"/></svg>
@@ -938,10 +943,10 @@
                         <div id="interchangeList"></div>
                     </section>
 
-                    <!-- GATE SECURITY -->
+                    <!-- GATE PROCESSES (gate desk, loading instructions, loading desk, register) -->
                     <section class="section" id="sec-gatesecurity">
                         <div class="sec-toolbar">
-                            <div class="sec-title">Gate Security</div>
+                            <div class="sec-title">Gate Processes</div>
                             <div class="filter-row">
                                 <button class="filter-btn active" onclick="GateSec.filter('all',this)">All</button>
                                 <button class="filter-btn" onclick="GateSec.filter('in',this)">In</button>
@@ -958,6 +963,9 @@
                         </div>
                         <div id="gateSecList"></div>
                     </section>
+
+                    <!-- LOADING DESK (Part 2 of loading instructions; filled by js/loading-instructions.js) -->
+                    <section class="section" id="sec-loadingdesk"></section>
 
                     <!-- VESSEL PRESTAKING -->
                     <section class="section" id="sec-prestaking">
@@ -1760,6 +1768,7 @@
     <script defer src="js/finance-corp.js"></script>
     <script defer src="js/finance-billing.js"></script>
     <script defer src="js/hr-users.js"></script>
+    <script defer src="js/hr-records.js"></script>
     <script defer src="js/ic-remote.js"></script>
     <script defer src="js/cameras-p2p.js"></script>
     <script defer src="js/form-designer.js"></script>
@@ -1768,5 +1777,8 @@
     <script defer src="js/documents.js"></script>
     <script defer src="js/gate-security.js"></script>
     <script defer src="js/loading-instructions.js"></script>
+    <script defer src="js/security-desk.js"></script>
+    <script defer src="js/roles-desk.js"></script>
+    <script defer src="js/live-cache.js"></script>
 </body>
 </html>
