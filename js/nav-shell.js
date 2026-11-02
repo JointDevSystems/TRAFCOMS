@@ -39,7 +39,7 @@
   const AREAS = [
     { id: 'home', label: 'Home', short: 'Home', blurb: 'Where you start', hue: '#D9B23A', icon: IC.home, groups: [['', ['dashboard']]] },
     { id: 'depot', label: 'Depot', short: 'Depot', blurb: 'Gate, yard and shipping lines', hue: '#D9B23A', icon: IC.depot,
-      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout', 'gatesecurity', 'loadingdesk']], ['Vessels and lines', ['prestaking', 'depotreport', 'shippinglines']]] },
+      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout', 'gatesecurity', 'loadingdesk']], ['Vessels and lines', ['prestaking', 'repatreserve', 'depotreport', 'shippinglines']]] },
     { id: 'fleet', label: 'Fleet', short: 'Fleet', blurb: 'Trucks, drivers and trips', hue: '#38BDF8', icon: IC.fleet,
       groups: [['Movement', ['dispatch', 'trips', 'livetracking']], ['Assets', ['trucks', 'drivers', 'maintenance', 'fuel']]] },
     { id: 'compliance', label: 'Compliance', short: 'Compliance', blurb: 'Requests and workshop jobs', hue: '#2DD4BF', icon: IC.compliance,
@@ -63,6 +63,7 @@
     gatesecurity: 'Gate desk, loading instructions, loading desk and the vehicle register',
     loadingdesk: 'Loading clerk: complete Part 2 of loading instructions',
     prestaking: 'Containers staged ahead of a vessel',
+    repatreserve: 'Hold empty containers for a shipping line\'s repat request',
     depotreport: 'Inward and outward register',
     shippinglines: 'Shipping lines, contacts and portal links',
     dispatch: 'Assign trucks and drivers to waiting jobs',
