@@ -35,7 +35,9 @@ html.gx-lite .scroll-top-btn{transition:none}
 @media (hover:none){
   .kpi-card:hover,.truck-card:hover,.scroll-top-btn:hover{transform:none}                      /* no sticky hover after a tap */
 }
-html.gx-touch .table-wrap,html.gx-touch .content,html.gx-touch .modal-box{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+html.gx-touch .table-wrap,html.gx-touch .content,html.gx-touch .modal-box{-webkit-overflow-scrolling:touch}
+html.gx-touch .modal-box{overscroll-behavior:contain}                                         /* dialogs keep their own scroll */
+html.gx-touch .table-wrap{overscroll-behavior-x:contain}                                      /* sideways table swipes stay in the table; vertical swipes scroll the page */
 html.gx-touch .action-btn,html.gx-touch .filter-btn,html.gx-touch .modal-btn{min-height:40px}
 html.gx-touch .rail-alert-btn,html.gx-touch .rail-theme-btn{width:42px;height:42px}
 html.gx-touch .leaflet-bar a{width:38px;height:38px;line-height:38px}                          /* tracking map zoom buttons */

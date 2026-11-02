@@ -238,6 +238,16 @@ function _settingsRow(settings) {
   };
 }
 
+/* Interchange (~24,000 rows) is NOT loaded at start-up. ic-remote.js (ICR) fetches the pages each screen needs.
+   ?ic=full on the URL (remembered on the device) restores the old load-everything behaviour; ?ic=lazy switches back. */
+function _icFullLoad() {
+  try {
+    const m = /[?&]ic=(full|lazy)/.exec(location.search);
+    if (m) return m[1] === 'full';
+    return localStorage.getItem('gargo-ic-full') === '1';
+  } catch (e) { return false; }
+}
+
 async function loadDB() {
   try {
     const [
@@ -261,13 +271,13 @@ async function loadDB() {
       supabase.from('shipping_lines').select('*'),
       supabase.from('shutouts').select('*'),
       
-      fetchAllPaginated((from, to) =>
+      _icFullLoad() ? fetchAllPaginated((from, to) =>
         supabase.from('interchange').select('*')
           .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
           .order('date', { ascending: false })
-          .order('id', { ascending: false })   
+          .order('id', { ascending: false })
           .range(from, to)
-      ),
+      ) : Promise.resolve({ data: [], error: null }),   // ~24k rows: loaded on demand by ic-remote.js, not at start-up
       supabase.from('requisitions').select('*'),
       supabase.from('workshop_jobs').select('*'),
       supabase.from('invoices').select('*'),
@@ -649,10 +659,13 @@ const LIVE_TABLE_LOADERS = {
                         supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to))).map(fuelFromRow) },
   shipping_lines:    { key: 'shippingLines',    load: async () => (await _liveRows(supabase.from('shipping_lines').select('*'))).map(lineFromRow) },
   shutouts:          { key: 'shutouts',         load: async () => (await _liveRows(supabase.from('shutouts').select('*'))).map(shutoutFromRow) },
-  interchange:       { key: 'interchange',      load: async () => (await _livePaged((from, to) =>
-                        supabase.from('interchange').select('*')
-                          .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
-                          .order('date', { ascending: false }).order('id', { ascending: false }).range(from, to))).map(icFromRow) },
+  interchange:       { key: 'interchange',      load: async () => {
+                        if (!_icFullLoad()) return (state.db && state.db.interchange) || [];   // on-demand cache: row patches keep it current
+                        return (await _livePaged((from, to) =>
+                          supabase.from('interchange').select('*')
+                            .or(`status.neq.reconciled,date.gte.${operationalCutoffISO()}`)
+                            .order('date', { ascending: false }).order('id', { ascending: false }).range(from, to))).map(icFromRow);
+                      } },
   requisitions:      { key: 'requisitions',     load: async () => (await _liveRows(supabase.from('requisitions').select('*'))).map(reqFromRow) },
   workshop_jobs:     { key: 'workshop',         load: async () => (await _liveRows(supabase.from('workshop_jobs').select('*'))).map(wsFromRow) },
   invoices:          { key: 'invoices',         load: async () => {

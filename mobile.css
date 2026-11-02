@@ -33,3 +33,16 @@ button,a,.nav-item,[onclick],select,summary{touch-action:manipulation}
 }
 /* Skip rendering of off-screen table rows in long lists */
 @media (max-width:900px){.table-wrap tbody tr{content-visibility:auto;contain-intrinsic-size:auto 48px}}
+
+/* ── Phone/tablet scrolling fix ──────────────────────────────────────────────────────────────
+   The page must scroll as ONE document. Nested scroll boxes (.content / .main / .body-wrap with overflow:auto|hidden)
+   plus overscroll-behavior:contain/none swallowed the touch drag, so the page would not move. */
+@media (max-width:900px){
+  html,body{height:auto;min-height:100%}
+  html{scroll-behavior:auto}
+  body{overflow-y:visible;overscroll-behavior-y:auto}
+  #shell,.shell,.app-shell{height:auto}
+  .body-wrap,.main,.content{display:block;overflow:visible;height:auto;overscroll-behavior:auto}
+  .table-wrap{overscroll-behavior-y:auto}
+  body.sidebar-open{overflow:hidden}              /* page is locked ONLY while the menu drawer is open */
+}

@@ -460,6 +460,7 @@
   }
 
   function dashTick() {
+    if (!camReady) return;                                        // cameras start after the app has finished loading
     const wall = $('gateCamWall'), panel = $('gateCamPanel');
     const show = signedIn() && wall && panel && panel.style.display !== 'none' && !document.hidden && inView(wall);
     if (!show) { dashStop(); return; }
@@ -506,7 +507,7 @@
   }
   setInterval(layoutTick, 1000);
   setInterval(dashTick, 3000);
-  setTimeout(dashTick, 1200);
+  setTimeout(dashTick, 6000);
 
   /* ───────── the "Phone cameras" window ───────── */
   function notify() { try { paintWatch(); } catch (e) { } try { D.tiles.size && D.tiles.forEach(paintTile); } catch (e) { } }
@@ -677,6 +678,7 @@
   }
 
   function recTick() {
+    if (document.hidden) return;
     document.querySelectorAll('[data-rec]').forEach(el => {
       const rec = R.get(el.dataset.rec), compact = el.dataset.compact === '1';
       const sec = rec ? Math.floor((Date.now() - rec.start) / 1000) : 0;
@@ -830,11 +832,17 @@
   }
 
   /* called on every dashboard paint */
+  let camReady = false, camWait = null;
   function mount() {
     const panel = $('gateCamPanel'); if (!panel) return;
     if (!signedIn()) { panel.style.display = 'none'; return; }
     panel.style.display = '';
-    syncButtons(); ensureWallHint(); paintFeed(); loadFeed();
+    syncButtons(); ensureWallHint(); paintFeed();
+    if (!camReady) {                                           // first dashboard paint: let the app finish starting before any camera work
+      if (!camWait) camWait = setTimeout(() => { camReady = true; camWait = null; try { mount(); } catch (e) { } }, 3500);
+      return;
+    }
+    loadFeed();
     if (!feedTimer) feedTimer = setInterval(() => { if (!document.hidden && $('gateCamPanel') && $('gateCamPanel').style.display !== 'none') loadFeed(); }, 30000);
     dashTick();
   }

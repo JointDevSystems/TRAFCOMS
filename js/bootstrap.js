@@ -50,9 +50,11 @@ async function runLoader() {
     fill.style.width = Math.round((step / (LOAD_STEPS.length + 1)) * 100) + '%';
   }, 200);
 
+  // The session check and the data load do not depend on each other: run them together.
+  const sess = restoreSession();
   await initDB();
-  await restoreSession();
-
+  await sess;
+  if (!state.currentUser && state.offlineData) await restoreSession();   // data came from the device copy: reopen as the last user
   clearInterval(tick);
   fill.style.width = '100%';
   status.textContent = state.offlineData ? 'Offline — using saved data.' : 'System ready.';
