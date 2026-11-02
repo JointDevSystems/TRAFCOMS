@@ -1,11 +1,5 @@
 'use strict';
-/* Gargo Corporate Finance. Loads AFTER finance.js, hr.js, finance-suite.js and erp-hub.js.
-   Double-entry General Ledger (chart of accounts, journals, trial balance, income statement, balance sheet, account ledger,
-   posting of receipts / bills / expenses / payroll / invoices into the ledger), Fixed Assets, Purchase Orders,
-   Recurring Entries, VAT & WHT return, Statutory Calendar, Credit Control, 13-week Cash-flow Forecast, and the
-   cross-department Approvals Inbox (its own page, and a Finance tab).
-   Every figure comes from database functions (gl_*, fin_*) that re-check the caller's role; this UI only presents them.
-   Tabs register through GARGO_FIN.add, so finance.js stays the single owner of renderFinance. */
+
 (function () {
   const H = GARGO_HUB, F = GARGO_FIN, FIN_CATS = F.FIN_CATS, $ = id => document.getElementById(id), N = v => Number(v || 0), r2 = n => Math.round(n * 100) / 100;
   const M = n => H.money(n), D = d => (d ? fmtDate(d) : '—'), T = () => today10(), who = () => state.profile?.username;
@@ -393,7 +387,7 @@
     if (p.status === 'part_received') acts.push(btn('Receive more', `fcPoRecv('${id}')`, 1));
     if (['part_received', 'received'].includes(p.status) && !p.bill_id) acts.push(btn('Raise supplier bill', `fcPoAct('bill','${id}')`, 1));
     if (['draft', 'submitted', 'approved', 'sent', 'rejected'].includes(p.status)) acts.push(btn('Cancel order', `fcPoCancel('${id}')`));
-    acts.push(btn('PDF', `fcPoPdf('${id}')`));
+    acts.push(btn('PDF', `fcPoPdf('${id}')`), btn('Print', `fcPoPdf('${id}',true)`));
     openModal(`${p.po_no} · ${poLab(p.status)}`, `<div class="hr-grid" style="grid-template-columns:1fr 1fr">${card('Order', '', row('Supplier', esc(p.supplier)) + row('Ordered', D(p.order_date)) + row('Expected', D(p.expected_date)) + row('Cost centre', esc(p.cost_centre || '—')))}${card('Terms', '', row('Payment', esc(p.payment_terms || '—')) + row('Delivery', esc(p.delivery_terms || '—')) + row('Currency', esc(p.currency || 'KES')) + (p.decision_note ? row('Decision note', esc(p.decision_note)) : ''))}</div>
       ${tbl(['Description', 'Qty', 'Received', 'Unit price', 'VAT %', 'Total'], (ls || []).map(l => [esc(l.description), N(l.qty), N(l.received_qty), R(num(l.unit_price)), N(l.vat_rate), R(num(N(l.qty) * N(l.unit_price)))]), 'No lines', ['Total', '', '', '', '', R(cur(p.total, p.currency))])}
       ${p.notes ? `<p style="font-size:12.5px;color:var(--text-2)">${esc(p.notes)}</p>` : ''}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">${acts.join('')}</div>`);
@@ -417,7 +411,7 @@
     const { id, open } = window._poRecv, lines = open.map((l, i) => ({ id: l.id, qty: N($('rv_' + i).value) })).filter(l => l.qty > 0); if (!lines.length) return toast('Enter a quantity to receive', 'error');
     const r = await rpc('fin_po_receive', { p_id: id, p_lines: lines }); if (!r) return; addAudit(who(), 'PO goods received', id); toast('Goods received', 'success'); closeM(); purchaseOrders();
   };
-  window.fcPoPdf = async id => {
+  window.fcPoPdf = async (id, print) => {
     if (!window.jspdf) return toast('PDF library not loaded', 'error');
     const [{ data: p }, { data: ls }] = await Promise.all([supabase.from('purchase_orders').select('*').eq('id', id).single(), supabase.from('po_lines').select('*').order('line_no').eq('po_id', id)]); if (!p) return;
     const doc = new window.jspdf.jsPDF(); let y = window.ghPdfLetterhead(doc, 14, 10, 182) + 8; const c = p.currency || 'KES';
@@ -426,7 +420,7 @@
     y += 3; doc.setFont(undefined, 'bold'); doc.text('Description', 14, y); doc.text('Qty', 120, y, { align: 'right' }); doc.text('Unit price', 150, y, { align: 'right' }); doc.text('Total', 196, y, { align: 'right' }); doc.line(14, y + 2, 196, y + 2); y += 8; doc.setFont(undefined, 'normal');
     (ls || []).forEach(l => { if (y > 270) { doc.addPage(); y = 20; } doc.text(String(l.description).slice(0, 60), 14, y); doc.text(String(N(l.qty)), 120, y, { align: 'right' }); doc.text(num(l.unit_price), 150, y, { align: 'right' }); doc.text(num(N(l.qty) * N(l.unit_price)), 196, y, { align: 'right' }); y += 6.5; });
     y += 3; doc.line(14, y, 196, y); y += 7; doc.text('Subtotal', 150, y, { align: 'right' }); doc.text(c + ' ' + num(p.subtotal), 196, y, { align: 'right' }); y += 6; doc.text('VAT', 150, y, { align: 'right' }); doc.text(c + ' ' + num(p.vat), 196, y, { align: 'right' }); y += 7; doc.setFont(undefined, 'bold'); doc.text('TOTAL', 150, y, { align: 'right' }); doc.text(c + ' ' + num(p.total), 196, y, { align: 'right' });
-    doc.save(`${p.po_no}.pdf`);
+    if (print && window.ghPrintPdf) window.ghPrintPdf(doc); else doc.save(`${p.po_no}.pdf`);
   };
 
   /* ═══════════════════════════════════════════════════════════════

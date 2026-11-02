@@ -805,6 +805,7 @@
                                     <button class="action-btn" onclick="renderInwardReports()">▶ Run Report</button>
                                     <button class="action-btn ghost" onclick="inwardReportsReset()">↻ Reset Filters</button>
                                     <button class="action-btn ghost" id="iwRptExportBtn" onclick="downloadInwardReportCSV()" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="GargoPrint.inward()">🖨 Print</button>
                                 </div>
                             </div>
 
@@ -1305,6 +1306,7 @@
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                                     <button class="action-btn" onclick="trcRunAuditQuery()">▶ Run Query</button>
                                     <button class="action-btn ghost" onclick="trcExportAuditCSV()" id="trcExportAuditBtn" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="GargoPrint.audit()">🖨 Print</button>
                                 </div>
                             </div>
                             <div id="trcAuditSummary"></div>
@@ -1625,6 +1627,7 @@
         <button class="action-btn" onclick="renderDepOpsReports()">▶ Run Report</button>
         <button class="action-btn ghost" onclick="depOpsReportsReset()">↻ Reset Filters</button>
         <button class="action-btn ghost" id="depopsRptExportBtn" onclick="downloadDepOpsReportCSV()" disabled>⬇ Export CSV</button>
+        <button class="action-btn ghost" onclick="GargoPrint.depops()">🖨 Print</button>
       </div>
     </div>
 
@@ -1764,5 +1767,6 @@
     <script defer src="js/reports-centre.js"></script>
     <script defer src="js/documents.js"></script>
     <script defer src="js/gate-security.js"></script>
+    <script defer src="js/loading-instructions.js"></script>
 </body>
 </html>

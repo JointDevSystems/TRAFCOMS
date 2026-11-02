@@ -68,7 +68,7 @@ const HR = {
     fields: [{ k: 'employee_id', l: 'Employee', t: 'emp', r: 1 }, { k: 'period', l: 'Period (YYYY-MM)', r: 1, d: today10().slice(0, 7) }, { k: 'basic', l: 'Basic', t: 'number', r: 1 }, { k: 'allowances', l: 'Allowances', t: 'number', d: 0 },
       { k: 'other_deductions', l: 'Other Deductions (loans, advances)', t: 'number', d: 0 }, { k: 'gross', l: 'Gross', t: 'number', ro: 1 }, { k: 'paye', l: 'PAYE', t: 'number', ro: 1 }, { k: 'nssf', l: 'NSSF', t: 'number', ro: 1 },
       { k: 'shif', l: 'SHIF', t: 'number', ro: 1 }, { k: 'housing_levy', l: 'Housing Levy', t: 'number', ro: 1 }, { k: 'net', l: 'Net Pay', t: 'number', ro: 1 }, { k: 'status', l: 'Status', t: 'select', o: ['draft', 'approved', 'paid'] }],
-    rowActions: r => `<button class="action-btn ghost" onclick="hrPayslipPdf('${r.id}')">Payslip PDF</button> `,
+    rowActions: r => `<button class="action-btn ghost" onclick="hrPayslipPdf('${r.id}')">Payslip PDF</button> <button class="action-btn ghost" onclick="hrPayslipPdf('${r.id}',true)">Print</button> `,
     extra: () => `<button class="action-btn ghost" onclick="hrRunPayroll()">⚙ Run payroll</button>${canApprove() ? '<button class="action-btn ghost" onclick="hrApproveDrafts()">✓ Approve drafts</button>' : ''}<button class="action-btn ghost" onclick="hrExportBank()">⬇ Bank file</button><button class="action-btn ghost" onclick="hrExportStatutory()">⬇ Statutory</button>` },
   compliance: { table: 'staff_documents', title: 'Document', host: 'hrBody', kpiHost: 'hrKpis', needsEmp: true,
     cols: [['employee_id', 'Employee', 'emp'], ['doc_type', 'Document'], ['doc_no', 'Number'], ['expiry_date', 'Expiry', 'expiry']],
@@ -239,7 +239,7 @@ async function hrExportEmployees() {
   hrCsv('employees.csv', [['Staff No', 'Name', 'Department', 'Title', 'Contract', 'Phone', 'Start', 'Status']].concat(rows.map(e => [e.staff_no, e.full_name, e.department, e.job_title, e.employment_type, e.phone, e.start_date, e.status])));
 }
 
-function hrPayslipPdf(id) {
+function hrPayslipPdf(id, print) {
   const r = (GARGO_HUB.rows.payroll || []).find(x => x.id === id), e = GARGO_HUB.emp[r?.employee_id] || {};
   if (!r || !window.jspdf) return toast('PDF library not loaded', 'error');
   const doc = new window.jspdf.jsPDF(); let y = window.ghPdfLetterhead(doc, 14, 10, 182) + 8;
@@ -250,5 +250,5 @@ function hrPayslipPdf(id) {
   const money = n => Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 });
   [['Basic salary', r.basic], ['Allowances', r.allowances], ['Gross pay', r.gross], ['PAYE', -r.paye], ['NSSF', -r.nssf], ['SHIF', -r.shif], ['Affordable Housing Levy', -r.housing_levy], ['Other deductions', -r.other_deductions]].forEach(([a, b]) => { doc.text(a, 14, y); doc.text(money(b), 196, y, { align: 'right' }); y += 6.5; });
   y += 2; doc.line(14, y, 196, y); y += 8; doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.text('NET PAY (KSh)', 14, y); doc.text(money(r.net), 196, y, { align: 'right' });
-  doc.save(`payslip-${e.staff_no || 'staff'}-${r.period}.pdf`);
+  if (print && window.ghPrintPdf) window.ghPrintPdf(doc); else doc.save(`payslip-${e.staff_no || 'staff'}-${r.period}.pdf`);
 }

@@ -682,7 +682,7 @@ function renderFuelReport() {
   if (!document.getElementById('frep_results')) {
     host.innerHTML = `
       <div class="panel-head"><span class="panel-title">Fuel &amp; Trip Payments Report</span>
-        <span class="panel-meta"><button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport()">Export to Excel</button></span></div>
+        <span class="panel-meta"><button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport()">Export to Excel</button> <button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport('print')">Print</button></span></div>
       <div style="padding:10px 14px 4px">
         <div id="frep_ranges" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="frep_custom" style="display:none;gap:8px;align-items:center;margin-bottom:8px;font-size:11px;color:var(--text-3)">
@@ -717,8 +717,8 @@ function frepRange(k) { _FREP.range = k; renderFuelReport(); }
 function frepBy(k) { _FREP.by = k; renderFuelReport(); }
 function frepSet(which, v) { _FREP[which] = v; renderFuelReport(); }
 
-function exportFuelReport() {
-  if (typeof XLSX === 'undefined') { toast('Spreadsheet library still loading — try again in a moment', 'error'); return; }
+function exportFuelReport(mode) {
+  if (mode !== 'print' && typeof XLSX === 'undefined') { toast('Spreadsheet library still loading — try again in a moment', 'error'); return; }
   const r = _frepRows();
   if (!r.logs.length) { toast('Nothing to export for this period', 'warning'); return; }
   const by = (_FREP_GROUPS.find(g => g[0] === _FREP.by) || [])[1] || 'Group';
@@ -729,6 +729,7 @@ function exportFuelReport() {
       String(f.date).slice(0, 10), fuelTruckLabel(f), fuelDriverLabel(f), f.container || '', f.ctype || '', f.routeFrom || '', f.routeTo || '',
       Number(f.litres) || 0, Number(f.pricePerLitre) || 0, fuelLogTotal(f), f.station || '', f.receipt || '']));
   const top = ((window.GH_BRAND && GH_BRAND.lines) || ['GARGO HAVEN DEPOT LIMITED']).map(l => [l]).concat([['Fuel Report'], []]);   // same heading as invoices / interchanges
+  if (mode === 'print') { if (window.GargoPrint) GargoPrint.sheets('Fuel Report', [{ title: 'By ' + by, rows: sum }, { title: 'Entries', rows: detail }]); return; }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(sum)), `By ${by}`.slice(0, 31));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(detail)), 'Entries');
