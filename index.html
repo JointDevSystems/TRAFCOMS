@@ -929,23 +929,8 @@
                         <div id="shutoutList"></div>
                     </section>
 
-                    <!-- INTERCHANGE -->
-                    <section class="section" id="sec-interchange">
-                        <div class="sec-toolbar">
-                            <div class="sec-title">Interchange Management</div>
-                            <div class="filter-row">
-                                <button class="filter-btn active" onclick="filterInterchange('all',this)">All</button>
-                                <button class="filter-btn" onclick="filterInterchange('pending',this)">Pending</button>
-                                <button class="filter-btn" onclick="filterInterchange('approved',this)">Approved</button>
-                                <button class="filter-btn" onclick="filterInterchange('reconciled',this)">Reconciled</button>
-                                <button class="filter-btn" onclick="filterInterchange('flagged',this)">⚠ Flagged for Review</button>
-                                <button class="action-btn ghost" onclick="printInterchangeList()">🖨 Print</button>
-                                <button class="action-btn ghost" onclick="downloadInterchangeCSV()">⬇ Download CSV</button>
-                                <button class="action-btn" onclick="showAddInterchangeModal()">+ Record Interchange</button>
-                            </div>
-                        </div>
-                        <div id="interchangeList"></div>
-                    </section>
+                    <!-- INTERCHANGE: Inward and Outward lists are drawn by js/interchange-lists.js -->
+                    <section class="section" id="sec-interchange"></section>
 
                     <!-- GATE PROCESSES (gate desk, loading instructions, loading desk, register) -->
                     <section class="section" id="sec-gatesecurity">
@@ -1787,5 +1772,6 @@
     <script defer src="js/security-desk.js"></script>
     <script defer src="js/roles-desk.js"></script>
     <script defer src="js/live-cache.js"></script>
+    <script defer src="js/interchange-lists.js"></script>
 </body>
 </html>
