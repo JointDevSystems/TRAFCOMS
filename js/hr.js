@@ -1,6 +1,6 @@
 'use strict';
 
-const hrCan = () => isAdmin() || currentRole() === 'hr';
+const hrCan = () => isAdmin() || currentRole() === 'hr' || (state.profile && state.profile.can_manage_hr === true);
 const HR_DEPTS = ['Gate & Security', 'Yard Operations', 'Weighbridge', 'Workshop', 'Reefer Unit', 'Transport & Fleet', 'Finance', 'HR & Admin', 'Management'];
 const today10 = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
 const HR_ANNUAL_DAYS = 21;

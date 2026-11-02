@@ -55,6 +55,7 @@ const SHELL_FILES = [
   './js/finance-corp.js',
   './js/finance-billing.js',
   './js/hr-users.js',
+  './js/hr-records.js',
   './js/ic-remote.js',
   './js/cameras-p2p.js',
   './js/form-designer.js',
