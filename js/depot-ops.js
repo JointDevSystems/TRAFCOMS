@@ -50,7 +50,8 @@ function renderInward() {
   renderInwardStillInStorage();
   /* Realtime sync re-runs this renderer. It used to wipe whatever the clerk was typing in the gate-in form every time
      any user changed any record. Only reset the form when it is empty or holds nothing the clerk typed. */
-  const typed = ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer', 'iw_consignee'].some(id => { const el = document.getElementById(id); return el && el.value; });
+  const typed = ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer', 'iw_consignee'].some(id => { const el = document.getElementById(id); return el && el.value; })
+    || Array.from(document.querySelectorAll('#inwardTabSingle [id^="gf_inward_"]')).some(el => el.value);
   if (!typed && !_inwardBooking) clearInwardForm(true);
 }
 
@@ -233,6 +234,9 @@ async function _createInwardEntryInner() {
   if (!driverVal) { toast('Driver name required', 'error'); return; }
   if (!driverIdVal && cg('gate.requireDriverId') !== false) { toast("Driver's ID / driving licence number required", 'error'); return; }
 
+  if (window.GargoForms) { const formErr = GargoForms.validate('inward'); if (formErr) { toast(formErr, 'error'); return; } }   // Form Designer rules
+  const custom = window.GargoForms ? GargoForms.collect('inward') : {};                                                        // Form Designer fields
+
   const type = 'Gate-In';
   const dateVal = new Date().toISOString();
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
@@ -263,6 +267,7 @@ async function _createInwardEntryInner() {
     date: dateVal, gateInAt: dateVal, depotInAt: null, status: 'pending', img: '', photos: [],
     dateOut: null, receivingParty: '', releaseOrderNo: '',
     needsSurvey: true, surveyStatus: 'awaiting_survey', surveyedAt: null, surveyedBy: null, bookingId: booking ? booking.id : null,
+    custom,
     _dirty: true,
   };
   // Save first, then confirm: if the server refuses (e.g. duplicate), nothing is left half-recorded
@@ -348,6 +353,7 @@ function finalizeDepotIn(ic) {
 function clearInwardForm(skipRepopulate) {
   ['iw_container', 'iw_truck', 'iw_driver', 'iw_driver_id', 'iw_trailer', 'iw_consignee'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const iwSt = document.getElementById('iw_status'); if (iwSt) iwSt.value = 'Available';
+  if (window.GargoForms) GargoForms.clearForm('inward');
   _inwardBooking = null;
   const bn = document.getElementById('inwardBookingBanner'); if (bn) { bn.style.display = 'none'; bn.innerHTML = ''; }
   _inwardImages = [];
@@ -1633,6 +1639,10 @@ async function saveSurvey(bookingId) {
       remarks: val('sv_remarks'),
       photos: _surveyImages,
       tariffItems: repairItems,
+      dateIn: dateInRaw ? new Date(dateInRaw).toISOString() : null,
+      manufactureDate: dom || null,
+      cargoStatus: val('sv_cargo') || null,
+      gross: gross,
       custom: window.GargoForms ? GargoForms.collect('survey') : null,   // Form Designer fields (incl. Currency)
     });
     const heavy = val('sv_condition') === 'heavily_damaged';
@@ -1797,13 +1807,15 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       driverIdNumber: survey.driver_id_number || '',
       isoCode: survey.iso_code || '',
       trailerNo: survey.trailer_number || '',
-      grossWeight: survey.mgwt || '',
+      grossWeight: (survey.gross_weight != null ? survey.gross_weight : (survey.mgwt || '')),
+      manufactureDate: survey.manufacture_date || '',
+      cargoStatus: survey.cargo_status || '',
       repairs: survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ category: survey.tariff_category, code: survey.tariff_code, side: survey.tariff_side, item: survey.tariff_item, hours: survey.tariff_hours, material: survey.tariff_material }] : []),
       repairTotal: repairItemsTotal(survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : (survey.tariff_code ? [{ hours: survey.tariff_hours, material: survey.tariff_material }] : [])),
       notes: sanitize(survey.remarks || ''),
       clerkName: survey.clerk_name || '',
       storageZone, storageBlock, storageSlot,
-      date: new Date().toISOString(),
+      date: survey.date_in || new Date().toISOString(),
       status: 'pending',
       img: (survey.photos && survey.photos[0]) || '',
       surveyId: survey.id,

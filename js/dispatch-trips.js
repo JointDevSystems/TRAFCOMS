@@ -263,7 +263,8 @@ async function ensureOutwardInterchange(t) {
     const eirNumber = sanitize(t.eirNumber || '') || await nextEirNumber('Gate-Out', line);
     const rec = {
       id, container: cont, type: 'Gate-Out', ctype: t.ctype || (inw && inw.ctype) || '', line, condition: outStatus || 'Good',
-      truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '', driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(), transporter: '', trailerNo: '',
+      truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '', driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
+      transporter: sanitize((t.custom && t.custom.transporter) || ''), trailerNo: sanitize((t.custom && t.custom.trailer_no) || ''),   // dispatch-form fields feed the interchange's own columns
       eirNumber, blNumber: (inw && inw.blNumber) || '', guaranteeNo: (inw && inw.guaranteeNo) || '', clerkName: (state.profile && state.profile.name) || '',
       vessel: t.vessel || (inw && inw.vessel) || '', voyage: t.voyage || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
       isoCode: (inw && inw.isoCode) || '', grossWeight: (inw && inw.grossWeight) || '', manufactureDate: (inw && inw.manufactureDate) || '', cargoStatus: (inw && inw.cargoStatus) || '',

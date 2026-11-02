@@ -5,12 +5,18 @@
   const $ = id => document.getElementById(id);
   const LS_DEFS = 'gargo-cf-defs';
   const TABLES = { inward: 'interchange', survey: 'depot_surveys', dispatch: 'trips' };
-  const FORMS = ['survey', 'dispatch'];
+  const FORMS = ['inward', 'survey', 'dispatch'];
   const TYPES = [['text', 'Short text'], ['longtext', 'Long text'], ['number', 'Number'], ['date', 'Date'], ['bool', 'Yes / No'], ['select', 'Dropdown list']];
 
   
   const BUILTIN = {
-    inward: [],
+    inward: [
+      ['iw_container', 'Container No.', { locked: 1 }], ['iw_line', 'Shipping Line / Agent', { locked: 1 }],
+      ['iw_size', 'Size', { locked: 1 }], ['iw_type', 'Type', { locked: 1 }],
+      ['iw_status', 'Container Status'], ['iw_consignee', 'Consignee / C&F'],
+      ['iw_driver', 'Driver Name', { locked: 1 }], ['iw_driver_id', 'Driver ID / Driving Licence No.', { cfg: 'gate.requireDriverId', def: true }],
+      ['iw_truck', 'Lorry / Truck No.', { cfg: 'gate.requireTruck', def: true }], ['iw_trailer', 'Trailer No.', { cfg: 'gate.requireTrailer', def: false }],
+    ],
     survey: [
       ['sv_container', 'Container No.', { locked: 1 }], ['sv_ctype', 'Type / Size', { locked: 1 }], ['sv_condition', 'Overall Condition', { locked: 1 }],
       ['sv_datein', 'Date IN'], ['sv_line', 'Shipping Line'], ['sv_consignee', 'Consignee / C&F'], ['sv_bl', 'Guarantee / B/L Number'],
@@ -163,25 +169,38 @@
 
   G.clearForm = function (form) { live(form).forEach(d => { const e = $(`gf_${form}_${d.field_key}`); if (e) e.value = ''; }); };
 
-  /* custom values -> database columns for depot_surveys (spread into the insert by recordSurvey) */
-  G.surveyOut = function (cust) {
+  /* custom values <-> database columns. Only columns that are ready are ever written or read, so a field
+     whose column is missing can never make a save fail. Keys are field_key; columns are cf_<field_key>. */
+  G.rowOut = function (table, cust) {
     const row = {}; if (!cust) return row;
-    G.columnsFor('depot_surveys').forEach(col => { const k = col.slice(3); if (k in cust) row[col] = cust[k] === '' ? null : cust[k]; });
+    G.columnsFor(table).forEach(col => { const k = col.slice(3); if (k in cust) row[col] = cust[k] === '' ? null : cust[k]; });
     return row;
   };
-
-
-  /* dispatch form: custom values <-> trips columns (cf_*). Only columns that are ready are ever written or read. */
-  G.tripOut = function (cust) {
-    const row = {}; if (!cust) return row;
-    G.columnsFor('trips').forEach(col => { const k = col.slice(3); if (k in cust) row[col] = cust[k] === '' ? null : cust[k]; });
-    return row;
-  };
-  G.tripIn = function (r) {
+  G.rowIn = function (table, r) {
     const out = {}; if (!r) return out;
-    G.columnsFor('trips').forEach(col => { if (r[col] !== undefined && r[col] !== null) out[col.slice(3)] = r[col]; });
+    G.columnsFor(table).forEach(col => { if (r[col] !== undefined && r[col] !== null) out[col.slice(3)] = r[col]; });
     return out;
   };
+  G.surveyOut = cust => G.rowOut('depot_surveys', cust);     // spread into the insert by recordSurvey
+  G.tripOut = cust => G.rowOut('trips', cust);               // spread into tripToRow
+  G.tripIn = r => G.rowIn('trips', r);
+  G.icOut = cust => G.rowOut('interchange', cust);           // spread into icToRow (inward form)
+  G.icIn = r => G.rowIn('interchange', r);
+
+  /* read-back: [{label, value}] for everything saved through the designer (archived fields are listed when they hold data) */
+  const showVal = (d, v) => d.field_type === 'bool' ? (v ? 'Yes' : 'No') : String(v);
+  const labelOf = d => (d.label || d.field_key) + (d.active ? '' : ' (archived)');
+  G.valuesFromCustom = function (form, cust) {          // cust = { field_key: value } (trip.custom / interchange.custom)
+    const out = []; if (!cust) return out;
+    custom(form).forEach(d => { const v = cust[d.field_key]; if (v === undefined || v === null || v === '') return; out.push({ label: labelOf(d), value: showVal(d, v) }); });
+    return out;
+  };
+  G.valuesFromRow = function (form, row) {              // row = a raw database row (depot_surveys)
+    const out = []; if (!row) return out;
+    custom(form).forEach(d => { if (d.column_status !== 'ready' || !d.column_name) return; const v = row[d.column_name]; if (v === undefined || v === null || v === '') return; out.push({ label: labelOf(d), value: showVal(d, v) }); });
+    return out;
+  };
+
   /* put saved custom values back into a form (used when a trip is opened for completion) */
   G.fill = function (form, cust) {
     live(form).forEach(d => {
@@ -206,6 +225,7 @@
   function afterSchemaChange() {
     persist();
     document.querySelectorAll('.gf-custom').forEach(b => b.remove());
+    G.decorate('inward');
     G.decorate('survey');
     G.decorate('dispatch');
   }
@@ -241,7 +261,7 @@
 
   function tabsHtml() {
     const t = (k, l) => `<button class="filter-btn ${D.tab === k ? 'active' : ''}" onclick="GargoForms.tab('${k}')">${l}</button>`;
-    return `<div class="gf-tabs">${t('survey', 'Survey form')}${t('dispatch', 'Dispatch form')}${t('rules', 'Rules')}${t('db', 'Database')}</div>`;
+    return `<div class="gf-tabs">${t('inward', 'Inward form')}${t('survey', 'Survey form')}${t('dispatch', 'Dispatch form')}${t('rules', 'Rules')}${t('db', 'Database')}</div>`;
   }
 
   function builtinTable(form) {
@@ -264,7 +284,7 @@
         ${d.column_error ? `<div class="gf-sub" style="color:var(--red)">${esc(d.column_error)}</div>` : ''}</div>
       <div style="display:flex;gap:4px"><button class="action-btn ghost gf-mini" ${i === 0 ? 'disabled' : ''} onclick="GargoForms.move('${d.id}',-1)" aria-label="Move up">▲</button><button class="action-btn ghost gf-mini" ${i === list.length - 1 ? 'disabled' : ''} onclick="GargoForms.move('${d.id}',1)" aria-label="Move down">▼</button></div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${d.column_status !== 'ready' ? `<button class="action-btn gf-mini" onclick="GargoForms.retry('${d.id}')">Create column</button>` : ''}<button class="action-btn ghost gf-mini" onclick="GargoForms.edit('${d.id}')">Edit</button><button class="action-btn ghost gf-mini" onclick="GargoForms.toggleActive('${d.id}')">${d.active ? 'Archive' : 'Restore'}</button></div></div>`).join('');
-    return `<div class="gf-h">Custom fields</div><div class="gf-sub" style="margin-bottom:6px">${form === 'survey' ? 'The <b>Currency</b> field below is a custom field: click Edit to change which currencies are offered (one per line).' : 'Custom fields appear under “Additional details” on the Dispatch form and are saved with each trip.'}</div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}
+    return `<div class="gf-h">Custom fields</div><div class="gf-sub" style="margin-bottom:6px">${form === 'survey' ? 'The <b>Currency</b> field below is a custom field: click Edit to change which currencies are offered (one per line). Values are saved with the survey and printed on the inspection report.' : form === 'inward' ? 'Custom fields appear under “Additional details” on the Gate-In form and are saved with the interchange record (shown in the container details).' : 'Custom fields appear under “Additional details” on the Dispatch form and are saved with each trip (shown in the trip details).'}</div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}
       <div style="margin-top:10px"><button class="action-btn" onclick="GargoForms.startAdd()">+ Add a field</button></div>${editorHtml(form)}`;
   }
 
@@ -296,14 +316,14 @@
   function dbHtml() {
     const all = G.defs.filter(d => d.kind === 'field');
     const rows = all.map(d => `<div class="gf-row" style="grid-template-columns:minmax(0,1fr) auto"><div>${esc(d.label)} <span class="gf-sub">${esc(TABLES[d.form_key])}.${esc(d.column_name || 'cf_' + d.field_key)}</span>${d.column_error ? `<div class="gf-sub" style="color:var(--red)">${esc(d.column_error)}</div>` : ''}</div><span class="gf-chip ${esc(d.column_status)}">${esc(d.column_status)}</span></div>`).join('');
-    return `<div class="gf-h">Database</div><div class="gf-sub" style="margin-bottom:8px">Each custom field is stored in its own column of the form’s table (<b>depot_surveys</b> for the survey, <b>trips</b> for dispatch). Columns are only ever added, never changed or removed, so archiving a field keeps its data.</div>
+    return `<div class="gf-h">Database</div><div class="gf-sub" style="margin-bottom:8px">Each custom field is stored in its own column of the form’s table (<b>interchange</b> for the inward form, <b>depot_surveys</b> for the survey, <b>trips</b> for dispatch). Columns are only ever added, never changed or removed, so archiving a field keeps its data.</div>
       <button class="action-btn" id="gfVerifyBtn" onclick="GargoForms.verify()">Verify and repair all columns</button><div id="gfVerifyOut" class="gf-sub" style="margin-top:8px;min-height:18px"></div>${rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>'}`;
   }
 
   function render() {
     const body = $('modalBody'); if (!body) return;
     let inner = backendBanner() + tabsHtml();
-    if (D.tab === 'survey' || D.tab === 'dispatch') inner += builtinTable(D.tab) + customTable(D.tab);
+    if (FORMS.indexOf(D.tab) > -1) inner += builtinTable(D.tab) + customTable(D.tab);
     else if (D.tab === 'rules') inner += rulesHtml();
     else inner += dbHtml();
     body.innerHTML = inner;
@@ -387,7 +407,8 @@
   async function saveOverride(form, id, patch) {
     if (!need()) return false;
     let row = overrideOf(form, id);
-    const rec = { form_key: form, kind: 'override', field_key: id, label: row ? row.label : null, required: row ? row.required : false, hidden: row ? row.hidden : false, active: true, updated_at: new Date().toISOString(), ...patch };
+    const bi = (BUILTIN[form] || []).find(x => x[0] === id), seedReq = !!(bi && bi[2] && bi[2].cfg && bi[2].def);
+    const rec = { form_key: form, kind: 'override', field_key: id, label: row ? row.label : null, required: row ? row.required : seedReq, hidden: row ? row.hidden : false, active: true, updated_at: new Date().toISOString(), ...patch };
     const { data, error } = await supabase.from('form_fields').upsert(rec, { onConflict: 'form_key,kind,field_key' }).select('*').single();
     if (error) { toast(error.message, 'error'); return false; }
     if (row) Object.assign(row, data); else G.defs.push(data);
@@ -415,8 +436,8 @@
       if (error) throw error;
       const have = new Set((data || []).map(c => c.table + '.' + c.column));
       for (const row of G.defs.filter(d => d.kind === 'field')) {
-        const here = have.has(TABLES[row.form_key] + '.cf_' + row.field_key);
-        if (here && row.column_status === 'ready') continue;
+        const here = have.has(TABLES[row.form_key] + '.' + (row.column_name || 'cf_' + row.field_key));
+        if (here && row.column_status === 'ready' && row.form_key !== 'inward') continue;   // inward always re-runs: it also repairs the list view
         const r = await ensureColumn(row);
         if (r.ok) fixed++; else bad++;
       }
@@ -433,10 +454,10 @@
     if (!blk) { blk = document.createElement('div'); blk.id = 'gfSettingsBlock'; blk.className = 'report-block'; blk.style.gridColumn = '1/-1'; grid.insertBefore(blk, grid.firstChild); }
     const n = G.defs.filter(d => d.kind === 'field').length, bad = G.defs.filter(d => d.kind === 'field' && d.column_status !== 'ready').length;
     blk.innerHTML = `<h3>Form Designer</h3>
-      <div class="detail-row"><span>Customise</span><b>Survey and Dispatch forms (fields, currency, rules)</b></div>
+      <div class="detail-row"><span>Customise</span><b>Inward, Survey and Dispatch forms (fields, currency, rules)</b></div>
       <div class="detail-row"><span>Custom fields</span><b>${n}${bad ? ` <span class="gf-chip error">${bad} need attention</span>` : ''}</b></div>
       <div class="detail-row"><span>Database</span><b>${G.backend.ok === false ? '<span class="gf-chip pending">not reachable</span>' : 'new fields create their own columns automatically'}</b></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="action-btn" onclick="GargoForms.open('survey')">Edit Survey form</button><button class="action-btn" onclick="GargoForms.open('dispatch')">Edit Dispatch form</button><button class="action-btn ghost" onclick="GargoForms.open('rules')">Rules &amp; labour rates</button><button class="action-btn ghost" onclick="GargoForms.open('db')">Database</button></div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="action-btn" onclick="GargoForms.open('inward')">Edit Inward form</button><button class="action-btn" onclick="GargoForms.open('survey')">Edit Survey form</button><button class="action-btn" onclick="GargoForms.open('dispatch')">Edit Dispatch form</button><button class="action-btn ghost" onclick="GargoForms.open('rules')">Rules &amp; labour rates</button><button class="action-btn ghost" onclick="GargoForms.open('db')">Database</button></div>`;
   }
 
   /* ── wire into the app ── */
@@ -464,6 +485,49 @@
     };
     if (typeof sectionRenderers !== 'undefined') sectionRenderers.dispatch = window.renderDispatch;
   }
+  const _ri = window.renderInward;
+  if (typeof _ri === 'function') {
+    window.renderInward = function () {
+      const r = _ri.apply(this, arguments);
+      try { G.decorate('inward'); } catch (e) {}
+      G.load().then(() => { try { G.decorate('inward'); } catch (e) {} });
+      return r;
+    };
+    if (typeof sectionRenderers !== 'undefined') sectionRenderers.inward = window.renderInward;
+  }
+
+  /* Saved values must be visible again: add them to the container and trip dialogs (same pattern as documents.js) */
+  function detailBlock(rows, title) {
+    if (!rows.length) return '';
+    return `<div data-gfdetail style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div class="gf-custom-head">${esc(title)}</div>` +
+      rows.map(x => `<div class="detail-row"><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('') + '</div>';
+  }
+  function decorateDetail(kind, key) {
+    const body = $('modalBody'), ttl = $('modalTitle'); if (!body || !ttl || body.querySelector('[data-gfdetail]')) return;
+    if (kind === 'trip') {
+      if (!/^Trip — /.test(ttl.textContent)) return;
+      const t = (state.db.trips || []).find(x => x.id === key); if (!t) return;
+      body.insertAdjacentHTML('beforeend', detailBlock(G.valuesFromCustom('dispatch', t.custom), 'Additional dispatch details'));
+    } else {
+      if (!/^Container — /.test(ttl.textContent)) return;
+      const k = String(key || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const rows = (state.db.interchange || []).filter(i => String(i.container || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+      let h = '';
+      rows.forEach(i => { const v = G.valuesFromCustom('inward', i.custom); if (v.length) h += detailBlock(v, `Additional gate-in details · ${i.type}${i.eirNumber ? ' · ' + i.eirNumber : ''}`); });
+      if (h) body.insertAdjacentHTML('beforeend', h);
+    }
+  }
+  [['showTripDetail', 'trip'], ['showContainerDetail', 'container']].forEach(([n, kind]) => {
+    const fn = window[n]; if (typeof fn !== 'function' || fn._gfd) return;
+    const w = function (a) {
+      const r = fn.apply(this, arguments), after = () => { try { decorateDetail(kind, a); } catch (e) {} };
+      if (r && typeof r.then === 'function') r.then(after); else after();
+      return r;
+    };
+    w._gfd = true; window[n] = w;
+  });
+
   const _bs = window.bootShell;
   if (typeof _bs === 'function') window.bootShell = function () { const r = _bs.apply(this, arguments); G.load(); return r; };
 })();

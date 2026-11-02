@@ -670,6 +670,11 @@
         condition_status: payload.conditionStatus || 'food_grade',
         remarks: payload.remarks || null,
         photos: payload.photos || [],
+        // survey-form fields that used to live only on the interchange row (columns added by supabase_form_designer_links_migration.sql)
+        date_in: payload.dateIn || null,
+        manufacture_date: payload.manufactureDate || null,
+        cargo_status: payload.cargoStatus || null,
+        gross_weight: (payload.gross === '' || payload.gross == null) ? null : Number(payload.gross),
 
         tariff_items: (payload.tariffItems && payload.tariffItems.length) ? payload.tariffItems : null,
         tariff_category: (payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].category) || null,
