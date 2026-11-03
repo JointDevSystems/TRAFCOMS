@@ -197,6 +197,15 @@
   }
   const pt = setInterval(() => { if (patchSave() || ++tries > 120) clearInterval(pt); }, 1000);
 
+  /* Hand a built jsPDF result ({doc, filename}) to the right action. mode: 'preview' | 'download' | 'print'.
+     (D.eir and D.inspection called this but it was never defined: "act is not defined".) */
+  function act(r, mode, title) {
+    if (!r || !r.doc) return toast('Nothing to show: the document could not be built', 'error');
+    if (mode === 'download') return D.rawSave(r);                     /* rawSave bypasses the preview-first patch */
+    if (mode === 'print') { if (typeof window.ghPrintPdf === 'function') return window.ghPrintPdf(r.doc); return D.view(r, title); }
+    return D.view(r, title);
+  }
+
   /* interchange slip (inward or outward EIR). mode: 'preview' | 'download' | 'print' */
   D.eir = async function (id, mode) {
     try {

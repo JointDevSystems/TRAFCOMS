@@ -19,7 +19,10 @@
   var t0 = new Date().getTime();
   var prev = read(KEY, null);
   var hist = read(HIST, []);
-  var crashed = !!(prev && prev.clean === false);
+  /* Phones and tablets kill background pages without firing pagehide (swipe-away, memory clean-up). That is normal,
+     not a crash. Only report a session that died while visible, or that logged errors, or was near its memory limit. */
+  var wasBackgroundKill = !!(prev && prev.hidden && !(prev.err && prev.err.length) && !(prev.limit && prev.peak >= prev.limit * 0.85));
+  var crashed = !!(prev && prev.clean === false && !wasBackgroundKill);
   if (crashed) { hist.push({ at: prev.last, stage: prev.stage, heap: prev.heap, peak: prev.peak, rows: prev.rows, hidden: !!prev.hidden }); hist = hist.slice(-5); write(HIST, hist); }
 
   var rec = { v: 1, start: t0, last: t0, clean: false, stage: 'head', heap: 0, peak: 0, limit: 0, rows: 0, hidden: false, ev: [], err: [], lite: /gx-lite/.test(document.documentElement.className) };
