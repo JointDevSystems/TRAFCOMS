@@ -32,6 +32,26 @@
     return m || 'Something went wrong';
   };
   const audit = (a, d) => { try { addAudit(state.profile && state.profile.username, a, d); } catch (e) {} };
+  /* a request that never answers must not leave the page on "Loading…" for ever */
+  const withTimeout = (p, ms, what) => new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error((what || 'The server') + ' took too long to answer. Check the connection and try again.')), ms);
+    Promise.resolve(p).then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); });
+  });
+  /* the server returns at most 1000 rows per request: read every page so no held container is missed */
+  async function pageAll(build, size) {
+    const out = [];
+    for (let from = 0; from < 50000; from += size) {
+      const r = await withTimeout(build(from, from + size - 1), 25000);
+      if (r.error) throw r.error;
+      const rows = r.data || []; for (let i = 0; i < rows.length; i++) out.push(rows[i]);
+      if (rows.length < size) break;
+    }
+    return out;
+  }
+  const uidNow = () => { try { return (state.currentUser && state.currentUser.id) || ''; } catch (e) { return ''; } };
+  const CK = () => 'gargo-rr-cache:' + uidNow();
+  const readCache = () => { try { const c = JSON.parse(localStorage.getItem(CK()) || 'null'); return c && c.reserves ? c : null; } catch (e) { return null; } };
+  const writeCache = () => { try { localStorage.setItem(CK(), JSON.stringify({ at: Date.now(), reserves: S.reserves, taken: Array.from(S.taken.entries()) })); } catch (e) { /* too big or blocked: the cache is only a convenience */ } };
 
   /* ── register the page: access, title, section, button ── */
   if (ALL_SIDEBAR_SECTIONS.indexOf(SEC) < 0) ALL_SIDEBAR_SECTIONS.push(SEC);
@@ -86,21 +106,32 @@
   ensurePage();
 
   /* ── state ── */
-  const S = { reserves: null, taken: new Map(), view: 'list', filter: 'open', sort: 'new', q: '', E: null, pick: null, busy: false, dirty: false, opening: false, at: null, truncated: false };
+  const S = { reserves: null, taken: new Map(), view: 'list', filter: 'open', sort: 'new', q: '', E: null, pick: null, busy: false, dirty: false, opening: false, at: null, truncated: false, byId: new Map(), stale: false, seq: 0 };
   const RR = window.RepatReserve = {};
 
   async function loadReserves() {
-    const [a, b] = await Promise.all([
-      supabase.from('repat_reserves_v').select('*').order('reserve_no', { ascending: false }).limit(LIST_LIMIT),
-      supabase.from('repat_reserve_items').select('container_no,reserve_id').eq('active', true),
+    S.seq++;
+    const [a, items] = await Promise.all([
+      withTimeout(supabase.from('repat_reserves_v').select('*').order('reserve_no', { ascending: false }).limit(LIST_LIMIT), 25000),
+      pageAll((f, t) => supabase.from('repat_reserve_items').select('container_no,reserve_id').eq('active', true).order('container_no').range(f, t), 1000),
     ]);
     if (a.error) throw a.error;
-    if (b.error) throw b.error;
-    S.reserves = a.data || [];
-    S.truncated = S.reserves.length >= LIST_LIMIT;
-    const no = new Map(S.reserves.map(r => [r.id, r.reserve_no]));
-    S.taken = new Map((b.data || []).map(i => [norm(i.container_no), { id: i.reserve_id, no: no.get(i.reserve_id) }]));
-    S.at = new Date();
+    const reserves = a.data || [];
+    const byId = new Map(reserves.map(r => [r.id, r]));
+    /* held containers can belong to a reserve older than the 500 shown: fetch just those headers so the number is known */
+    const missing = Array.from(new Set(items.map(i => i.reserve_id).filter(id => id && !byId.has(id))));
+    for (let k = 0; k < missing.length; k += 100) {
+      try {
+        const m = await withTimeout(supabase.from('repat_reserves_v').select('*').in('id', missing.slice(k, k + 100)), 20000);
+        (m.data || []).forEach(r => byId.set(r.id, r));
+      } catch (e) { /* the container is still shown as held, just without the number */ }
+    }
+    S.reserves = reserves;
+    S.byId = byId;
+    S.truncated = reserves.length >= LIST_LIMIT;
+    S.taken = new Map(items.map(i => { const r = byId.get(i.reserve_id); return [norm(i.container_no), { id: i.reserve_id, no: r ? r.reserve_no : '?', agent: r ? r.agent : '' }]; }));
+    S.at = new Date(); S.stale = false;
+    writeCache();
   }
 
   /* ── shipping line of the agent, so containers of another line can be flagged ── */
@@ -110,17 +141,24 @@
   const otherLine = (c, agent) => { const al = agentLine(agent); return !!(al && c._line && c._line !== al.id); };
 
   /* ── page ── */
+  function errorPanel(e) {
+    return '<div class="panel"><div class="empty-state"><div class="empty-state-label" style="line-height:1.7">Could not load reserves.<br><b>' + esc(fail(e)) + '</b><br>' +
+      '<span style="font-size:12px;color:var(--text-3)">If this is the first use, run sql/repat-reserve.sql in Supabase.</span><br><br>' +
+      '<button class="action-btn" onclick="RepatReserve.retry()">Try again</button> <button class="action-btn ghost" onclick="RepatReserve.diagnose()">Find out why</button></div></div></div>';
+  }
   async function render() {
     ensurePage();
     const root = $('sec-' + SEC); if (!root) return;
+    if (!S.reserves) { const c = readCache(); if (c) { S.reserves = c.reserves; S.taken = new Map(c.taken || []); S.at = new Date(c.at); S.stale = true; S.byId = new Map(S.reserves.map(r => [r.id, r])); } }
     if (!S.reserves) root.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading reserves…</div></div>';
-    try { if (navigator.onLine) await loadReserves(); else if (!S.reserves) throw new Error('You are offline. Reserves load when the connection returns.'); }
-    catch (e) {
-      if (!S.reserves) { root.innerHTML = '<div class="empty-state"><div class="empty-state-label">Could not load reserves: ' + esc(fail(e)) + '<br>If this is the first use, run sql/repat-reserve.sql in Supabase.</div></div>'; return; }
-      try { toast('Could not refresh: ' + fail(e), 'error', 5000); } catch (x) {}
-    }
+    let err = null;
+    try { if (navigator.onLine) await loadReserves(); else if (!S.reserves) throw new Error('You are offline. Reserves load when the connection returns.'); else S.stale = true; }
+    catch (e) { err = e; }
+    if (err && !S.reserves) { root.innerHTML = errorPanel(err); return; }
+    if (err) { S.stale = true; try { toast('Could not refresh: ' + fail(err) + ' Showing the last copy.', 'error', 5000); } catch (x) {} }
     if (S.view === 'edit' && S.E) renderEditor(); else { S.view = 'list'; renderList(); }
   }
+  RR.retry = () => { S.reserves = null; return render(); };
 
   /* ── list ── */
   function badge(r) {
@@ -155,7 +193,7 @@
         <select id="rrSort" onchange="RepatReserve.setSort(this.value)" aria-label="Sort"><option value="new"${S.sort === 'new' ? ' selected' : ''}>Newest first</option><option value="ends"${S.sort === 'ends' ? ' selected' : ''}>Run ends soonest</option></select>
         <button class="action-btn ghost" onclick="RepatReserve.refresh()" title="Reload from the server">↻ Refresh</button><button class="action-btn ghost" onclick="RepatReserve.exportList()">⬇ CSV</button></div>
       <div id="rrTable"></div>
-      <p class="rr-note">${S.at ? 'Updated ' + pad(S.at.getHours()) + ':' + pad(S.at.getMinutes()) + '. ' : ''}${S.truncated ? 'Showing the latest ' + LIST_LIMIT + ' reserves.' : ''}</p></div>`;
+      <p class="rr-note">${S.stale ? '<b style="color:var(--amber)">Offline copy, may be out of date. </b>' : ''}${S.at ? 'Updated ' + pad(S.at.getHours()) + ':' + pad(S.at.getMinutes()) + '. ' : ''}${S.truncated ? 'Showing the latest ' + LIST_LIMIT + ' reserves.' : ''}</p></div>`;
     paintTable();
   }
   function paintTable() {
@@ -233,7 +271,7 @@
     const al = agentLine(h.agent);
     root.innerHTML = `<div class="panel"><div class="panel-head"><div class="panel-title"><button class="action-btn ghost" onclick="RepatReserve.back()">← All reserves</button>
       &nbsp; Reserve ${E.reserve_no ? '#' + esc(E.reserve_no) : '(new, number is given on save)'} ${E.closed ? '<span class="hb hb-r">Closed</span>' : ''}<span class="rr-dirty" id="rrDirty"${S.dirty ? '' : ' hidden'}>● Unsaved changes</span></div>
-      <div class="panel-meta">${n ? '<button class="action-btn ghost" onclick="RepatReserve.exportOne()">⬇ CSV</button>' : ''}${E.id && canWrite() ? `<button class="action-btn ghost" onclick="RepatReserve.toggleClosed()">${E.closed ? 'Reopen' : 'Close reserve'}</button><button class="action-btn ghost" onclick="RepatReserve.remove()">Delete</button>` : ''}</div></div>
+      <div class="panel-meta">${!ro ? '<button class="action-btn ghost" onclick="RepatReserve.pause()" title="Save this reserve to Pending and finish it later">⏸ Pause</button>' : ''}${n ? '<button class="action-btn ghost" onclick="RepatReserve.exportOne()">⬇ CSV</button>' : ''}${E.id && canWrite() ? `<button class="action-btn ghost" onclick="RepatReserve.toggleClosed()">${E.closed ? 'Reopen' : 'Close reserve'}</button><button class="action-btn ghost" onclick="RepatReserve.remove()">Delete</button>` : ''}</div></div>
       <div class="rr-grid"><div class="rr-form">
         <div class="fg"><label>Agent (shipping line) *</label><input id="rr_agent" list="rrAgents" maxlength="${MAX_LEN}" value="${esc(h.agent)}"${dis} onchange="RepatReserve.agentChanged()"><datalist id="rrAgents">${opts(agentNames(), h.agent)}</datalist></div>
         <div class="rr-two">${f('outward_date', 'Repat outward date *', 'date')}${f('run_end_date', 'Repat run end date *', 'date')}</div>
@@ -364,12 +402,34 @@
 
   /* ── picking containers from the yard ── */
   const PAGE = 30;
-  async function yardPage(q, offset) {
-    if (window.ICR && ICR.enabled) { const r = await ICR.yard({ q: q || null, limit: PAGE, offset }); return { total: r.total, items: r.items }; }
+  function yardLocal(q, offset) {
     const idx = window.icOutIndex ? window.icOutIndex() : null, qq = norm(q);
-    const all = ((state.db && state.db.interchange) || []).filter(i => window.icInYard(i, idx) && (!qq || norm(i.container).indexOf(qq) >= 0 || norm(i.eirNumber).indexOf(qq) >= 0))
+    const all = ((state.db && state.db.interchange) || []).filter(i => window.icInYard && window.icInYard(i, idx) && (!qq || norm(i.container).indexOf(qq) >= 0 || norm(i.eirNumber).indexOf(qq) >= 0))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
     return { total: all.length, items: all.slice(offset, offset + PAGE) };
+  }
+  /* second choice when the yard search function fails: read the list view directly (cannot see that a container already left through a separate gate-out row) */
+  async function yardFromView(q, offset) {
+    let qb = supabase.from('interchange_list').select('*', { count: 'exact' }).in('type', ['Gate-In', 'Depot-In']).is('date_out', null);
+    const k = String(q || '').trim().replace(/[%,()*]/g, '');
+    if (k) qb = qb.or('container.ilike.%' + k + '%,eir_number.ilike.%' + k + '%');
+    const r = await withTimeout(qb.order('date', { ascending: true }).range(offset, offset + PAGE - 1), 25000);
+    if (r.error) throw r.error;
+    const rows = (r.data || []).map(x => (window.ICR ? ICR.mapRow(x) : icFromRow(x)));
+    return { total: r.count != null ? r.count : offset + rows.length, items: window.ICR ? ICR.merge(rows) : rows, approx: true,
+      note: 'The yard search is not answering, so this is an approximate list. It can include containers that already left. Check each one before saving.' };
+  }
+  async function yardPage(q, offset) {
+    let perr = null;
+    if (window.ICR && ICR.enabled && navigator.onLine) {
+      try { const r = await withTimeout(ICR.yard({ q: q || null, limit: PAGE, offset }), 25000); return { total: r.total, items: r.items }; }
+      catch (e) { perr = e; console.warn('Reserve picker: yard search failed', e); }
+      try { return await yardFromView(q, offset); } catch (e2) { console.warn('Reserve picker: list view failed', e2); }
+    }
+    const local = yardLocal(q, offset);
+    if (perr) { if (!local.items.length) throw perr; local.note = 'The yard search failed (' + fail(perr) + '). Showing only containers already loaded on this device.'; local.approx = true; }
+    else if (!navigator.onLine) local.note = 'You are offline. Showing only containers already loaded on this device.';
+    return local;
   }
   const rowInfo = ic => ({
     container_no: String(ic.container || '').trim().toUpperCase(), in_eir: ic.eirNumber || '', size: sizeOf(ic.ctype), type: ic.ctype || '', _line: ic.line || '',
@@ -382,7 +442,7 @@
   async function loadPick(reset) {
     const P = S.pick; if (!P || P.mode !== 'yard' || P.busy) return;
     P.busy = true; P.err = ''; if (reset) { P.items = []; P.total = 0; } paintPicker();
-    try { const r = await yardPage(P.q, P.items.length); P.items = P.items.concat(r.items.map(rowInfo)); P.total = r.total; }
+    try { const r = await yardPage(P.q, P.items.length); P.items = P.items.concat(r.items.map(rowInfo)); P.total = r.total; P.note = r.note || ''; P.approx = !!r.approx; }
     catch (e) { P.err = fail(e); }
     P.busy = false; paintPicker();
   }
@@ -406,13 +466,14 @@
         const key = norm(c.container_no), t = S.taken.get(key), dup = have.has(key), off = !!t || dup, odd = al && c._line && c._line !== al.id;
         const flags = [odd ? '<span class="rr-warn">Line ' + esc(lineCode(c._line) || '?') + '</span>' : '', waitingSurvey(c) ? '<span class="rr-warn">Awaiting survey</span>' : '', c.dmg ? '<span class="rr-warn">' + c.dmg + ' damage item' + (c.dmg > 1 ? 's' : '') + '</span>' : ''].filter(Boolean).join(' · ');
         return `<label class="${off ? 'off' : ''}"><input type="checkbox" ${off ? 'disabled' : ''} ${P.sel.has(key) ? 'checked' : ''} onchange="RepatReserve.pickToggle(${n},this.checked)"><b>${esc(c.container_no)}</b><span>${esc(c.type)}</span><span class="rr-m">EIR ${esc(c.in_eir || '-')} · ${c.days} d in yard${flags ? '<br>' + flags : ''}${t ? '<br>Reserved on #' + esc(t.no) : (dup ? '<br>Already on this reserve' : '')}</span></label>`;
-      }).join('') || (P.busy ? '' : '<div class="empty-state"><div class="empty-state-label">' + (P.err ? esc(P.err) : 'No containers in the yard match.') + '</div></div>')}
+      }).join('') || (P.busy ? '' : '<div class="empty-state"><div class="empty-state-label">' + (P.err ? 'Could not load the yard: ' + esc(P.err) + '<br><br><button class="action-btn" onclick="RepatReserve.pickRetry()">Try again</button> <button class="action-btn ghost" onclick="RepatReserve.diagnose()">Find out why</button>' : 'No containers in the yard match.' + (P.q ? '' : ' If the yard should have containers, choose Find out why.')) + '</div></div>')}
       ${P.items.length < P.total ? '<div style="padding:8px;text-align:center"><button class="action-btn ghost" onclick="RepatReserve.pickMore()">Load more</button></div>' : ''}</div>
-      <p class="rr-note">${P.busy ? 'Loading…' : 'Showing ' + P.items.length + ' of ' + P.total + ' in the yard, oldest first.'}</p></div>`;
+      <p class="rr-note">${P.busy ? 'Loading…' : 'Showing ' + P.items.length + ' of ' + P.total + ' in the yard, oldest first.'}</p>${P.note ? '<p class="rr-note rr-warn">' + esc(P.note) + '</p>' : ''}</div>`;
   }
   let pt;
   RR.pickSearch = v => { const P = S.pick; if (!P) return; P.q = v.trim(); clearTimeout(pt); pt = setTimeout(() => { loadPick(true).then(() => { const i = $('rrPq'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }); }, 300); };
   RR.pickMore = () => loadPick(false);
+  RR.pickRetry = () => loadPick(true);
   function paintPickerCount() { const b = $('rrAddSel'); if (b && S.pick) b.textContent = 'Add selected (' + S.pick.sel.size + ')'; }
   RR.pickToggle = (n, on) => { const P = S.pick, c = P && P.items[n]; if (!c) return; const k = norm(c.container_no); if (on) P.sel.set(k, c); else P.sel.delete(k); paintPickerCount(); };
   RR.pickAll = () => {
@@ -425,6 +486,7 @@
   RR.addPicked = () => {
     const P = S.pick; if (!P || !P.sel.size) return toast('Tick the containers to add', 'info');
     readHead();
+    if (P.approx && !confirm('This list is approximate (the yard search is not answering). Some containers may have already left.\n\nAdd the selected containers anyway?')) return;
     const agent = S.E.head.agent, picked = Array.from(P.sel.values()), odd = picked.filter(c => otherLine(c, agent));
     let ok = false;
     if (odd.length) {
@@ -485,6 +547,180 @@
     renderEditor();
     toast(n + ' added, ' + skipped.length + ' skipped', 'info', 5000);
   };
+
+  /* ── pause: keep a half-made reserve in Pending and finish it later ── */
+  RR.pause = async () => {
+    const E = S.E; if (!E || !canWrite()) return;
+    readHead();
+    const h = E.head, blank = blankHead();
+    const typed = Object.keys(h).some(k => h[k] && h[k] !== blank[k]) || E.items.length;
+    if (!typed) return toast('Nothing entered yet, so there is nothing to pause.', 'info');
+    if (!window.GargoDrafts) return toast('Pause is not available on this page load. Save the reserve instead.', 'error');
+    try {
+      await GargoDrafts.save({ kind: 'reserve', title: 'Repat reserve', label: E.reserve_no ? '#' + E.reserve_no : (h.agent || 'NEW').toUpperCase(), data: { E: JSON.parse(JSON.stringify(E)) } });
+    } catch (e) { return toast(fail(e), 'error', 6000); }
+    S.dirty = false; S.view = 'list'; S.E = null; S.pick = null;
+    toast('Reserve paused. Continue it from Pending (the pause icon at the top).', 'success', 5000);
+    render();
+  };
+  window.addEventListener('load', () => {
+    if (!window.GargoDrafts) return;
+    GargoDrafts.register('reserve', {
+      resume: async d => {
+        if (!d.data || !d.data.E) throw new Error('This paused reserve is empty.');
+        S.E = d.data.E; S.view = 'edit'; S.pick = null; S.dirty = true;
+        const nav = document.querySelector('.nav-item[data-section="' + SEC + '"]');
+        window.showSection(SEC, nav);
+      },
+    });
+  });
+
+  /* ── "Find out why": checks every piece this page depends on and says exactly which one is broken ── */
+  RR.diagnose = async () => {
+    const rows = [];
+    const add = (ok, name, detail) => rows.push('<div class="gc-chk ' + (ok === null ? 'wait' : ok ? 'ok' : 'bad') + '"><i></i><div><b>' + esc(name) + '</b>' + (detail ? '<br><span style="font-size:11.5px;color:var(--text-3)">' + esc(detail) + '</span>' : '') + '</div></div>');
+    const missing = e => /PGRST202|PGRST205|42P01|42883|does not exist|could not find|not found in the schema/i.test(String((e && (e.code + ' ' + e.message + ' ' + e.details)) || ''));
+    const step = async (name, fn, hint) => { try { const d = await withTimeout(fn(), 20000); add(true, name, d || ''); } catch (e) { add(false, name, fail(e) + (hint && missing(e) ? '  → ' + hint : '')); } };
+    const sql = 'Run sql/repat-reserve.sql in the Supabase SQL editor.';
+    add(navigator.onLine, 'Connection', navigator.onLine ? 'Online' : 'Offline: nothing can be loaded from the server.');
+    add(canWrite() ? true : null, 'Your access', canWrite() ? 'Administrator: can create and change reserves.' : 'View only. Only an administrator can create or change reserves.');
+    add((lines() || []).length > 0, 'Shipping lines loaded', (lines() || []).length + ' lines. The agent list and the other-line check use these.');
+    if (navigator.onLine) {
+      await step('Reserve list (repat_reserves_v)', async () => { const r = await supabase.from('repat_reserves_v').select('id', { count: 'exact', head: true }); if (r.error) throw r.error; return r.count + ' reserves'; }, sql);
+      await step('Held containers (repat_reserve_items)', async () => { const r = await supabase.from('repat_reserve_items').select('container_no', { count: 'exact', head: true }).eq('active', true); if (r.error) throw r.error; return r.count + ' containers currently held'; }, sql);
+      const zero = '00000000-0000-0000-0000-000000000000';
+      await step('Function repat_reserve_clear', async () => { const r = await supabase.rpc('repat_reserve_clear', { p_id: zero, p_containers: [], p_cleared: true }); if (r.error && missing(r.error)) throw r.error; return 'present'; }, sql);
+      await step('Function repat_reserve_close', async () => { const r = await supabase.rpc('repat_reserve_close', { p_id: zero, p_closed: true }); if (r.error && missing(r.error)) throw r.error; return 'present'; }, sql);
+      await step('Function repat_reserve_delete', async () => { const r = await supabase.rpc('repat_reserve_delete', { p_id: zero }); if (r.error && missing(r.error)) throw r.error; return 'present'; }, sql);
+      add(null, 'Function repat_reserve_save', 'Not tested here because testing it would create a reserve. If saving fails, the SQL file has not been run.');
+      await step('Yard search (ic_search)', async () => { if (!(window.ICR && ICR.enabled)) return 'Not used: the app is in full-load mode (?ic=full).'; const r = await ICR.yard({ limit: 1 }); return r.total + ' containers in the yard'; }, 'The on-demand interchange SQL (ic_search) is missing or failed.');
+      await step('Interchange list view (interchange_list)', async () => { const r = await supabase.from('interchange_list').select('id', { count: 'exact', head: true }); if (r.error) throw r.error; return r.count + ' interchange records'; });
+    }
+    openModal('Reserve Repat: what is working', '<div>' + rows.join('') + '<p class="rr-note">Red lines are the cause. Send a screenshot of this list if you need help.</p></div>');
+  };
+
+  /* ── links to the rest of the system ──────────────────────────────────────────────────────────────── */
+  RR.lookup = key => { const t = S.taken.get(norm(key)); return t ? { id: t.id, no: t.no, agent: t.agent || '' } : null; };
+  RR.ensureLoaded = async () => {
+    if (S.reserves && S.at && Date.now() - S.at.getTime() < 60000) return;
+    if (!S.reserves) { const c = readCache(); if (c) { S.reserves = c.reserves; S.taken = new Map(c.taken || []); S.at = new Date(c.at); S.stale = true; } }
+    if (navigator.onLine && uidNow()) { try { await loadReserves(); } catch (e) { /* stay on the last copy */ } }
+  };
+
+  /* 1. A reserved container that leaves the yard is marked cleared on its reserve automatically (switch off: Settings key repat.autoClear = false). */
+  const QK = () => 'gargo-rr-clearq:' + uidNow();
+  const qRead = () => { try { return JSON.parse(localStorage.getItem(QK()) || '[]') || []; } catch (e) { return []; } };
+  const qWrite = a => { try { localStorage.setItem(QK(), JSON.stringify(a)); } catch (e) {} };
+  const autoOn = () => { try { return !(window.cfgGet && window.cfgGet('repat.autoClear') === false); } catch (e) { return true; } };
+  let flushing = false;
+  async function flushClears() {
+    if (flushing || !navigator.onLine) return; flushing = true;
+    try {
+      let q = qRead(); const keep = [];
+      for (const it of q) {
+        try {
+          const { error } = await supabase.rpc('repat_reserve_clear', { p_id: it.id, p_containers: [it.container], p_cleared: true });
+          if (error) throw error;
+          audit('Repat container cleared (gate-out)', '#' + it.no + ' · ' + it.container);
+          try { toast(it.container + ' left the yard: marked cleared on reserve #' + it.no, 'success', 5000); } catch (x) {}
+          if (S.E && S.E.id === it.id) { const m = S.E.items.find(i => norm(i.container_no) === norm(it.container)); if (m) m.cleared = true; }
+        } catch (e) {
+          const m = String((e && e.message) || '');
+          if (/failed to fetch|network|load failed/i.test(m)) keep.push(it);            // try again later
+          else console.warn('Reserve auto-clear skipped:', it.container, m);              // e.g. already cleared / reserve closed: nothing to retry
+        }
+      }
+      qWrite(keep);
+      if (keep.length !== q.length) { try { await loadReserves(); if (S.view === 'list' && $('rrTable')) renderList(); } catch (e) {} }
+    } finally { flushing = false; }
+  }
+  RR.onContainerOut = async container => {
+    try {
+      if (!autoOn() || !uidNow()) return;
+      const key = norm(container); if (!key) return;
+      await RR.ensureLoaded();
+      const t = S.taken.get(key); if (!t) return;
+      const q = qRead(); if (q.some(x => norm(x.container) === key && x.id === t.id)) return;
+      q.push({ id: t.id, no: t.no, container: String(container).toUpperCase() }); qWrite(q);
+      flushClears();
+    } catch (e) { console.warn('Reserve auto-clear failed', e); }
+  };
+  window.addEventListener('online', () => setTimeout(flushClears, 3000));
+  /* catches every way a gate-out can be recorded (this device or another, bulk or single): any NEW out record that appears in memory */
+  const seenOut = new Set(); let baselined = false;
+  function scanOut() {
+    try {
+      if (!uidNow()) { baselined = false; return; }
+      const rows = ((state.db && state.db.interchange) || []).filter(r => /Out$/.test(r.type || ''));
+      if (!baselined) { rows.forEach(r => seenOut.add(r.id)); baselined = true; return; }
+      const fresh = rows.filter(r => !seenOut.has(r.id));
+      fresh.forEach(r => { seenOut.add(r.id); if (Date.now() - new Date(r.date).getTime() < 2 * 864e5) RR.onContainerOut(r.container); });
+    } catch (e) {}
+  }
+  setInterval(scanOut, 15000);
+  setInterval(() => { if (navigator.onLine && uidNow() && qRead().length) flushClears(); }, 60000);
+
+  /* 2. Yard pickers elsewhere (dispatch "containers in storage", loading instructions) show which containers are reserved */
+  function decorate(root) {
+    if (!S.taken.size || !root || !root.querySelectorAll) return;
+    root.querySelectorAll('.activity-row,.li-yard-row').forEach(row => {
+      if (row.getAttribute('data-rr')) return;
+      const m = /[A-Z]{4}\s?\d{7}/.exec(((row.querySelector('.mono,.li-mono') || row).textContent || '').toUpperCase());
+      row.setAttribute('data-rr', '1');
+      const hit = m && RR.lookup(m[0]); if (!hit) return;
+      const chip = document.createElement('span'); chip.className = 'rr-b rr-amb'; chip.style.marginLeft = '8px';
+      chip.title = 'Held on repat reserve #' + hit.no; chip.textContent = 'RESERVED #' + hit.no + (hit.agent ? ' · ' + String(hit.agent).toUpperCase() : '');
+      const host = row.querySelector('.mono,.li-mono') || row; host.appendChild(chip);
+    });
+  }
+  let decT;
+  function watchPickers() {
+    const body = $('modalBody'); if (!body || body._rrw) return; body._rrw = true;
+    new MutationObserver(() => { clearTimeout(decT); decT = setTimeout(async () => { if (!body.querySelector('#dps_list,#li_plist')) return; await RR.ensureLoaded(); decorate(body); }, 250); }).observe(body, { childList: true, subtree: true });
+  }
+  window.addEventListener('load', () => setTimeout(watchPickers, 0));
+
+  /* 3. Dispatching a reserved container: tell the dispatcher, and stop a hand-over to the wrong shipping line */
+  function hookDispatch() {
+    const f = window.createDispatch; if (typeof f !== 'function' || f._rr) return;
+    const w = async function () {
+      try {
+        const c = ($('d_container') || {}).value, hit = c && (await RR.ensureLoaded(), RR.lookup(c));
+        if (hit) {
+          const al = agentLine(hit.agent), sel = ($('d_line') || {}).value;
+          if (al && sel && sel !== al.id && !confirm(String(c).toUpperCase() + ' is held on repat reserve #' + hit.no + ' for ' + hit.agent + ', but this dispatch is for a different shipping line.\n\nContinue anyway?')) return;
+          try { toast(String(c).toUpperCase() + ' is on repat reserve #' + hit.no + '. It is marked cleared when it gates out.', 'info', 4500); } catch (x) {}
+        }
+      } catch (e) { /* never block a dispatch because the check failed */ }
+      return f.apply(this, arguments);
+    };
+    w._rr = true; window.createDispatch = w;
+  }
+  /* 4. Dashboard alert: reserves past their run end that still have containers */
+  function hookAlerts() {
+    const f = window.buildAlerts; if (typeof f !== 'function' || f._rr) return;
+    const w = function () {
+      const r = f.apply(this, arguments);
+      try {
+        const list = $('alertsList');
+        if (list && S.reserves) {
+          const late = S.reserves.filter(isOverdue).length;
+          Array.prototype.forEach.call(list.querySelectorAll('[data-rr]'), n => n.remove());
+          if (late) {
+            Array.prototype.forEach.call(list.children, n => { if (!n.classList.contains('alert-item')) n.remove(); });
+            list.insertAdjacentHTML('beforeend', '<div class="alert-item warn" data-rr="1"><div class="alert-dot-sm" style="background:var(--amber)"></div><span>' + late + ' repat reserve' + (late === 1 ? ' is' : 's are') + ' past the run end with containers still held</span></div>');
+            const dot = $('alertDot'); if (dot) dot.style.display = 'block';
+          }
+        } else if (!S.reserves && uidNow() && !hookAlerts._busy) {
+          hookAlerts._busy = true; RR.ensureLoaded().then(() => { hookAlerts._busy = false; if (S.reserves && S.reserves.some(isOverdue)) { try { window.buildAlerts(); } catch (e) {} } }).catch(() => { hookAlerts._busy = false; });
+        }
+      } catch (e) { console.warn('reserve alerts', e); }
+      return r;
+    };
+    w._rr = true; window.buildAlerts = w;
+  }
+  window.addEventListener('load', () => setTimeout(() => { hookDispatch(); hookAlerts(); }, 0));
+  setInterval(() => { try { if (uidNow() && navigator.onLine && S.reserves && !document.hidden) { loadReserves().then(() => { if (S.view === 'list' && $('rrTable') && $('sec-' + SEC).classList.contains('active')) renderList(); }).catch(() => {}); } } catch (e) {} }, 120000);
 
   sectionRenderers[SEC] = render;
 })();
