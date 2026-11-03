@@ -130,6 +130,7 @@ async function performLogout(auditDetail) {
   stopWialonPolling();
   stopAutoRefresh();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
+  try { await saveNowAwaited(); } catch (e) {}   // send the Logout entry while the session is still valid
   try { if (window.GargoOffline) await GargoOffline.onLogout(); } catch (e) {}
   await supabase.auth.signOut();
   state.currentUser = null;

@@ -365,6 +365,7 @@ async function loadDB() {
 
 async function saveDB() {
   if (!state.db) return { ok: true, failures: [] };
+  if (!state.currentUser) return { ok: true, failures: [] };   // signed out: RLS would reject every write
   const db = state.db;
   const failures = [];
   try {
