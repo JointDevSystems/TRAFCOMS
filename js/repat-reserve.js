@@ -108,6 +108,8 @@
   /* ── state ── */
   const S = { reserves: null, taken: new Map(), view: 'list', filter: 'open', sort: 'new', q: '', E: null, pick: null, busy: false, dirty: false, opening: false, at: null, truncated: false, byId: new Map(), stale: false, seq: 0 };
   const RR = window.RepatReserve = {};
+  /* the number people see: agent-prefixed reference (e.g. PILRSVNO.0001), falling back to the plain number */
+  const rn = r => r ? (r.reserve_ref || r.reserve_no) : '';
 
   async function loadReserves() {
     S.seq++;
@@ -129,7 +131,7 @@
     S.reserves = reserves;
     S.byId = byId;
     S.truncated = reserves.length >= LIST_LIMIT;
-    S.taken = new Map(items.map(i => { const r = byId.get(i.reserve_id); return [norm(i.container_no), { id: i.reserve_id, no: r ? r.reserve_no : '?', agent: r ? r.agent : '' }]; }));
+    S.taken = new Map(items.map(i => { const r = byId.get(i.reserve_id); return [norm(i.container_no), { id: i.reserve_id, no: r ? rn(r) : '?', agent: r ? r.agent : '' }]; }));
     S.at = new Date(); S.stale = false;
     writeCache();
   }
@@ -176,7 +178,7 @@
       if (S.filter === 'open' && r.closed) return false;
       if (S.filter === 'closed' && !r.closed) return false;
       if (S.filter === 'overdue' && !isOverdue(r)) return false;
-      return !q || [r.reserve_no, r.agent, r.shipper_name, r.vessel, r.voyage, r.destination, r.release_order_no, r.shipper_order, r.port_of_dispatch].join(' ').toLowerCase().indexOf(q) >= 0;
+      return !q || [r.reserve_ref, r.reserve_no, r.agent, r.shipper_name, r.vessel, r.voyage, r.destination, r.release_order_no, r.shipper_order, r.port_of_dispatch].join(' ').toLowerCase().indexOf(q) >= 0;
     });
     if (S.sort === 'ends') rows.sort((a, b) => ((runEnd(a) || 8e15) - 0) - ((runEnd(b) || 8e15) - 0));
     return rows;
@@ -200,7 +202,7 @@
     const host = $('rrTable'); if (!host) return;
     const rows = filtered();
     document.querySelectorAll('#sec-' + SEC + ' .rr-tools .filter-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-f') === S.filter));
-    host.innerHTML = rows.length ? `<div style="overflow:auto"><table class="data-table rr-list"><thead><tr><th>No.</th><th>Agent</th><th>Shipper</th><th>Vessel / voyage</th><th>Destination</th><th>Run ends</th><th>Total</th><th>Cleared</th><th>Balance</th><th></th></tr></thead><tbody>${rows.map(r => `<tr class="rr-row" tabindex="0" onkeydown="if(event.key==='Enter')RepatReserve.open('${r.id}')" onclick="RepatReserve.open('${r.id}')"><td><b>${esc(r.reserve_no)}</b></td><td>${esc(r.agent)}</td><td>${esc(r.shipper_name)}</td><td>${esc(r.vessel)} ${esc(r.voyage)}</td><td>${esc(r.destination)}</td><td>${esc(ymd(r.run_end_date))} ${esc(hhmm(r.run_end_time))}</td><td>${total(r)}</td><td>${cleared(r)}</td><td>${balance(r)}</td><td>${badge(r)}</td></tr>`).join('')}</tbody></table></div>`
+    host.innerHTML = rows.length ? `<div style="overflow:auto"><table class="data-table rr-list"><thead><tr><th>No.</th><th>Agent</th><th>Shipper</th><th>Vessel / voyage</th><th>Destination</th><th>Run ends</th><th>Total</th><th>Cleared</th><th>Balance</th><th></th></tr></thead><tbody>${rows.map(r => `<tr class="rr-row" tabindex="0" onkeydown="if(event.key==='Enter')RepatReserve.open('${r.id}')" onclick="RepatReserve.open('${r.id}')"><td><b>${esc(rn(r))}</b></td><td>${esc(r.agent)}</td><td>${esc(r.shipper_name)}</td><td>${esc(r.vessel)} ${esc(r.voyage)}</td><td>${esc(r.destination)}</td><td>${esc(ymd(r.run_end_date))} ${esc(hhmm(r.run_end_time))}</td><td>${total(r)}</td><td>${cleared(r)}</td><td>${balance(r)}</td><td>${badge(r)}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty-state"><div class="empty-state-label">' + (S.q || S.filter !== 'all' ? 'No reserves match.' : canWrite() ? 'No reserves here yet. Choose New reserve to hold containers for a shipping line.' : 'No reserves to show.') + '</div></div>';
   }
   RR.setFilter = f => { S.filter = f; paintTable(); };
@@ -218,7 +220,7 @@
   RR.exportList = () => {
     const rows = filtered(); if (!rows.length) return toast('Nothing to download', 'error');
     download('repat-reserves-' + today() + '.csv', [['Reserve No', 'Agent', 'Shipper', 'Vessel', 'Voyage', 'Destination', 'Release Order', "Shipper's Order", 'Port of Dispatch', 'Outward Date', 'Run End', 'Total', 'Cleared', 'Balance', 'Status']]
-      .concat(rows.map(r => [r.reserve_no, r.agent, r.shipper_name, r.vessel, r.voyage, r.destination, r.release_order_no, r.shipper_order, r.port_of_dispatch, ymd(r.outward_date), ymd(r.run_end_date) + ' ' + hhmm(r.run_end_time), total(r), cleared(r), balance(r), r.closed ? 'Closed' : isOverdue(r) ? 'Overdue' : 'Open'])));
+      .concat(rows.map(r => [rn(r), r.agent, r.shipper_name, r.vessel, r.voyage, r.destination, r.release_order_no, r.shipper_order, r.port_of_dispatch, ymd(r.outward_date), ymd(r.run_end_date) + ' ' + hhmm(r.run_end_time), total(r), cleared(r), balance(r), r.closed ? 'Closed' : isOverdue(r) ? 'Overdue' : 'Open'])));
   };
   RR.exportOne = () => {
     const E = S.E; if (!E || !E.items.length) return toast('No containers to download', 'error');
@@ -247,7 +249,7 @@
     try {
       const { data, error } = await supabase.from('repat_reserve_items').select('*').eq('reserve_id', id).order('in_eir');
       if (error) throw error;
-      S.E = { id, closed: !!r.closed, reserve_no: r.reserve_no, head: { agent: r.agent || '', outward_date: ymd(r.outward_date), run_end_date: ymd(r.run_end_date), run_end_time: hhmm(r.run_end_time) || '23:59', destination: r.destination || '', vessel: r.vessel || '', voyage: r.voyage || '', release_order_no: r.release_order_no || '', shipper_order: r.shipper_order || '', shipper_name: r.shipper_name || '', port_of_dispatch: r.port_of_dispatch || '' }, items: data || [] };
+      S.E = { id, closed: !!r.closed, reserve_no: rn(r), head: { agent: r.agent || '', outward_date: ymd(r.outward_date), run_end_date: ymd(r.run_end_date), run_end_time: hhmm(r.run_end_time) || '23:59', destination: r.destination || '', vessel: r.vessel || '', voyage: r.voyage || '', release_order_no: r.release_order_no || '', shipper_order: r.shipper_order || '', shipper_name: r.shipper_name || '', port_of_dispatch: r.port_of_dispatch || '' }, items: data || [] };
       S.view = 'edit'; S.pick = null; S.dirty = false; renderEditor(true);
     } catch (e) { toast(fail(e), 'error', 5000); }
     S.opening = false;
@@ -270,7 +272,7 @@
     const f = (id, label, type, ex) => `<div class="fg"><label>${label}</label><input id="rr_${id}" type="${type || 'text'}" maxlength="${MAX_LEN}" value="${esc(h[id])}"${dis}${ex || ''}></div>`;
     const al = agentLine(h.agent);
     root.innerHTML = `<div class="panel"><div class="panel-head"><div class="panel-title"><button class="action-btn ghost" onclick="RepatReserve.back()">← All reserves</button>
-      &nbsp; Reserve ${E.reserve_no ? '#' + esc(E.reserve_no) : '(new, number is given on save)'} ${E.closed ? '<span class="hb hb-r">Closed</span>' : ''}<span class="rr-dirty" id="rrDirty"${S.dirty ? '' : ' hidden'}>● Unsaved changes</span></div>
+      &nbsp; Reserve ${E.reserve_no ? esc(E.reserve_no) : '(new, number is given on save)'} ${E.closed ? '<span class="hb hb-r">Closed</span>' : ''}<span class="rr-dirty" id="rrDirty"${S.dirty ? '' : ' hidden'}>● Unsaved changes</span></div>
       <div class="panel-meta">${!ro ? '<button class="action-btn ghost" onclick="RepatReserve.pause()" title="Save this reserve to Pending and finish it later">⏸ Pause</button>' : ''}${n ? '<button class="action-btn ghost" onclick="RepatReserve.exportOne()">⬇ CSV</button>' : ''}${E.id && canWrite() ? `<button class="action-btn ghost" onclick="RepatReserve.toggleClosed()">${E.closed ? 'Reopen' : 'Close reserve'}</button><button class="action-btn ghost" onclick="RepatReserve.remove()">Delete</button>` : ''}</div></div>
       <div class="rr-grid"><div class="rr-form">
         <div class="fg"><label>Agent (shipping line) *</label><input id="rr_agent" list="rrAgents" maxlength="${MAX_LEN}" value="${esc(h.agent)}"${dis} onchange="RepatReserve.agentChanged()"><datalist id="rrAgents">${opts(agentNames(), h.agent)}</datalist></div>
@@ -328,12 +330,12 @@
       await loadReserves();
       const clash = E.items.filter(i => { const t = S.taken.get(norm(i.container_no)); return t && t.id !== E.id; });
       if (clash.length) {
-        const list = clash.slice(0, 8).map(i => esc(i.container_no) + ' (#' + esc(S.taken.get(norm(i.container_no)).no) + ')').join(', ') + (clash.length > 8 ? ' and ' + (clash.length - 8) + ' more' : '');
+        const list = clash.slice(0, 8).map(i => esc(i.container_no) + ' (' + esc(S.taken.get(norm(i.container_no)).no) + ')').join(', ') + (clash.length > 8 ? ' and ' + (clash.length - 8) + ' more' : '');
         say('Already held by another open reserve: ' + list + '. <button class="action-btn ghost" type="button" onclick="RepatReserve.dropClashing()">Remove them</button>', true);
         return lock(false);
       }
       const dupRo = (S.reserves || []).find(r => r.id !== E.id && !r.closed && lc(r.release_order_no) === lc(h.release_order_no));
-      if (dupRo && !confirm('Release order ' + h.release_order_no + ' is already on open reserve #' + dupRo.reserve_no + '. Save anyway?')) return lock(false);
+      if (dupRo && !confirm('Release order ' + h.release_order_no + ' is already on open reserve ' + rn(dupRo) + '. Save anyway?')) return lock(false);
       if (!E.id && !E.closed && new Date(h.run_end_date + 'T' + h.run_end_time.slice(0, 5)) < new Date() && !confirm('The run end date and time have already passed. Reserve anyway?')) return lock(false);
       const odd = E.items.filter(i => otherLine(i, h.agent) && !i._ok);
       if (odd.length) {
@@ -343,8 +345,8 @@
       const { data, error } = await supabase.rpc('repat_reserve_save', { p_id: E.id, p_head: h, p_items: E.items.map(i => ({ container_no: i.container_no, in_eir: i.in_eir || '', size: i.size || '' })) });
       if (error) throw error;
       if (!data || !data.id) throw new Error('The server did not confirm the save. Check the reserve list before trying again.');
-      audit('Repat reserve saved', '#' + data.reserve_no + ' · ' + E.items.length + ' containers · ' + h.agent);
-      toast('Reserve #' + data.reserve_no + ' saved', 'success');
+      audit('Repat reserve saved', (data.reserve_ref || data.reserve_no) + ' · ' + E.items.length + ' containers · ' + h.agent);
+      toast('Reserve ' + (data.reserve_ref || data.reserve_no) + ' saved', 'success');
       S.dirty = false; lock(false);
       try { await loadReserves(); } catch (x) { /* saved; the list refreshes on the next visit */ }
       return RR.open(data.id);
@@ -356,12 +358,12 @@
     const E = S.E; if (!E || !E.id || !canWrite() || S.busy) return;
     if (S.dirty && !confirm('You have unsaved changes. They will be lost. Continue?')) return;
     const left = E.items.filter(i => !i.cleared).length;
-    if (!confirm(E.closed ? 'Reopen reserve #' + E.reserve_no + '? Its containers are held again, if no other reserve has taken them meanwhile.' : 'Close reserve #' + E.reserve_no + '?' + (left ? '\n' + left + ' uncleared container' + (left === 1 ? ' is' : 's are') + ' released for other reserves.' : ''))) return;
+    if (!confirm(E.closed ? 'Reopen reserve ' + E.reserve_no + '? Its containers are held again, if no other reserve has taken them meanwhile.' : 'Close reserve ' + E.reserve_no + '?' + (left ? '\n' + left + ' uncleared container' + (left === 1 ? ' is' : 's are') + ' released for other reserves.' : ''))) return;
     S.busy = true;
     try {
       const { error } = await supabase.rpc('repat_reserve_close', { p_id: E.id, p_closed: !E.closed });
       if (error) throw error;
-      audit(E.closed ? 'Repat reserve reopened' : 'Repat reserve closed', '#' + E.reserve_no);
+      audit(E.closed ? 'Repat reserve reopened' : 'Repat reserve closed', E.reserve_no);
       S.dirty = false; S.busy = false;
       try { await loadReserves(); } catch (x) { /* changed on the server; the list refreshes on the next visit */ }
       return RR.open(E.id);
@@ -372,15 +374,15 @@
     const E = S.E; if (!E || !E.id || !canWrite() || S.busy) return;
     const done = E.items.filter(i => i.cleared).length;
     if (done) {
-      const a = prompt('Reserve #' + E.reserve_no + ' has ' + done + ' cleared container' + (done === 1 ? '' : 's') + '. Deleting it removes that record. Closing is usually better.\n\nType the reserve number to delete it anyway:');
+      const a = prompt('Reserve ' + E.reserve_no + ' has ' + done + ' cleared container' + (done === 1 ? '' : 's') + '. Deleting it removes that record. Closing is usually better.\n\nType the reserve number to delete it anyway:');
       if (a === null) return;
-      if (String(a).trim().replace(/^#/, '') !== String(E.reserve_no)) return toast('Reserve number did not match. Nothing was deleted.', 'info', 4000);
-    } else if (!confirm('Delete reserve #' + E.reserve_no + '? This cannot be undone.')) return;
+      if (String(a).trim().replace(/^#/, '').toLowerCase() !== String(E.reserve_no).toLowerCase()) return toast('Reserve number did not match. Nothing was deleted.', 'info', 4000);
+    } else if (!confirm('Delete reserve ' + E.reserve_no + '? This cannot be undone.')) return;
     S.busy = true;
     try {
       const { error } = await supabase.rpc('repat_reserve_delete', { p_id: E.id });
       if (error) throw error;
-      audit('Repat reserve deleted', '#' + E.reserve_no);
+      audit('Repat reserve deleted', E.reserve_no);
       toast('Reserve deleted', 'success'); S.busy = false; S.dirty = false; return RR.back();
     } catch (e) { toast(fail(e), 'error', 6000); }
     S.busy = false;
@@ -394,7 +396,7 @@
     try {
       const { error } = await supabase.rpc('repat_reserve_clear', { p_id: E.id, p_containers: [i.container_no], p_cleared: on });
       if (error) throw error;
-      i.cleared = on; audit(on ? 'Repat container cleared' : 'Repat container un-cleared', '#' + E.reserve_no + ' · ' + i.container_no);
+      i.cleared = on; audit(on ? 'Repat container cleared' : 'Repat container un-cleared', E.reserve_no + ' · ' + i.container_no);
       await loadReserves();
     } catch (e) { toast(fail(e), 'error', 6000); }
     S.busy = false; renderEditor();
@@ -522,7 +524,7 @@
       await Promise.all(nums.slice(i, i + 5).map(async k => {
         try {
           if (have.has(k)) return skipped.push([k, 'already on this reserve']);
-          const t = S.taken.get(k); if (t) return skipped.push([k, 'held by reserve #' + t.no]);
+          const t = S.taken.get(k); if (t) return skipped.push([k, 'held by reserve ' + t.no]);
           let rows = [];
           try {
             if (window.ICR && ICR.enabled) rows = await ICR.byContainer(k);
@@ -557,7 +559,7 @@
     if (!typed) return toast('Nothing entered yet, so there is nothing to pause.', 'info');
     if (!window.GargoDrafts) return toast('Pause is not available on this page load. Save the reserve instead.', 'error');
     try {
-      await GargoDrafts.save({ kind: 'reserve', title: 'Repat reserve', label: E.reserve_no ? '#' + E.reserve_no : (h.agent || 'NEW').toUpperCase(), data: { E: JSON.parse(JSON.stringify(E)) } });
+      await GargoDrafts.save({ kind: 'reserve', title: 'Repat reserve', label: E.reserve_no ? E.reserve_no : (h.agent || 'NEW').toUpperCase(), data: { E: JSON.parse(JSON.stringify(E)) } });
     } catch (e) { return toast(fail(e), 'error', 6000); }
     S.dirty = false; S.view = 'list'; S.E = null; S.pick = null;
     toast('Reserve paused. Continue it from Pending (the pause icon at the top).', 'success', 5000);
@@ -621,8 +623,8 @@
         try {
           const { error } = await supabase.rpc('repat_reserve_clear', { p_id: it.id, p_containers: [it.container], p_cleared: true });
           if (error) throw error;
-          audit('Repat container cleared (gate-out)', '#' + it.no + ' · ' + it.container);
-          try { toast(it.container + ' left the yard: marked cleared on reserve #' + it.no, 'success', 5000); } catch (x) {}
+          audit('Repat container cleared (gate-out)', it.no + ' · ' + it.container);
+          try { toast(it.container + ' left the yard: marked cleared on reserve ' + it.no, 'success', 5000); } catch (x) {}
           if (S.E && S.E.id === it.id) { const m = S.E.items.find(i => norm(i.container_no) === norm(it.container)); if (m) m.cleared = true; }
         } catch (e) {
           const m = String((e && e.message) || '');
@@ -669,7 +671,7 @@
       row.setAttribute('data-rr', '1');
       const hit = m && RR.lookup(m[0]); if (!hit) return;
       const chip = document.createElement('span'); chip.className = 'rr-b rr-amb'; chip.style.marginLeft = '8px';
-      chip.title = 'Held on repat reserve #' + hit.no; chip.textContent = 'RESERVED #' + hit.no + (hit.agent ? ' · ' + String(hit.agent).toUpperCase() : '');
+      chip.title = 'Held on repat reserve ' + hit.no; chip.textContent = 'RESERVED ' + hit.no + (hit.agent ? ' · ' + String(hit.agent).toUpperCase() : '');
       const host = row.querySelector('.mono,.li-mono') || row; host.appendChild(chip);
     });
   }
@@ -688,8 +690,8 @@
         const c = ($('d_container') || {}).value, hit = c && (await RR.ensureLoaded(), RR.lookup(c));
         if (hit) {
           const al = agentLine(hit.agent), sel = ($('d_line') || {}).value;
-          if (al && sel && sel !== al.id && !confirm(String(c).toUpperCase() + ' is held on repat reserve #' + hit.no + ' for ' + hit.agent + ', but this dispatch is for a different shipping line.\n\nContinue anyway?')) return;
-          try { toast(String(c).toUpperCase() + ' is on repat reserve #' + hit.no + '. It is marked cleared when it gates out.', 'info', 4500); } catch (x) {}
+          if (al && sel && sel !== al.id && !confirm(String(c).toUpperCase() + ' is held on repat reserve ' + hit.no + ' for ' + hit.agent + ', but this dispatch is for a different shipping line.\n\nContinue anyway?')) return;
+          try { toast(String(c).toUpperCase() + ' is on repat reserve ' + hit.no + '. It is marked cleared when it gates out.', 'info', 4500); } catch (x) {}
         }
       } catch (e) { /* never block a dispatch because the check failed */ }
       return f.apply(this, arguments);
