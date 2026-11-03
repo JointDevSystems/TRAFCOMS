@@ -268,7 +268,7 @@ async function loadDB() {
       supabase.from('maintenance').select('*'),
       
       fetchAllPaginated((from, to) => supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to)),
-      supabase.from('shipping_lines').select('*'),
+      supabase.from('shipping_lines_with_rates').select('*'),   // rates come from shipping_line_rates: filled for admin/finance, null for everyone else (RLS)
       supabase.from('shutouts').select('*'),
       
       _icFullLoad() ? fetchAllPaginated((from, to) =>
@@ -410,7 +410,9 @@ async function saveDB() {
       }
     }
 
-    await saveChanged('billingRates',    rows => upsertRows('billing_rates', rows, { onConflict: 'ctype' }));
+    if (typeof canFinance === 'function' && canFinance()) {   // other roles cannot read or write rates, so they never send them
+      await saveChanged('billingRates',    rows => upsertRows('billing_rates', rows, { onConflict: 'ctype' }));
+    }
     await saveChanged('allocationRules', rows => upsertRows('allocation_rules', rows));
 
     // NOTE: tracking_positions is deliberately NOT written from here. Positions are owned by the
@@ -658,7 +660,7 @@ const LIVE_TABLE_LOADERS = {
   maintenance:       { key: 'maintenance',      load: async () => (await _liveRows(supabase.from('maintenance').select('*'))).map(maintFromRow) },
   fuel_logs:         { key: 'fuel',             load: async () => (await _livePaged((from, to) =>
                         supabase.from('fuel_logs').select('*').order('date', { ascending: false }).range(from, to))).map(fuelFromRow) },
-  shipping_lines:    { key: 'shippingLines',    load: async () => (await _liveRows(supabase.from('shipping_lines').select('*'))).map(lineFromRow) },
+  shipping_lines:    { key: 'shippingLines',    load: async () => (await _liveRows(supabase.from('shipping_lines_with_rates').select('*'))).map(lineFromRow) },
   shutouts:          { key: 'shutouts',         load: async () => (await _liveRows(supabase.from('shutouts').select('*'))).map(shutoutFromRow) },
   interchange:       { key: 'interchange',      load: async () => {
                         if (!_icFullLoad()) return (state.db && state.db.interchange) || [];   // on-demand cache: row patches keep it current

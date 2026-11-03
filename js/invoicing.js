@@ -497,6 +497,7 @@ function recalcInvoiceFromTrips() {
 }
 
 function saveInvoice() {
+  if (window.GargoRates && !GargoRates.isLoaded() && _ciLastLineItems.length === 0 && document.querySelectorAll('.ci-trip-cb:checked').length) { toast('The rate card has not loaded yet. Check your connection and try again.', 'warning', 5000); GargoRates.load(true); return; }
   const client = document.getElementById('ci_client').value.trim();
   const sub    = Math.max(0, parseFloat(document.getElementById('ci_sub').value)||0);
   if (!client||!sub) { toast('Client and amount required','error'); return; }
@@ -526,6 +527,7 @@ function saveInvoice() {
 
 function autoGenerateInvoices() {
   if (!canFinance()) { toast('Finance rights required', 'error'); return; }
+  if (window.GargoRates && !GargoRates.isLoaded()) { toast('The rate card has not loaded yet. Check your connection and try again.', 'warning', 5000); GargoRates.load(true); return; }
   const tripsWithoutInvoice = state.db.trips.filter(t=>t.status==='completed' && !state.db.invoices.some(i=>i.trips.includes(t.id)));
   if (!tripsWithoutInvoice.length) { toast('All completed trips already invoiced','info'); return; }
   let legacyCount = 0;

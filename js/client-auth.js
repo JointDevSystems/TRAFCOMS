@@ -132,6 +132,7 @@ async function performLogout(auditDetail) {
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   try { await saveNowAwaited(); } catch (e) {}   // send the Logout entry while the session is still valid
   try { if (window.GargoOffline) await GargoOffline.onLogout(); } catch (e) {}
+  try { if (window.GargoRates) GargoRates.clear(); } catch (e) {}
   await supabase.auth.signOut();
   state.currentUser = null;
   state.profile = null;
@@ -191,6 +192,7 @@ function bootShell() {
   subscribeLiveSync();
   startWialonPolling();
   initAutoRefresh();
+  try { if (window.GargoRates) GargoRates.load(); } catch (e) { console.warn('Rates load failed:', e); }   // admin/finance only; no-op for other roles
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
