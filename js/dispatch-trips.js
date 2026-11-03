@@ -708,6 +708,7 @@ function toggleDispatchOutwardType() {
   const wt = document.getElementById('d_worktype');
   const hint = document.getElementById('d_outwardtype_hint');
   if (hint && wt) hint.textContent = isOutwardWorkType(wt.value) ? '(required for Depot → Port)' : '(optional)';
+  if (window.RepatReserve && RepatReserve.syncDispatchForm) { try { RepatReserve.syncDispatchForm(); } catch (e) { console.warn('Repat form sync failed', e); } }   // Repat: container must come from the reserved list
 }
 
 function loadTripIntoDispatchForm(tripId) {

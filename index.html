@@ -553,6 +553,15 @@
                                             <span>Completing an awaiting-dispatch trip — pick a truck &amp; driver and confirm details below.</span>
                                             <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
                                         </div>
+                                        <div id="d_outwardtype_row" style="margin-bottom:12px">
+                                            <div class="fg" style="margin:0;max-width:260px">
+                                                <label>Status <span class="label-optional" id="d_outwardtype_hint">(required for Depot → Port)</span></label>
+                                                <select id="d_outwardtype" onchange="toggleDispatchOutwardType()">
+                                                    <option value="">Select…</option>
+                                                    <option value="Repatriation to Port">Repat</option><option value="Shippers/Export">Shipper</option><option value="Sale units">Sale Unit</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" onchange="dispatchPrefillFromEir()" onblur="dispatchPrefillFromEir()" /></div>
                                             <div class="fg"><label>Size</label><select id="d_size" onchange="refreshTypeSelectForSize('d_size','d_type')"></select></div>
@@ -589,15 +598,6 @@
                                                 </select>
                                             </div>
                                             <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
-                                        </div>
-                                        <div id="d_outwardtype_row" style="margin-bottom:12px">
-                                            <div class="fg" style="margin:0;max-width:260px">
-                                                <label>Status <span class="label-optional" id="d_outwardtype_hint">(required for Depot → Port)</span></label>
-                                                <select id="d_outwardtype">
-                                                    <option value="">Select…</option>
-                                                    <option value="Repatriation to Port">Repat</option><option value="Shippers/Export">Shipper</option><option value="Sale units">Sale Unit</option>
-                                                </select>
-                                            </div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>

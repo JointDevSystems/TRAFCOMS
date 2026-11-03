@@ -55,7 +55,15 @@
 
   /* ── register the page: access, title, section, button ── */
   if (ALL_SIDEBAR_SECTIONS.indexOf(SEC) < 0) ALL_SIDEBAR_SECTIONS.push(SEC);
-  ['ops', 'clerk', 'dispatch'].forEach(r => { ROLE_SIDEBAR[r] = ROLE_SIDEBAR[r] || []; if (ROLE_SIDEBAR[r].indexOf(SEC) < 0) ROLE_SIDEBAR[r].push(SEC); });
+  /* Everyone except drivers can open Reserve Repat (like the Data Hub). Only an administrator creates or edits a reserve;
+     admin, ops, dispatch and clerk can dispatch a reserved container from it. */
+  ['admin', 'ops', 'clerk', 'dispatch', 'finance', 'hr', 'viewer'].forEach(r => { ROLE_SIDEBAR[r] = ROLE_SIDEBAR[r] || []; if (ROLE_SIDEBAR[r].indexOf(SEC) < 0) ROLE_SIDEBAR[r].push(SEC); });
+  /* per-user tick lists and the desk roles (loading clerk, security ...) get the page too */
+  (function () {
+    const f = window.withDataHub; if (typeof f !== 'function' || f._rr) return;
+    const w = function () { const a = f.apply(this, arguments); let driver = false; try { driver = currentRole() === 'driver'; } catch (e) {} return (driver || a.indexOf(SEC) >= 0) ? a : a.concat(SEC); };
+    w._rr = true; window.withDataHub = w;
+  })();
   SECTION_META[SEC] = ['Container Ops', 'Reserve Repat'];
 
   function ensurePage() {
@@ -115,7 +123,7 @@
     S.seq++;
     const [a, items] = await Promise.all([
       withTimeout(supabase.from('repat_reserves_v').select('*').order('reserve_no', { ascending: false }).limit(LIST_LIMIT), 25000),
-      pageAll((f, t) => supabase.from('repat_reserve_items').select('container_no,reserve_id').eq('active', true).order('container_no').range(f, t), 1000),
+      pageAll((f, t) => supabase.from('repat_reserve_items').select('container_no,reserve_id,cleared,in_eir,size').eq('active', true).order('container_no').range(f, t), 1000),
     ]);
     if (a.error) throw a.error;
     const reserves = a.data || [];
@@ -131,7 +139,7 @@
     S.reserves = reserves;
     S.byId = byId;
     S.truncated = reserves.length >= LIST_LIMIT;
-    S.taken = new Map(items.map(i => { const r = byId.get(i.reserve_id); return [norm(i.container_no), { id: i.reserve_id, no: r ? rn(r) : '?', agent: r ? r.agent : '' }]; }));
+    S.taken = new Map(items.map(i => { const r = byId.get(i.reserve_id); return [norm(i.container_no), { id: i.reserve_id, no: r ? rn(r) : '?', agent: r ? r.agent : '', cleared: !!i.cleared, container_no: i.container_no, in_eir: i.in_eir || '', size: i.size || '' }]; }));
     S.at = new Date(); S.stale = false;
     writeCache();
   }
@@ -189,7 +197,7 @@
     const held = open.reduce((n, r) => n + balance(r), 0), late = all.filter(isOverdue).length;
     const tabs = [['open', 'Open'], ['overdue', 'Overdue'], ['closed', 'Closed'], ['all', 'All']].map(t => `<button class="filter-btn${S.filter === t[0] ? ' active' : ''}" data-f="${t[0]}" onclick="RepatReserve.setFilter('${t[0]}')">${t[1]}</button>`).join('');
     root.innerHTML = `<div class="panel"><div class="panel-head"><div class="panel-title">Reserved repat containers</div>
-      <div class="panel-meta">${canWrite() ? '<button class="action-btn" onclick="RepatReserve.openNew()">+ New reserve</button>' : 'View only'}</div></div>
+      <div class="panel-meta">${canWrite() ? '<button class="action-btn" onclick="RepatReserve.openNew()">+ New reserve</button>' : (canDispatchRepat() ? 'Open a reserve to dispatch its containers' : 'View only')}</div></div>
       <div class="rr-sum"><div class="rr-count"><b>${open.length}</b><span>Open reserves</span></div><div class="rr-count wait"><b>${held}</b><span>Containers still held</span></div><div class="rr-count ${late ? 'bad' : ''}"><b>${late}</b><span>Overdue with balance</span></div></div>
       <div class="rr-tools">${tabs}<input type="search" id="rrSearch" placeholder="Search number, agent, shipper, vessel, release order…" value="${esc(S.q)}" oninput="RepatReserve.search(this.value)">
         <select id="rrSort" onchange="RepatReserve.setSort(this.value)" aria-label="Sort"><option value="new"${S.sort === 'new' ? ' selected' : ''}>Newest first</option><option value="ends"${S.sort === 'ends' ? ' selected' : ''}>Run ends soonest</option></select>
@@ -289,7 +297,7 @@
         <div class="rr-counts"><div class="rr-count"><b>${n}</b><span>Total</span></div><div class="rr-count ok"><b>${nCleared}</b><span>Cleared</span></div><div class="rr-count wait"><b>${n - nCleared}</b><span>Balance</span></div></div>
         ${!ro && h.agent && !al ? '<p class="rr-note">This agent is not in the shipping lines list, so containers cannot be checked against its line.</p>' : ''}
         ${ro ? '' : `<div class="rr-tools"><button class="action-btn" onclick="RepatReserve.openPicker()">+ Add from yard</button><button class="action-btn ghost" onclick="RepatReserve.openPaste()">Paste a list</button></div><div id="rrPicker"></div>`}
-        ${n ? `<div style="overflow:auto;max-height:420px"><table class="data-table"><thead><tr><th>In EIR</th><th>Container</th><th>Size</th><th>Cleared</th>${ro ? '' : '<th></th>'}</tr></thead><tbody>${E.items.map((i, k) => `<tr><td>${esc(i.in_eir || '')}</td><td>${esc(i.container_no)}${otherLine(i, h.agent) && !i._ok ? ' <span class="rr-b rr-amb" title="Belongs to another shipping line">other line</span>' : ''}</td><td>${esc(i.size || '')}</td><td>${E.id && i.id && canWrite() ? `<input type="checkbox" ${i.cleared ? 'checked' : ''} onchange="RepatReserve.clearOne(${k},this.checked)">` : (i.cleared ? 'Yes' : '')}</td>${ro ? '' : `<td>${i.cleared ? '' : `<button class="action-btn ghost" onclick="RepatReserve.drop(${k})">Remove</button>`}</td>`}</tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="empty-state-label">No containers on this reserve yet.</div></div>'}
+        ${n ? `<div style="overflow:auto;max-height:420px"><table class="data-table"><thead><tr><th>In EIR</th><th>Container</th><th>Size</th><th>Cleared</th>${ro ? '' : '<th></th>'}${E.id && !E.closed && canDispatchRepat() ? '<th></th>' : ''}</tr></thead><tbody>${E.items.map((i, k) => `<tr><td>${esc(i.in_eir || '')}</td><td>${esc(i.container_no)}${otherLine(i, h.agent) && !i._ok ? ' <span class="rr-b rr-amb" title="Belongs to another shipping line">other line</span>' : ''}</td><td>${esc(i.size || '')}</td><td>${E.id && i.id && canWrite() ? `<input type="checkbox" ${i.cleared ? 'checked' : ''} onchange="RepatReserve.clearOne(${k},this.checked)">` : (i.cleared ? 'Yes' : '')}</td>${ro ? '' : `<td>${i.cleared ? '' : `<button class="action-btn ghost" onclick="RepatReserve.drop(${k})">Remove</button>`}</td>`}${E.id && !E.closed && canDispatchRepat() ? `<td>${i.cleared || !i.id ? '' : `<button class="action-btn" onclick="RepatReserve.dispatchFrom(${k})">Dispatch</button>`}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="empty-state-label">No containers on this reserve yet.</div></div>'}
       </div></div></div>`;
     const form = root.querySelector('.rr-form'); if (form && !ro) form.addEventListener('input', markDirty);
     if (S.pick) paintPicker();
@@ -682,10 +690,240 @@
   }
   window.addEventListener('load', () => setTimeout(watchPickers, 0));
 
+  /* ── REPAT OUTWARD RULE ────────────────────────────────────────────────────────────────────────────
+     A container going out as Repat (Dispatch Console single or bulk, DepOps outward) must be on an OPEN reserve and not yet cleared.
+     Containers are drawn from this list, never typed in. Switch the rule off for everyone: Settings key repat.enforce = false.
+     Shipper and Sale Unit are not affected yet. */
+  const REPAT = 'Repatriation to Port';
+  const isRepat = v => v === REPAT;
+  const enforceOn = () => { try { return !(window.cfgGet && window.cfgGet('repat.enforce') === false); } catch (e) { return true; } };
+  function canDispatchRepat() { try { return isAdmin() || ['ops', 'dispatch', 'clerk'].indexOf(currentRole()) >= 0; } catch (e) { return false; } }
+  RR.enforced = enforceOn;
+  RR.canDispatch = canDispatchRepat;
+
+  /* verdict for one container, from the list in memory */
+  RR.check = key => {
+    const t = S.taken.get(norm(key));
+    if (!t) return { ok: false, why: 'is not on any open repat reserve' };
+    if (t.cleared) return { ok: false, why: 'is already cleared on reserve ' + t.no, hit: t };
+    return { ok: true, hit: t };
+  };
+  /* re-read the list from the server (falls back to the device copy offline) */
+  async function fresh() {
+    if (navigator.onLine && uidNow()) { try { await loadReserves(); return true; } catch (e) { /* use the last copy */ } }
+    if (!S.reserves) { const c = readCache(); if (c) { S.reserves = c.reserves; S.taken = new Map(c.taken || []); S.at = new Date(c.at); S.stale = true; S.byId = new Map(S.reserves.map(r => [r.id, r])); } }
+    return !!S.reserves;
+  }
+  /* returns null when the container may go out as Repat, otherwise the sentence to show the user */
+  async function guardRepat(container) {
+    if (!enforceOn()) return null;
+    const c = String(container || '').trim();
+    if (!c) return 'Pick the container from the Reserve Repat list first.';
+    if (!(await fresh())) return 'The reserve list could not be loaded, so ' + c.toUpperCase() + ' cannot be checked. Try again when you are online.';
+    const v = RR.check(c);
+    return v.ok ? null : c.toUpperCase() + ' ' + v.why + '. A Repat outward can only be made from the Reserve Repat list.';
+  }
+  RR.guard = guardRepat;
+  const tellBlocked = m => { try { toast(m, 'error', 7000); } catch (e) {} };
+
+  /* reserved, not-yet-cleared containers, soonest run end first */
+  RR.available = () => {
+    const out = [];
+    S.taken.forEach(t => { if (t.cleared || !t.container_no) return; const r = S.byId.get(t.id) || {}; out.push({ c: t.container_no, eir: t.in_eir || '', size: t.size || '', id: t.id, no: t.no, agent: t.agent || r.agent || '', r }); });
+    out.sort((a, b) => ((runEnd(a.r) || 8e15) - 0) - ((runEnd(b.r) || 8e15) - 0));
+    return out;
+  };
+
+  /* ── Dispatch Console: Status is the first field; choosing Repat locks the form to the reserved list ── */
+  RR.syncDispatchForm = function () {
+    const st = $('d_outwardtype'), wt = $('d_worktype'), c = $('d_container'); if (!st || !wt || !c) return;
+    const on = enforceOn() && isRepat(st.value);
+    let box = $('d_rr_box');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'd_rr_box'; box.className = 'ops-notice';
+      box.style.cssText = 'display:none;margin-bottom:12px;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap';
+      const row = $('d_outwardtype_row'); if (row && row.parentNode) row.parentNode.insertBefore(box, row.nextSibling);
+    }
+    if (on) {
+      if (c.dataset.rrPh === undefined) c.dataset.rrPh = c.placeholder || '';
+      wt.value = 'Depot → Port'; wt.disabled = true;
+      c.readOnly = true; c.placeholder = 'Pick from the reserved repat list';
+      box.style.display = 'flex';
+      box.innerHTML = '<span>Repat containers must come from the <b>Reserve Repat</b> list. Work type is fixed to Depot → Port.</span><button type="button" class="action-btn" onclick="RepatReserve.pickForDispatch()">Pick from reserved list</button>';
+      RR.ensureLoaded();
+    } else {
+      wt.disabled = false; c.readOnly = false;
+      if (c.dataset.rrPh !== undefined) { c.placeholder = c.dataset.rrPh; delete c.dataset.rrPh; }
+      box.style.display = 'none';
+    }
+  };
+
+  RR.pickForDispatch = async function () {
+    openModal('Reserved repat containers', '<div class="fg"><input id="rrdq" placeholder="Search container, reserve no., agent, vessel, release order…" oninput="RepatReserve.dispatchSearch()" autocomplete="off"></div><div id="rrdList"><div class="empty-state-label" style="padding:12px 0">Loading…</div></div>');
+    setTimeout(() => { const q = $('rrdq'); if (q) q.focus(); }, 60);
+    const ok = await fresh();
+    if (!ok) { const l = $('rrdList'); if (l) l.innerHTML = '<div class="empty-state-label" style="padding:12px 0">The reserve list could not be loaded. Check the connection and try again.</div>'; return; }
+    paintDispatchList();
+  };
+  let dsT;
+  RR.dispatchSearch = () => { clearTimeout(dsT); dsT = setTimeout(paintDispatchList, 200); };
+  function paintDispatchList() {
+    const host = $('rrdList'); if (!host) return;
+    const q = lc((($('rrdq') || {}).value) || '');
+    const all = RR.available();
+    const rows = all.filter(x => !q || [x.c, x.no, x.agent, x.eir, x.r.vessel, x.r.voyage, x.r.destination, x.r.release_order_no, x.r.shipper_name].join(' ').toLowerCase().indexOf(q) >= 0);
+    if (!rows.length) { host.innerHTML = '<div class="empty-state-label" style="padding:12px 0">' + (all.length ? 'No reserved containers match.' : 'There are no reserved repat containers waiting. An administrator creates reserves in Reserve Repat.') + '</div>'; return; }
+    host.innerHTML = rows.slice(0, 80).map(x => {
+      const late = isOverdue(x.r);
+      return '<div class="activity-row" style="cursor:pointer;gap:10px" onclick="RepatReserve.useForDispatch(\'' + esc(x.c) + '\')"><div style="flex:1;min-width:0"><div class="mono" style="color:var(--gold);font-weight:600">' + esc(x.c) +
+        ' <span class="rr-b rr-amb" style="margin-left:6px">' + esc(x.no) + (x.agent ? ' · ' + esc(String(x.agent).toUpperCase()) : '') + '</span>' + (late ? ' <span class="rr-b rr-red">Overdue</span>' : '') + '</div>' +
+        '<div style="font-size:10.5px;color:var(--text-3)">' + [x.r.vessel && (x.r.vessel + ' ' + (x.r.voyage || '')), x.r.destination, x.r.release_order_no && ('RO ' + x.r.release_order_no), x.size && (x.size + 'ft'), x.eir && ('EIR ' + x.eir), x.r.run_end_date && ('ends ' + ymd(x.r.run_end_date) + ' ' + hhmm(x.r.run_end_time))].filter(Boolean).map(esc).join(' · ') + '</div></div></div>';
+    }).join('') + (rows.length > 80 ? '<div class="rr-note">Showing 80 of ' + rows.length + '. Type to narrow the list.</div>' : '');
+  }
+  /* fill the dispatch form from the chosen reserved container and its reserve */
+  RR.useForDispatch = function (c) {
+    const v = RR.check(c);
+    if (!v.ok) { tellBlocked(String(c).toUpperCase() + ' ' + v.why + '.'); return; }
+    const t = v.hit, r = S.byId.get(t.id) || {};
+    try { closeModal(); } catch (e) {}
+    const set = (id, val, only) => { const el = $(id); if (el && val != null && val !== '' && (!only || !el.value)) el.value = val; };
+    const el = $('d_container'); if (!el) return;
+    el.value = t.container_no; delete el.dataset.eirFor;
+    try { markContainerValidity(el); } catch (e) {}
+    const al = agentLine(r.agent || t.agent); if (al && $('d_line')) $('d_line').value = al.id;
+    set('d_origin', 'Depot', true);
+    set('d_dest', r.destination || r.port_of_dispatch);
+    set('d_release_no', r.release_order_no); set('d_vessel', r.vessel); set('d_voyage', r.voyage);
+    set('d_ref', rn(r), true);
+    try { dispatchPrefillFromEir(); } catch (e) {}
+    try { toast(String(t.container_no).toUpperCase() + ' taken from reserve ' + t.no, 'success', 3500); } catch (e) {}
+  };
+  /* from a reserve's container list: open the Dispatch Console already set to Repat with this container */
+  RR.dispatchFrom = async function (k) {
+    const E = S.E, i = E && E.items[k]; if (!i || i.cleared) return;
+    if (S.dirty && !confirm('You have unsaved changes on this reserve. Go to Dispatch anyway?')) return;
+    const msg = await guardRepat(i.container_no); if (msg) return tellBlocked(msg);
+    S.view = 'list'; S.E = null; S.pick = null; S.dirty = false;
+    const nav = document.querySelector('.nav-item[data-section="dispatch"]');
+    try { window.showSection('dispatch', nav); } catch (e) { return tellBlocked('Could not open the Dispatch Console.'); }
+    setTimeout(() => {
+      try { if (typeof switchDispatchTab === 'function') switchDispatchTab('single', document.querySelector('#sec-dispatch .filter-btn')); } catch (e) {}
+      const st = $('d_outwardtype'); if (!st) return;
+      st.value = REPAT; try { toggleDispatchOutwardType(); } catch (e) { RR.syncDispatchForm(); }
+      RR.useForDispatch(i.container_no);
+    }, 200);
+  };
+
+  /* ── DepOps outward: manual form offers the reserved containers and fills the shipping line ── */
+  RR.syncManual = async function () {
+    const st = $('depopsManualOutwardType'), c = $('depopsManualContainer'); if (!st || !c) return;
+    if (enforceOn() && isRepat(st.value)) {
+      await fresh();
+      let dl = $('rrAvail'); if (!dl) { dl = document.createElement('datalist'); dl.id = 'rrAvail'; document.body.appendChild(dl); }
+      dl.innerHTML = RR.available().map(x => '<option value="' + esc(x.c) + '">' + esc(x.no + (x.agent ? ' · ' + x.agent : '')) + '</option>').join('');
+      c.setAttribute('list', 'rrAvail'); c.placeholder = 'Pick a reserved repat container';
+    } else { c.removeAttribute('list'); c.placeholder = 'e.g. MSCU1234566'; }
+  };
+  document.addEventListener('change', e => {
+    const t = e.target; if (!t || !t.id) return;
+    if (t.id === 'depopsManualOutwardType') RR.syncManual();
+    if (t.id === 'depopsManualContainer') {
+      const st = $('depopsManualOutwardType'), ls = $('depopsManualLine');
+      if (st && isRepat(st.value) && ls) { const v = RR.check(t.value); const al = v.hit && agentLine(v.hit.agent); if (al) ls.value = al.id; }
+    }
+  });
+
+  /* ── guards on every outward entry point ── */
+  function hookRules() {
+    /* Dispatch Console: storage picker must not slip a non-reserved container in */
+    const us = window.dispatchUseStorageContainer;
+    if (typeof us === 'function' && !us._rr) {
+      const w = function (c) {
+        const st = $('d_outwardtype');
+        if (enforceOn() && st && isRepat(st.value)) { const v = RR.check(c); if (!v.ok) { try { closeModal(); } catch (e) {} tellBlocked(String(c).toUpperCase() + ' ' + v.why + '. Use "Pick from reserved list" for Repat.'); return; } }
+        return us.apply(this, arguments);
+      };
+      w._rr = true; window.dispatchUseStorageContainer = w;
+    }
+    /* DepOps: create outward trip from an imported booking */
+    const fb = window.depOpsCreateOutwardFromBooking;
+    if (typeof fb === 'function' && !fb._rr) {
+      const w = async function (id) {
+        const st = $('depopsOutwardType-' + id);
+        if (enforceOn() && st && isRepat(st.value)) {
+          let c = '';
+          try { const { data } = await supabase.from('public_bookings').select('container').eq('id', id).single(); c = ((data && data.container) || '').trim(); } catch (e) {}
+          const msg = c ? await guardRepat(c) : 'This booking has no container number on file, so it cannot be checked against the Reserve Repat list.';
+          if (msg) return tellBlocked(msg);
+        }
+        return fb.apply(this, arguments);
+      };
+      w._rr = true; window.depOpsCreateOutwardFromBooking = w;
+    }
+    /* DepOps: add outward container manually */
+    const fm = window.depOpsCreateManualOutward;
+    if (typeof fm === 'function' && !fm._rr) {
+      const w = async function () {
+        const st = $('depopsManualOutwardType');
+        if (enforceOn() && st && isRepat(st.value)) {
+          const c = String((($('depopsManualContainer') || {}).value) || '').trim().toUpperCase();
+          const msg = await guardRepat(c); if (msg) return tellBlocked(msg);
+          const ls = $('depopsManualLine'), v = RR.check(c), al = v.hit && agentLine(v.hit.agent); if (ls && al && !ls.value) ls.value = al.id;
+        }
+        return fm.apply(this, arguments);
+      };
+      w._rr = true; window.depOpsCreateManualOutward = w;
+    }
+    /* Dispatch Console bulk upload: stop the whole file if any Repat row is not on a reserve (rows are re-checked against the live list) */
+    const fk = window.processBulkDispatch;
+    if (typeof fk === 'function' && !fk._rr) {
+      const OUT = { depotport: 1, depottoport: 1, outward: 1, out: 1, dispatch: 1 }, INN = { portdepot: 1, porttodepot: 1, inward: 1, 'in': 1 };
+      const TYPES = { repatriationtoport: 1, repatriation: 1, repat: 1, shippersexport: 0, 'export': 0, shippers: 0, shipper: 0, saleunits: 0, sale: 0 };
+      const w = async function () {
+        if (enforceOn()) {
+          try {
+            const prev = $('bulkDispatchPreview'); let rows = []; try { rows = JSON.parse((prev && prev.dataset.rows) || '[]'); } catch (e) {}
+            const dir = (($('bd_bulk_direction') || {}).value === 'in') ? 'in' : 'out', batchType = (($('bd_bulk_outwardtype') || {}).value) || REPAT;
+            const rowsRepat = rows.filter(r => {
+              const wraw = String(pickField(r, ['worktype', 'workType', 'direction', 'movement']) || '').toLowerCase().replace(/[^a-z]/g, '');
+              const outward = OUT[wraw] ? true : (INN[wraw] ? false : dir === 'out'); if (!outward) return false;
+              const traw = String(pickField(r, ['outwardtype', 'movementtype']) || '').toLowerCase().replace(/[^a-z\/]/g, '');
+              return traw in TYPES ? !!TYPES[traw] : isRepat(batchType);
+            });
+            if (rowsRepat.length) {
+              if (!(await fresh())) return tellBlocked('The reserve list could not be loaded, so the Repat rows cannot be checked. Try again when you are online.');
+              const bad = [];
+              rowsRepat.forEach((r, n) => {
+                const c = String(pickField(r, ['container', 'containerno', 'containernumber', 'containernrno']) || '').trim().toUpperCase();
+                if (!c) { bad.push('row ' + (n + 1) + ': no container number'); return; }
+                const v = RR.check(c); if (!v.ok) bad.push(c + ' ' + v.why);
+              });
+              if (bad.length) {
+                openModal('Bulk dispatch stopped: Repat rows not on a reserve', '<div style="font-size:12.5px;line-height:1.6;color:var(--text-2)"><p style="margin:0 0 8px">Nothing was imported. Repat containers must be on an open reserve and not yet cleared. Remove these rows or ask an administrator to reserve them, then upload again.</p><ul style="margin:0;padding-left:18px;max-height:260px;overflow:auto">' +
+                  bad.slice(0, 100).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' + (bad.length > 100 ? '<p class="rr-note">and ' + (bad.length - 100) + ' more</p>' : '') + '</div>');
+                return;
+              }
+            }
+          } catch (e) { console.warn('Repat bulk check failed', e); return tellBlocked('The Repat rows could not be checked. Nothing was imported.'); }
+        }
+        return fk.apply(this, arguments);
+      };
+      w._rr = true; window.processBulkDispatch = w;
+    }
+  }
+
   /* 3. Dispatching a reserved container: tell the dispatcher, and stop a hand-over to the wrong shipping line */
   function hookDispatch() {
     const f = window.createDispatch; if (typeof f !== 'function' || f._rr) return;
     const w = async function () {
+      /* Repat rule: the container must come from the reserved list (blocks single dispatch and completing an awaiting trip) */
+      {
+        const st = $('d_outwardtype'), wt = $('d_worktype');
+        if (enforceOn() && st && wt && isRepat(st.value) && wt.value === 'Depot → Port') {
+          const msg = await guardRepat(($('d_container') || {}).value);
+          if (msg) { tellBlocked(msg); return; }
+        }
+      }
       try {
         const c = ($('d_container') || {}).value, hit = c && (await RR.ensureLoaded(), RR.lookup(c));
         if (hit) {
@@ -721,7 +959,7 @@
     };
     w._rr = true; window.buildAlerts = w;
   }
-  window.addEventListener('load', () => setTimeout(() => { hookDispatch(); hookAlerts(); }, 0));
+  window.addEventListener('load', () => setTimeout(() => { hookDispatch(); hookAlerts(); hookRules(); }, 0));
   setInterval(() => { try { if (uidNow() && navigator.onLine && S.reserves && !document.hidden) { loadReserves().then(() => { if (S.view === 'list' && $('rrTable') && $('sec-' + SEC).classList.contains('active')) renderList(); }).catch(() => {}); } } catch (e) {} }, 120000);
 
   sectionRenderers[SEC] = render;
