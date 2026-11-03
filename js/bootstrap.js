@@ -210,3 +210,25 @@ initInstallApp();
 
 
 window._repairItems = {};
+
+/* ── Sync pill (top bar): shows Online / Offline / Unsaved changes, and a tap refreshes from the server ── */
+function paintSyncStatus(mode) {
+  const el = document.getElementById('syncStatus'), lb = document.getElementById('syncLabel');
+  if (!el || !lb) return;
+  let unsaved = 0;
+  try { if (window.GargoOffline) unsaved = GargoOffline.unsavedCount(); } catch (e) {}
+  const m = mode || (!navigator.onLine ? 'offline' : (unsaved > 0 ? 'unsaved' : 'synced'));
+  el.classList.remove('synced', 'syncing', 'sync-error');
+  el.classList.add(m === 'syncing' ? 'syncing' : (m === 'synced' ? 'synced' : 'sync-error'));
+  lb.textContent = m === 'syncing' ? 'Syncing…' : m === 'offline' ? 'Offline' : m === 'unsaved' ? unsaved + ' unsaved' : 'Synced';
+}
+async function handleSyncStatusClick() {
+  if (!navigator.onLine) { toast('You are offline. Changes are kept on this device and sync when the signal returns.', 'warning', 4000); paintSyncStatus(); return; }
+  paintSyncStatus('syncing');
+  try { await refreshFromServer(); } catch (e) { console.warn('Manual refresh failed:', e); toast('Could not refresh. Try again.', 'error'); }
+  paintSyncStatus();
+}
+window.addEventListener('online', () => setTimeout(paintSyncStatus, 500));
+window.addEventListener('offline', () => paintSyncStatus());
+setInterval(() => { if (!document.hidden) paintSyncStatus(); }, 5000);
+document.addEventListener('DOMContentLoaded', () => paintSyncStatus());

@@ -63,13 +63,13 @@
       const msg = (inboxErr && inboxErr.message) || 'No answer from the server';
       const missing = /does not exist|could not find|schema cache/i.test(msg);
       const reqs = (state.db.requisitions || []).filter(r => r.status === 'pending');
-      const canDecide = typeof reqCanApprove === 'function' && reqCanApprove();
+      const canDecide = typeof isAdmin === 'function' && isAdmin() && typeof reviewReq === 'function';   /* reviewReq is administrator-only */
       if (k) k.innerHTML = kpi('Requisitions', reqs.length, 'Pending', reqs.length ? 'kpi-orange' : 'kpi-green');
       body.innerHTML = head('Approvals inbox', btn('Retry', 'fcInbox()')) +
         `<div class="ops-notice" style="margin-bottom:12px"><span style="flex:1;min-width:0">The approvals inbox could not be loaded: <b>${esc(msg)}</b>. ${missing ? 'The database function <code>fin_approvals_inbox</code> is missing. Run the finance / HR controls SQL in Supabase, then press Retry.' : 'Check your connection and press Retry.'} Pending requisitions are still listed below.</span></div>` +
         (reqs.length ? reqs.map(r => `<div class="hr-card" style="margin-bottom:8px;padding:12px 16px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="erp-tag">Requisition</span>
           <div style="flex:1;min-width:220px"><b>${esc(r.reqNo || r.ref || '')} ${esc(r.title || r.description || r.category || '')}</b><br><small style="color:var(--text-3)">${esc(r.requester || r.requestedBy || '')} · ${D(r.date)}</small></div><b>${M(r.amount || r.total)}</b>
-          <div style="display:flex;gap:6px">${canDecide ? btn('Approve', `reqDecide('${r.id}',true)`, 1) + btn('Reject', `reqDecide('${r.id}',false)`) : ''}${btn('Open', "fcGo('requisitions')")}</div></div></div>`).join('')
+          <div style="display:flex;gap:6px">${canDecide ? btn('Approve', `reviewReq('${r.id}','approved');fcInbox()`, 1) + btn('Reject', `reviewReq('${r.id}','rejected');fcInbox()`) : ''}${btn('Open', "fcGo('requisitions')")}</div></div></div>`).join('')
           : '<div class="empty-state" style="padding:30px"><div class="empty-state-label">No pending requisitions.</div></div>');
       updateBadge(canDecide ? reqs.length : 0);
       return;

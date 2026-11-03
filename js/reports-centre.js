@@ -619,13 +619,27 @@
   const ORDER = ['Overview', 'Depot registers', 'Yard', 'Movements', 'Survey & repairs', 'Exceptions', 'Trips & dispatch', 'Fleet & drivers', 'Maintenance & fuel', 'Finance', 'People (HR)'];
   /* who may open a report: everyone except drivers; a report with roles[] is for those roles and administrators */
   const ROLE = () => (state.profile && state.profile.role) || (state.currentUser && state.currentUser.role) || '';
+  const DEPOT = ['depotreport', 'depops', 'inward', 'interchange', 'shutout', 'prestaking'];
+  const REP_AREAS = {
+    daily_in: DEPOT, daily_out: DEPOT, lift: DEPOT, stock: DEPOT, yard: DEPOT, dwell: DEPOT, movements: DEPOT, history: DEPOT, summary: DEPOT, survey: DEPOT, flagged: DEPOT, dupes: DEPOT, pipeline: DEPOT,
+    shutouts: ['shutout', 'depotreport', 'depops'], prestaking: ['prestaking', 'depotreport'], dispatch: ['dispatch', 'trips'],
+    fleet: ['trucks'], drivers: ['drivers'], trips: ['trips'], maintenance: ['maintenance'], workshop: ['workshop', 'maintenance'], requisitions: ['requisitions'], fuel: ['fuel'],
+    fleetcost: ['finance', 'maintenance', 'fuel'], receivables: ['finance'], fin_summary: ['finance'],
+    hr_staff: ['hr'], hr_leave: ['hr'], hr_attendance: ['hr'], hr_payroll: ['hr', 'finance'],
+    snapshot: ['trucks', 'drivers', 'trips', 'depotreport', 'depops', 'inward', 'interchange', 'maintenance', 'finance', 'hr'],
+  };
   const canSee = rep => {
     if (!rep) return false; const r = ROLE(); if (r === 'driver') return false; if (r === 'admin') return true;
     /* linked to User Management: the Data Hub itself must be ticked for this user, and the Finance / HR reports follow their Finance / HR ticks
        (a report's "roles" names the section that unlocks it). Without the access helpers, fall back to the plain role check. */
     if (typeof canSeeSection !== 'function') return !rep.roles || rep.roles.indexOf(r) > -1;
-    if (!canSeeSection('reportcentre')) return false;
-    return !rep.roles || rep.roles.some(sec => canSeeSection(sec));
+    /* The Data Hub itself is open to every non-driver. Each report is unlocked by the area it reports on:
+       a user sees a report only if they can open at least one of its areas. Finance / invoicing reports need the Finance area,
+       so only administrators and finance users get them; HR reports need HR. */
+    if (rep.roles) return rep.roles.indexOf(r) > -1;         /* Finance / HR reports: by ROLE (administrators already returned true above), not by tick-boxes */
+    const need = REP_AREAS[rep.id];
+    if (!need || !need.length) return false;                 /* unmapped report: hidden from non-admins until it is mapped */
+    return need.some(sec => { try { return canSeeSection(sec); } catch (x) { return false; } });
   };
   /* first preview puts the shipping line first: reports that can be grouped by line open grouped by line */
   const defGroupOf = rep => { const g = (rep.groups || []).find(x => /(^|\.)line$/.test(x[0])); return g ? g[0] : rep.defGroup; };
@@ -1436,7 +1450,6 @@
   /* Home dashboard: Data Hub button for everyone except drivers (and anyone whose access list leaves it out) */
   function syncDashButton() {
     let ok = !!ROLE() && ROLE() !== 'driver';
-    try { if (ok && typeof canSeeSection === 'function') ok = !!canSeeSection('reportcentre'); } catch (x) {}
     ['topDataHubBtn'].forEach(id => { const b = $(id); if (b) b.style.display = ok ? '' : 'none'; });
   }
   RC.syncDash = syncDashButton;

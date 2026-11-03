@@ -362,7 +362,7 @@ function printInterchangeList() {
     th{background:#f2f2f2;text-transform:uppercase;font-size:9px}
     h2{margin-bottom:4px}
   </style></head><body>${ghPrintHeaderHtml()}<h2>Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ${new Date().toLocaleString('en-KE')} · Filter: ${_icFilter}</div>
-  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}${customBlock}</tbody></table>
+  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`);
   w.document.close();
   w.focus();

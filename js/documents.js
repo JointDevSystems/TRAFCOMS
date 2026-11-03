@@ -35,7 +35,7 @@
   }
 
   /* the real jsPDF save, before the preview-first patch below replaces it */
-  D.rawSave = function (r) { if (!r || !r.doc) return; D._bypass = true; try { (rawSave || r.doc.save).call(r.doc, r.filename); } finally { D._bypass = false; } };
+  D.rawSave = function (r) { if (!r || !r.doc) return; D._bypass = true; try { (r.doc._gxdRaw || rawSave || r.doc.save).call(r.doc, r.filename); } finally { D._bypass = false; } };
 
   D.close = function () {
     const o = $('gxDocView'); if (o && o.parentNode) o.parentNode.removeChild(o);
@@ -182,20 +182,36 @@
   /* Every PDF the app offers to download opens here first (preview, then Download / Print). A burst of saves (bulk export) still downloads normally. */
   D.autoPreview = true;
   let lastAt = 0, held = null, burstUntil = 0, tries = 0;
-  function patchSave() {
-    const J = window.jspdf && window.jspdf.jsPDF; if (!J || J.prototype.save._gxd) return !!(J && J.prototype.save._gxd);
-    rawSave = J.prototype.save;
+  /* jsPDF 2.x creates save() inside the constructor, so it is NOT on jsPDF.prototype or jsPDF.API (patching those threw
+     "Cannot read properties of undefined (reading '_gxd')" every second). Wrap the constructor and patch each new document instead. */
+  function wrapDoc(doc) {
+    if (!doc || typeof doc.save !== 'function' || doc.save._gxd) return doc;
+    const orig = doc.save;
+    if (!rawSave) rawSave = orig;                           /* any instance's save works for rawSave: it is called with the document as `this` */
     const w = function (name) {
-      if (D._bypass || !D.autoPreview) return rawSave.apply(this, arguments);
+      if (D._bypass || !D.autoPreview) return orig.apply(this, arguments);
       const now = Date.now(), fn = (typeof name === 'string' && name) || 'document.pdf';
-      if (now < burstUntil) return rawSave.apply(this, arguments);
-      if (held && now - lastAt < 1500) { burstUntil = now + 1500; D.close(); D.rawSave(held); held = null; return rawSave.apply(this, arguments); }
+      if (now < burstUntil) return orig.apply(this, arguments);
+      if (held && now - lastAt < 1500) { burstUntil = now + 1500; D.close(); D.rawSave(held); held = null; return orig.apply(this, arguments); }
       lastAt = now; held = { doc: this, filename: fn };
       D.view(held, fn.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' '));
     };
-    w._gxd = true; J.prototype.save = w; return true;
+    w._gxd = true; doc.save = w; doc._gxdRaw = orig; return doc;
   }
-  const pt = setInterval(() => { if (patchSave() || ++tries > 120) clearInterval(pt); }, 1000);
+  function patchSave() {
+    try {
+      const lib = window.jspdf, J = lib && lib.jsPDF;
+      if (typeof J !== 'function') return false;            /* library not loaded yet: try again later */
+      if (J._gxd) return true;
+      const W = function () { const doc = new (Function.prototype.bind.apply(J, [null].concat([].slice.call(arguments))))(); return wrapDoc(doc); };
+      W.prototype = J.prototype;
+      Object.keys(J).forEach(k => { try { W[k] = J[k]; } catch (x) {} });
+      W.API = J.API; W._gxd = true;
+      lib.jsPDF = W;
+      return true;
+    } catch (x) { console.warn('documents.js: PDF preview hook not installed', x && x.message); return true; }   /* give up quietly: PDFs still download normally */
+  }
+  const pt = setInterval(() => { if (patchSave() || ++tries > 600) clearInterval(pt); }, 1000);
 
   /* Hand a built jsPDF result ({doc, filename}) to the right action. mode: 'preview' | 'download' | 'print'.
      (D.eir and D.inspection called this but it was never defined: "act is not defined".) */

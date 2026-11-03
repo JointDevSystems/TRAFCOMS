@@ -179,11 +179,18 @@ const ROLE_ADMINRAIL = {
   viewer:   [],
 };
 
+/* The Data Hub is open to every signed-in user except drivers, whatever their role or saved tick-list.
+   What they see INSIDE it is filtered per report (see canSee in reports-centre.js). */
+function withDataHub(list) {
+  const a = Array.isArray(list) ? list : [];
+  return (currentRole() === 'driver' || a.includes('reportcentre')) ? a : a.concat('reportcentre');
+}
+
 function allowedSidebarSections() {
   if (isAdmin()) return ROLE_SIDEBAR.admin;
   const custom = state.profile?.nav_sections;
-  if (Array.isArray(custom)) return custom; // per-user override set by an admin (may be [])
-  return ROLE_SIDEBAR[currentRole()] || [];
+  if (Array.isArray(custom)) return withDataHub(custom); // per-user override set by an admin (may be [])
+  return withDataHub(ROLE_SIDEBAR[currentRole()] || []);
 }
 
 function allowedAdminRailSections() {
@@ -243,8 +250,8 @@ function applyRoleUI() {
 
 function defaultSectionForRole() {
   if (isAdmin()) return 'dashboard';
-  const allowed = allowedSidebarSections();
-  return allowed[0] || 'trips';
+  const allowed = allowedSidebarSections().filter(s => s !== 'reportcentre');
+  return allowed[0] || 'reportcentre';
 }
 
 function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
