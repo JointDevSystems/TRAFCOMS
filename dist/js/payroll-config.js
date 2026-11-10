@@ -1,0 +1,1 @@
+"use strict";window.GARGO_PAYROLL=Object.freeze({verified:"2026-10-22",nssfRate:.06,nssfLower:9e3,nssfUpper:108e3,shifRate:.0275,shifMin:300,housingRate:.015,personalRelief:2400,payeBands:Object.freeze([[24e3,.1],[8333,.25],[467667,.3],[3e5,.325],[1/0,.35]])});

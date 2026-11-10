@@ -1,87 +1,88 @@
 {
-  "redirects": [
-    {
-      "source": "/legacy",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": ".*Chrome/(8[0-9]|9[0-9]|[1-9][0-9]{2}).*"
-        }
-      ],
-      "destination": "/",
-      "permanent": false
-    },
-    {
-      "source": "/legacy/index.html",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": ".*Chrome/(8[0-9]|9[0-9]|[1-9][0-9]{2}).*"
-        }
-      ],
-      "destination": "/",
-      "permanent": false
-    }
-  ],
-  "headers": [
-    {
-      "source": "/sw.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        },
-        {
-          "key": "Service-Worker-Allowed",
-          "value": "/"
-        }
-      ]
-    },
-    {
-      "source": "/legacy/sw.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/manifest.json",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=3600"
-        },
-        {
-          "key": "Content-Type",
-          "value": "application/manifest+json"
-        }
-      ]
-    },
-    {
-      "source": "/legacy/manifest.json",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=3600"
-        },
-        {
-          "key": "Content-Type",
-          "value": "application/manifest+json"
-        }
-      ]
-    },
-    {
-      "source": "/icons/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
-    }
-  ]
+    "redirects":  [
+                      {
+                          "source":  "/legacy",
+                          "has":  [
+                                      {
+                                          "type":  "header",
+                                          "key":  "user-agent",
+                                          "value":  ".*Chrome/(8[0-9]|9[0-9]|[1-9][0-9]{2}).*"
+                                      }
+                                  ],
+                          "destination":  "/",
+                          "permanent":  false
+                      },
+                      {
+                          "source":  "/legacy/index.html",
+                          "has":  [
+                                      {
+                                          "type":  "header",
+                                          "key":  "user-agent",
+                                          "value":  ".*Chrome/(8[0-9]|9[0-9]|[1-9][0-9]{2}).*"
+                                      }
+                                  ],
+                          "destination":  "/",
+                          "permanent":  false
+                      }
+                  ],
+    "headers":  [
+                    {
+                        "source":  "/sw.js",
+                        "headers":  [
+                                        {
+                                            "key":  "Cache-Control",
+                                            "value":  "no-cache, no-store, must-revalidate"
+                                        },
+                                        {
+                                            "key":  "Service-Worker-Allowed",
+                                            "value":  "/"
+                                        }
+                                    ]
+                    },
+                    {
+                        "source":  "/legacy/sw.js",
+                        "headers":  [
+                                        {
+                                            "key":  "Cache-Control",
+                                            "value":  "no-cache, no-store, must-revalidate"
+                                        }
+                                    ]
+                    },
+                    {
+                        "source":  "/manifest.json",
+                        "headers":  [
+                                        {
+                                            "key":  "Cache-Control",
+                                            "value":  "public, max-age=3600"
+                                        },
+                                        {
+                                            "key":  "Content-Type",
+                                            "value":  "application/manifest+json"
+                                        }
+                                    ]
+                    },
+                    {
+                        "source":  "/legacy/manifest.json",
+                        "headers":  [
+                                        {
+                                            "key":  "Cache-Control",
+                                            "value":  "public, max-age=3600"
+                                        },
+                                        {
+                                            "key":  "Content-Type",
+                                            "value":  "application/manifest+json"
+                                        }
+                                    ]
+                    },
+                    {
+                        "source":  "/icons/(.*)",
+                        "headers":  [
+                                        {
+                                            "key":  "Cache-Control",
+                                            "value":  "public, max-age=31536000, immutable"
+                                        }
+                                    ]
+                    }
+                ],
+    "outputDirectory":  "dist"
 }
