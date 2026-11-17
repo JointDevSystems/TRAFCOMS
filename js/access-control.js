@@ -244,6 +244,15 @@
     const sum = $(p + '_sum');
     if (sum) sum.textContent = isAdm ? 'Administrators always have access to everything. The ticks below are ignored.' : isDrv ? 'Drivers only see the driver portal. The ticks below are ignored.' : `${secs} section${secs === 1 ? '' : 's'} · ${hidden} tab${hidden === 1 ? '' : 's'} denied inside allowed sections · ${rail} admin rail page${rail === 1 ? '' : 's'}`;
   };
+
+  /* Gate Processes and Loading Desk work as a pair (the gate guard verifies the slip the loading desk completes), so ticking one ticks the other.
+     It only reacts to a person ticking the box; Apply role defaults and Copy access are untouched, and either can be unticked again. */
+  document.addEventListener('change', e => {
+    const t = e.target, m = t && /^(cu|ea)_nav_(gatesecurity|loadingdesk)$/.exec(t.id || '');
+    if (!m || !t.checked) return;
+    const other = $(m[1] + '_nav_' + (m[2] === 'gatesecurity' ? 'loadingdesk' : 'gatesecurity'));
+    if (other && !other.checked) { other.checked = true; window.acRefresh(m[1]); if (typeof toast === 'function') toast('Gate Processes and Loading Desk are linked, so both were ticked. Untick one if this person only needs the other.', 'info', 5000); }
+  });
   window.acSubAll = (p, s, on) => { subTabs(s).forEach(t => { const c = $(p + '_sub_' + s + '_' + t[0]); if (c) c.checked = on; }); acRefresh(p); };
   window.acAll = (p, on) => { SECTIONS().forEach(s => { const c = $(p + '_nav_' + s); if (c) c.checked = on; }); ADMIN_RAIL().forEach(s => { const c = $(p + '_admin_' + s); if (c && !c.disabled) c.checked = on; }); acRefresh(p); };
   function setGrid(p, nav, adm, den) {
@@ -271,15 +280,33 @@
   const roleOptions = cur => ROLES.map(r => `<option value="${r[0]}" ${cur === r[0] ? 'selected' : ''}>${E(roleName(r[0]))}</option>`).join('');
 
   /* one write path for create / edit / bulk reset: server API for role + sections, direct update for denied tabs */
+  /* The server API (/api/update-access, /api/create-user) keeps its own list of allowed section names and silently drops any it does not
+     know (Gate Processes, Loading Desk, Vessel Prestaking were being lost that way: the audit log said "granted" but profiles.nav_sections never changed).
+     So after the API call the ticks are written straight to the profile (administrators are allowed to by RLS) and READ BACK to prove they stuck. */
+  async function writeAccessDirect(id, a, role) {
+    const out = { migration: false, row: null };
+    if (role === 'admin' || role === 'driver') return out;                  // the API's own handling of those two roles is left alone
+    const body = { nav_sections: a.navSections, admin_sections: a.adminSections.filter(s => ADMIN_ONLY.indexOf(s) < 0), denied_subs: a.deniedSubs || [] };
+    let r = await supabase.from('profiles').update(body).eq('id', id);
+    if (r.error && /denied_subs|column|schema cache/i.test(r.error.message || '')) { out.migration = true; delete body.denied_subs; r = await supabase.from('profiles').update(body).eq('id', id); }
+    if (r.error) throw new Error('Could not save access: ' + r.error.message);
+    const back = await supabase.from('profiles').select('role,nav_sections,admin_sections' + (out.migration ? '' : ',denied_subs')).eq('id', id).maybeSingle();
+    if (back.error || !back.data) throw new Error('Access was saved but could not be checked. Open the user again to confirm.');
+    const have = Array.isArray(back.data.nav_sections) ? back.data.nav_sections : [];
+    const lost = a.navSections.filter(s => have.indexOf(s) < 0);
+    if (lost.length) throw new Error('These sections did not save: ' + lost.map(secLabel).join(', ') + '. Another process is overwriting them.');
+    out.row = back.data;
+    return out;
+  }
   async function persistAccess(id, a) {
     const res = await fetch('/api/update-access', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await token() }, body: JSON.stringify({ userId: id, role: a.role, navSections: a.navSections, adminSections: a.adminSections }) });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(result.error || 'Could not update access');
-    const u = profiles().find(x => x.id === id), out = { migration: false };
-    const { error } = await supabase.from('profiles').update({ denied_subs: a.deniedSubs }).eq('id', id);
-    if (error) { if (/denied_subs|column|schema cache/i.test(error.message || '')) out.migration = true; else throw new Error(error.message); }
-    if (u) { u.role = result.profile.role; u.navSections = result.profile.nav_sections || null; u.adminSections = result.profile.admin_sections || null; u.deniedSubs = out.migration ? (u.deniedSubs || []) : a.deniedSubs; }
-    return out;
+    const u = profiles().find(x => x.id === id);
+    const out = await writeAccessDirect(id, a, (result.profile && result.profile.role) || a.role);
+    const row = out.row || result.profile || {};
+    if (u) { u.role = (result.profile && result.profile.role) || a.role; u.navSections = row.nav_sections || null; u.adminSections = row.admin_sections || null; u.deniedSubs = out.migration ? (u.deniedSubs || []) : (row.denied_subs || a.deniedSubs || []); }
+    return { migration: out.migration };
   }
   const MIGRATION_MSG = 'Tab restrictions were NOT saved: run sql/2026-11-access-control.sql in Supabase first.';
 
@@ -318,14 +345,15 @@
       const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await token() }, body: JSON.stringify({ name, username: user, email, password, role, navSections: a.navSections, adminSections: a.adminSections }) });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) { toast(result.error || 'Could not create user', 'error'); return; }
-      const p = result.profile; let mig = false;
-      if (a.deniedSubs.length) { const { error } = await supabase.from('profiles').update({ denied_subs: a.deniedSubs }).eq('id', p.id); if (error) mig = true; }
-      profiles().push({ id: p.id, name: p.name, username: p.username, email: p.email, role: p.role, active: p.active, created: p.created_at, lastLogin: null, navSections: p.nav_sections || null, adminSections: p.admin_sections || null, deniedSubs: mig ? [] : a.deniedSubs });
+      const p = result.profile; let mig = false, row = p, warn = '';
+      try { const w = await writeAccessDirect(p.id, a, p.role); mig = w.migration; if (w.row) row = Object.assign({}, p, w.row); } catch (e) { warn = e.message; console.warn('create-user access write:', e); }
+      profiles().push({ id: p.id, name: p.name, username: p.username, email: p.email, role: p.role, active: p.active, created: p.created_at, lastLogin: null, navSections: row.nav_sections || null, adminSections: row.admin_sections || null, deniedSubs: mig ? [] : (row.denied_subs || a.deniedSubs || []) });
       addAudit(state.profile.username, 'User Created', `${name} (${user}) as ${roleName(role)}`);
       closeModal(); renderUserMgmt();
       openModal('User created', `<div style="font-size:12.5px;color:var(--text-2);margin-bottom:8px">Share these sign-in details with ${E(name)} directly.</div>
         <div class="ac-cred" id="acCred">Address: ${E(location.origin)}\nEmail: ${E(email)}\nPassword: ${E(password)}</div>
         ${mig ? `<div class="ac-sum" style="color:var(--amber)">${MIGRATION_MSG}</div>` : ''}
+        ${warn ? `<div class="ac-sum" style="color:var(--red)">${E(warn)} Open Edit Access for this user and save again.</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:10px"><button class="submit-btn" onclick="acCopyCred()">Copy details</button><button class="modal-btn" onclick="closeModal()">Done</button></div>`);
       $('acCred').style.whiteSpace = 'pre-line';
     } catch (e) { console.error(e); toast('Network error creating user', 'error'); }

@@ -306,6 +306,16 @@
     const sum = $(p + "_sum");
     if (sum) sum.textContent = isAdm ? "Administrators always have access to everything. The ticks below are ignored." : isDrv ? "Drivers only see the driver portal. The ticks below are ignored." : "".concat(secs, " section").concat(secs === 1 ? "" : "s", " \xB7 ").concat(hidden, " tab").concat(hidden === 1 ? "" : "s", " denied inside allowed sections \xB7 ").concat(rail, " admin rail page").concat(rail === 1 ? "" : "s");
   };
+  document.addEventListener("change", (e) => {
+    const t = e.target, m = t && /^(cu|ea)_nav_(gatesecurity|loadingdesk)$/.exec(t.id || "");
+    if (!m || !t.checked) return;
+    const other = $(m[1] + "_nav_" + (m[2] === "gatesecurity" ? "loadingdesk" : "gatesecurity"));
+    if (other && !other.checked) {
+      other.checked = true;
+      window.acRefresh(m[1]);
+      if (typeof toast === "function") toast("Gate Processes and Loading Desk are linked, so both were ticked. Untick one if this person only needs the other.", "info", 5e3);
+    }
+  });
   window.acSubAll = (p, s, on) => {
     subTabs(s).forEach((t) => {
       const c = $(p + "_sub_" + s + "_" + t[0]);
@@ -371,23 +381,39 @@
     return { navSections, adminSections, deniedSubs, emptySection: empty };
   }
   const roleOptions = (cur) => ROLES.map((r) => '<option value="'.concat(r[0], '" ').concat(cur === r[0] ? "selected" : "", ">").concat(E(roleName(r[0])), "</option>")).join("");
+  async function writeAccessDirect(id, a, role) {
+    const out = { migration: false, row: null };
+    if (role === "admin" || role === "driver") return out;
+    const body = { nav_sections: a.navSections, admin_sections: a.adminSections.filter((s) => ADMIN_ONLY.indexOf(s) < 0), denied_subs: a.deniedSubs || [] };
+    let r = await supabase.from("profiles").update(body).eq("id", id);
+    if (r.error && /denied_subs|column|schema cache/i.test(r.error.message || "")) {
+      out.migration = true;
+      delete body.denied_subs;
+      r = await supabase.from("profiles").update(body).eq("id", id);
+    }
+    if (r.error) throw new Error("Could not save access: " + r.error.message);
+    const back = await supabase.from("profiles").select("role,nav_sections,admin_sections" + (out.migration ? "" : ",denied_subs")).eq("id", id).maybeSingle();
+    if (back.error || !back.data) throw new Error("Access was saved but could not be checked. Open the user again to confirm.");
+    const have = Array.isArray(back.data.nav_sections) ? back.data.nav_sections : [];
+    const lost = a.navSections.filter((s) => have.indexOf(s) < 0);
+    if (lost.length) throw new Error("These sections did not save: " + lost.map(secLabel).join(", ") + ". Another process is overwriting them.");
+    out.row = back.data;
+    return out;
+  }
   async function persistAccess(id, a) {
     const res = await fetch("/api/update-access", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + await token() }, body: JSON.stringify({ userId: id, role: a.role, navSections: a.navSections, adminSections: a.adminSections }) });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(result.error || "Could not update access");
-    const u = profiles().find((x) => x.id === id), out = { migration: false };
-    const { error } = await supabase.from("profiles").update({ denied_subs: a.deniedSubs }).eq("id", id);
-    if (error) {
-      if (/denied_subs|column|schema cache/i.test(error.message || "")) out.migration = true;
-      else throw new Error(error.message);
-    }
+    const u = profiles().find((x) => x.id === id);
+    const out = await writeAccessDirect(id, a, result.profile && result.profile.role || a.role);
+    const row = out.row || result.profile || {};
     if (u) {
-      u.role = result.profile.role;
-      u.navSections = result.profile.nav_sections || null;
-      u.adminSections = result.profile.admin_sections || null;
-      u.deniedSubs = out.migration ? u.deniedSubs || [] : a.deniedSubs;
+      u.role = result.profile && result.profile.role || a.role;
+      u.navSections = row.nav_sections || null;
+      u.adminSections = row.admin_sections || null;
+      u.deniedSubs = out.migration ? u.deniedSubs || [] : row.denied_subs || a.deniedSubs || [];
     }
-    return out;
+    return { migration: out.migration };
   }
   const MIGRATION_MSG = "Tab restrictions were NOT saved: run sql/2026-11-access-control.sql in Supabase first.";
   window.showCreateUserModal = function() {
@@ -432,16 +458,20 @@
         return;
       }
       const p = result.profile;
-      let mig = false;
-      if (a.deniedSubs.length) {
-        const { error } = await supabase.from("profiles").update({ denied_subs: a.deniedSubs }).eq("id", p.id);
-        if (error) mig = true;
+      let mig = false, row = p, warn = "";
+      try {
+        const w = await writeAccessDirect(p.id, a, p.role);
+        mig = w.migration;
+        if (w.row) row = Object.assign({}, p, w.row);
+      } catch (e) {
+        warn = e.message;
+        console.warn("create-user access write:", e);
       }
-      profiles().push({ id: p.id, name: p.name, username: p.username, email: p.email, role: p.role, active: p.active, created: p.created_at, lastLogin: null, navSections: p.nav_sections || null, adminSections: p.admin_sections || null, deniedSubs: mig ? [] : a.deniedSubs });
+      profiles().push({ id: p.id, name: p.name, username: p.username, email: p.email, role: p.role, active: p.active, created: p.created_at, lastLogin: null, navSections: row.nav_sections || null, adminSections: row.admin_sections || null, deniedSubs: mig ? [] : row.denied_subs || a.deniedSubs || [] });
       addAudit(state.profile.username, "User Created", "".concat(name, " (").concat(user, ") as ").concat(roleName(role)));
       closeModal();
       renderUserMgmt();
-      openModal("User created", '<div style="font-size:12.5px;color:var(--text-2);margin-bottom:8px">Share these sign-in details with '.concat(E(name), ' directly.</div>\n        <div class="ac-cred" id="acCred">Address: ').concat(E(location.origin), "\nEmail: ").concat(E(email), "\nPassword: ").concat(E(password), "</div>\n        ").concat(mig ? '<div class="ac-sum" style="color:var(--amber)">'.concat(MIGRATION_MSG, "</div>") : "", '\n        <div style="display:flex;gap:8px;margin-top:10px"><button class="submit-btn" onclick="acCopyCred()">Copy details</button><button class="modal-btn" onclick="closeModal()">Done</button></div>'));
+      openModal("User created", '<div style="font-size:12.5px;color:var(--text-2);margin-bottom:8px">Share these sign-in details with '.concat(E(name), ' directly.</div>\n        <div class="ac-cred" id="acCred">Address: ').concat(E(location.origin), "\nEmail: ").concat(E(email), "\nPassword: ").concat(E(password), "</div>\n        ").concat(mig ? '<div class="ac-sum" style="color:var(--amber)">'.concat(MIGRATION_MSG, "</div>") : "", "\n        ").concat(warn ? '<div class="ac-sum" style="color:var(--red)">'.concat(E(warn), " Open Edit Access for this user and save again.</div>") : "", '\n        <div style="display:flex;gap:8px;margin-top:10px"><button class="submit-btn" onclick="acCopyCred()">Copy details</button><button class="modal-btn" onclick="closeModal()">Done</button></div>'));
       $("acCred").style.whiteSpace = "pre-line";
     } catch (e) {
       console.error(e);
