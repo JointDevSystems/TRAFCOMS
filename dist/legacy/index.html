@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <script src="js/polyfills.js"></script>
     <script src="js/tablet.js"></script>
+    <script src="js/blackbox.js"></script>
     <title>Gargo · Fleet Operations</title>
     <script>
       (function(){
@@ -21,12 +23,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Gargo" />
-    <link rel="icon" href="icons/icon-192.png" />
-    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="icon" href="../icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="../icons/icon-192.png" />
 
    
-    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
-    </script>
+    <script defer src="vendor/supabase.js"></script>
 
    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -37,14 +38,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="royal.css" />
-    <link rel="stylesheet" href="glass.css" />
-    <link rel="stylesheet" href="nav-shell.css" />
-    <link rel="stylesheet" href="gargo-colors.css" />
-    <link rel="stylesheet" href="mobile.css" />
-    <link rel="stylesheet" href="tablet.css" />
-    <link rel="stylesheet" href="cameras.css" />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/royal.css" />
+    <link rel="stylesheet" href="css/glass.css" />
+    <link rel="stylesheet" href="css/nav-shell.css" />
+    <link rel="stylesheet" href="css/gargo-colors.css" />
+    <link rel="stylesheet" href="css/mobile.css" />
+    <link rel="stylesheet" href="css/tablet.css" />
+    <link rel="stylesheet" href="css/cameras.css" />
+    <link rel="stylesheet" href="css/kpi-polish.css" />
 <style>
 .yard-slot{width:100%;aspect-ratio:1/1;border-radius:3px;background:#2a2a35;border:1px solid rgba(255,255,255,0.06)}
 .yard-slot-empty{background:#2a2a35}
@@ -285,10 +287,22 @@
                         <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
                         Interchange <span class="nav-badge" id="badge-interchange"></span>
                     </button>
+                    <button class="nav-item" onclick="showSection('gatesecurity',this)" data-section="gatesecurity">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 3l7.5 2.8v5.6c0 4.3-3 7.6-7.5 9.6-4.5-2-7.5-5.3-7.5-9.6V5.8z"/><path d="M8.5 12h7M12.5 9l3 3-3 3"/></svg>
+                        Gate Processes
+                    </button>
+                    <button class="nav-item" onclick="showSection('loadingdesk',this)" data-section="loadingdesk">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="9" rx="1"/><path d="M16 10h3l2 3v3h-5"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/></svg>
+                        Loading Desk
+                    </button>
                     <button class="nav-item" onclick="showSection('prestaking',this)" data-section="prestaking">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M5 20V9l7-6 7 6v11"/><path d="M9 20v-6h6v6"/></svg>
                         Vessel Prestaking <span class="nav-badge" id="badge-prestaking"></span>
                     </button>
+                   <button class="nav-item" onclick="showSection('repatreserve',this)" data-section="repatreserve">
+                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9h10M7 13h6"/><path d="M15 16.5l1.8 1.8 3-3.3"/></svg>
+                   Reserve Repat
+                   </button>
                     <button class="nav-item" onclick="showSection('depotreport',this)" data-section="depotreport">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 17V7"/><path d="M13 17v-4"/><path d="M17 17v-8"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
                         Depot Report <span class="nav-badge" id="badge-depotreport"></span>
@@ -540,6 +554,15 @@
                                             <span>Completing an awaiting-dispatch trip — pick a truck &amp; driver and confirm details below.</span>
                                             <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
                                         </div>
+                                        <div id="d_outwardtype_row" style="margin-bottom:12px">
+                                            <div class="fg" style="margin:0;max-width:260px">
+                                                <label>Status <span class="label-optional" id="d_outwardtype_hint">(required for Depot → Port)</span></label>
+                                                <select id="d_outwardtype" onchange="toggleDispatchOutwardType()">
+                                                    <option value="">Select…</option>
+                                                    <option value="Repatriation to Port">Repat</option><option value="Shippers/Export">Shipper</option><option value="Sale units">Sale Unit</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="MSCU1234566 — pick existing or type new" oninput="markContainerValidity(this)" onchange="dispatchPrefillFromEir()" onblur="dispatchPrefillFromEir()" /></div>
                                             <div class="fg"><label>Size</label><select id="d_size" onchange="refreshTypeSelectForSize('d_size','d_type')"></select></div>
@@ -576,15 +599,6 @@
                                                 </select>
                                             </div>
                                             <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
-                                        </div>
-                                        <div id="d_outwardtype_row" style="margin-bottom:12px">
-                                            <div class="fg" style="margin:0;max-width:260px">
-                                                <label>Status <span class="label-optional" id="d_outwardtype_hint">(required for Depot → Port)</span></label>
-                                                <select id="d_outwardtype">
-                                                    <option value="">Select…</option>
-                                                    <option value="Repatriation to Port">Repat</option><option value="Shippers/Export">Shipper</option><option value="Sale units">Sale Unit</option>
-                                                </select>
-                                            </div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>
@@ -801,6 +815,7 @@
                                     <button class="action-btn" onclick="renderInwardReports()">▶ Run Report</button>
                                     <button class="action-btn ghost" onclick="inwardReportsReset()">↻ Reset Filters</button>
                                     <button class="action-btn ghost" id="iwRptExportBtn" onclick="downloadInwardReportCSV()" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="GargoPrint.inward()">🖨 Print</button>
                                 </div>
                             </div>
 
@@ -915,23 +930,32 @@
                         <div id="shutoutList"></div>
                     </section>
 
-                    <!-- INTERCHANGE -->
-                    <section class="section" id="sec-interchange">
+                    <!-- INTERCHANGE: Inward and Outward lists are drawn by js/interchange-lists.js -->
+                    <section class="section" id="sec-interchange"></section>
+
+                    <!-- GATE PROCESSES (gate desk, loading instructions, loading desk, register) -->
+                    <section class="section" id="sec-gatesecurity">
                         <div class="sec-toolbar">
-                            <div class="sec-title">Interchange Management</div>
+                            <div class="sec-title">Gate Processes</div>
                             <div class="filter-row">
-                                <button class="filter-btn active" onclick="filterInterchange('all',this)">All</button>
-                                <button class="filter-btn" onclick="filterInterchange('pending',this)">Pending</button>
-                                <button class="filter-btn" onclick="filterInterchange('approved',this)">Approved</button>
-                                <button class="filter-btn" onclick="filterInterchange('reconciled',this)">Reconciled</button>
-                                <button class="filter-btn" onclick="filterInterchange('flagged',this)">⚠ Flagged for Review</button>
-                                <button class="action-btn ghost" onclick="printInterchangeList()">🖨 Print</button>
-                                <button class="action-btn ghost" onclick="downloadInterchangeCSV()">⬇ Download CSV</button>
-                                <button class="action-btn" onclick="showAddInterchangeModal()">+ Record Interchange</button>
+                                <button class="filter-btn active" onclick="GateSec.filter('all',this)">All</button>
+                                <button class="filter-btn" onclick="GateSec.filter('in',this)">In</button>
+                                <button class="filter-btn" onclick="GateSec.filter('out',this)">Out</button>
+                                <button class="action-btn" id="gsAddIn" onclick="GateSec.add('in')">+ Vehicle In</button>
+                                <button class="action-btn" id="gsAddOut" onclick="GateSec.add('out')">+ Vehicle Out</button>
                             </div>
                         </div>
-                        <div id="interchangeList"></div>
+                        <div class="two-col-grid" id="gateSecKpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
+                        <div class="gs-bar">
+                            <input class="gs-q" id="gsQ" type="search" placeholder="Search vehicle, driver, ID, container, gate pass" oninput="GateSec.search()" autocomplete="off"/>
+                            <label>From <input id="gsFrom" type="date" onchange="GateSec.search()"/></label>
+                            <label>To <input id="gsTo" type="date" onchange="GateSec.search()"/></label>
+                        </div>
+                        <div id="gateSecList"></div>
                     </section>
+
+                    <!-- LOADING DESK (Part 2 of loading instructions; filled by js/loading-instructions.js) -->
+                    <section class="section" id="sec-loadingdesk"></section>
 
                     <!-- VESSEL PRESTAKING -->
                     <section class="section" id="sec-prestaking">
@@ -949,6 +973,8 @@
                         <div class="two-col-grid" id="prestakingKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
                         <div id="prestakingList"></div>
                     </section>
+
+                    <section class="section" id="sec-repatreserve"></section>
 
                     <!-- DEPOT REPORT — inward/outward register + duplicate validation -->
                     <section class="section" id="sec-depotreport">
@@ -1280,6 +1306,7 @@
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                                     <button class="action-btn" onclick="trcRunAuditQuery()">▶ Run Query</button>
                                     <button class="action-btn ghost" onclick="trcExportAuditCSV()" id="trcExportAuditBtn" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="GargoPrint.audit()">🖨 Print</button>
                                 </div>
                             </div>
                             <div id="trcAuditSummary"></div>
@@ -1358,7 +1385,7 @@
                         <div class="panel" style="margin-top:14px">
                             <div class="panel-head">
                                 <span class="panel-title">Audit Log</span>
-                                <button class="action-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="showAdminSection('tripreports', document.getElementById('adminBtn-tripreports')); trcSwitchTab('audit', document.querySelector('#trcTab-audit') ? document.querySelectorAll('#sec-tripreports .filter-row .filter-btn')[1] : null)">Full Audit Centre →</button>
+                                <button class="action-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="showAdminSection('tripreports', document.getElementById('adminBtn-tripreports'))">Full Audit Centre →</button>
                             </div>
                             <div id="auditLog"></div>
                         </div>
@@ -1600,6 +1627,7 @@
         <button class="action-btn" onclick="renderDepOpsReports()">▶ Run Report</button>
         <button class="action-btn ghost" onclick="depOpsReportsReset()">↻ Reset Filters</button>
         <button class="action-btn ghost" id="depopsRptExportBtn" onclick="downloadDepOpsReportCSV()" disabled>⬇ Export CSV</button>
+        <button class="action-btn ghost" onclick="GargoPrint.depops()">🖨 Print</button>
       </div>
     </div>
 
@@ -1715,6 +1743,7 @@
     <script defer src="js/reports-audit.js"></script>
     <script defer src="js/admin-ui-shell.js"></script>
     <script defer src="js/nav-compat.js"></script>
+    <script defer src="js/repat-reserve.js"></script>
     <script defer src="js/navigation.js"></script>
     <script defer src="js/nav-shell.js"></script>
     <script defer src="js/offline.js"></script>
@@ -1739,5 +1768,13 @@
     <script defer src="js/survey-currency.js"></script>
     <script defer src="js/reports-centre.js"></script>
     <script defer src="js/documents.js"></script>
+    <script defer src="js/gate-security.js"></script>
+    <script defer src="js/loading-instructions.js"></script>
+    <script defer src="js/security-desk.js"></script>
+    <script defer src="js/roles-desk.js"></script>
+    <script defer src="js/live-cache.js"></script>
+    <script defer src="js/interchange-lists.js"></script>
+    <script defer src="js/form-guard.js"></script>
+    <script defer src="js/access-control.js"></script>
 </body>
 </html>

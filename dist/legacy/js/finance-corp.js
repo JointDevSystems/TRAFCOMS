@@ -113,9 +113,9 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       const msg = inboxErr && inboxErr.message || "No answer from the server";
       const missing = /does not exist|could not find|schema cache/i.test(msg);
       const reqs = (state.db.requisitions || []).filter((r) => r.status === "pending");
-      const canDecide = typeof reqCanApprove === "function" && reqCanApprove();
+      const canDecide = typeof isAdmin === "function" && isAdmin() && typeof reviewReq === "function";
       if (k) k.innerHTML = kpi("Requisitions", reqs.length, "Pending", reqs.length ? "kpi-orange" : "kpi-green");
-      body.innerHTML = head("Approvals inbox", btn("Retry", "fcInbox()")) + '<div class="ops-notice" style="margin-bottom:12px"><span style="flex:1;min-width:0">The approvals inbox could not be loaded: <b>'.concat(esc(msg), "</b>. ").concat(missing ? "The database function <code>fin_approvals_inbox</code> is missing. Run the finance / HR controls SQL in Supabase, then press Retry." : "Check your connection and press Retry.", " Pending requisitions are still listed below.</span></div>") + (reqs.length ? reqs.map((r) => '<div class="hr-card" style="margin-bottom:8px;padding:12px 16px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="erp-tag">Requisition</span>\n          <div style="flex:1;min-width:220px"><b>'.concat(esc(r.reqNo || r.ref || ""), " ").concat(esc(r.title || r.description || r.category || ""), '</b><br><small style="color:var(--text-3)">').concat(esc(r.requester || r.requestedBy || ""), " \xB7 ").concat(D(r.date), "</small></div><b>").concat(M(r.amount || r.total), '</b>\n          <div style="display:flex;gap:6px">').concat(canDecide ? btn("Approve", "reqDecide('".concat(r.id, "',true)"), 1) + btn("Reject", "reqDecide('".concat(r.id, "',false)")) : "").concat(btn("Open", "fcGo('requisitions')"), "</div></div></div>")).join("") : '<div class="empty-state" style="padding:30px"><div class="empty-state-label">No pending requisitions.</div></div>');
+      body.innerHTML = head("Approvals inbox", btn("Retry", "fcInbox()")) + '<div class="ops-notice" style="margin-bottom:12px"><span style="flex:1;min-width:0">The approvals inbox could not be loaded: <b>'.concat(esc(msg), "</b>. ").concat(missing ? "The database function <code>fin_approvals_inbox</code> is missing. Run the finance / HR controls SQL in Supabase, then press Retry." : "Check your connection and press Retry.", " Pending requisitions are still listed below.</span></div>") + (reqs.length ? reqs.map((r) => '<div class="hr-card" style="margin-bottom:8px;padding:12px 16px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="erp-tag">Requisition</span>\n          <div style="flex:1;min-width:220px"><b>'.concat(esc(r.reqNo || r.ref || ""), " ").concat(esc(r.title || r.description || r.category || ""), '</b><br><small style="color:var(--text-3)">').concat(esc(r.requester || r.requestedBy || ""), " \xB7 ").concat(D(r.date), "</small></div><b>").concat(M(r.amount || r.total), '</b>\n          <div style="display:flex;gap:6px">').concat(canDecide ? btn("Approve", "reviewReq('".concat(r.id, "','approved');fcInbox()"), 1) + btn("Reject", "reviewReq('".concat(r.id, "','rejected');fcInbox()")) : "").concat(btn("Open", "fcGo('requisitions')"), "</div></div></div>")).join("") : '<div class="empty-state" style="padding:30px"><div class="empty-state-label">No pending requisitions.</div></div>');
       updateBadge(canDecide ? reqs.length : 0);
       return;
     }
@@ -703,7 +703,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     if (p.status === "part_received") acts.push(btn("Receive more", "fcPoRecv('".concat(id, "')"), 1));
     if (["part_received", "received"].includes(p.status) && !p.bill_id) acts.push(btn("Raise supplier bill", "fcPoAct('bill','".concat(id, "')"), 1));
     if (["draft", "submitted", "approved", "sent", "rejected"].includes(p.status)) acts.push(btn("Cancel order", "fcPoCancel('".concat(id, "')")));
-    acts.push(btn("PDF", "fcPoPdf('".concat(id, "')")));
+    acts.push(btn("PDF", "fcPoPdf('".concat(id, "')")), btn("Print", "fcPoPdf('".concat(id, "',true)")));
     openModal("".concat(p.po_no, " \xB7 ").concat(poLab(p.status)), '<div class="hr-grid" style="grid-template-columns:1fr 1fr">'.concat(card("Order", "", row("Supplier", esc(p.supplier)) + row("Ordered", D(p.order_date)) + row("Expected", D(p.expected_date)) + row("Cost centre", esc(p.cost_centre || "\u2014")))).concat(card("Terms", "", row("Payment", esc(p.payment_terms || "\u2014")) + row("Delivery", esc(p.delivery_terms || "\u2014")) + row("Currency", esc(p.currency || "KES")) + (p.decision_note ? row("Decision note", esc(p.decision_note)) : "")), "</div>\n      ").concat(tbl(["Description", "Qty", "Received", "Unit price", "VAT %", "Total"], (ls || []).map((l) => [esc(l.description), N(l.qty), N(l.received_qty), R(num(l.unit_price)), N(l.vat_rate), R(num(N(l.qty) * N(l.unit_price)))]), "No lines", ["Total", "", "", "", "", R(cur(p.total, p.currency))]), "\n      ").concat(p.notes ? '<p style="font-size:12.5px;color:var(--text-2)">'.concat(esc(p.notes), "</p>") : "", '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">').concat(acts.join(""), "</div>"));
   };
   window.fcPoAct = async (a, id) => {
@@ -765,7 +765,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     closeM();
     purchaseOrders();
   };
-  window.fcPoPdf = async (id) => {
+  window.fcPoPdf = async (id, print) => {
     if (!window.jspdf) return toast("PDF library not loaded", "error");
     const [{ data: p }, { data: ls }] = await Promise.all([supabase.from("purchase_orders").select("*").eq("id", id).single(), supabase.from("po_lines").select("*").order("line_no").eq("po_id", id)]);
     if (!p) return;
@@ -817,7 +817,8 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     doc.setFont(void 0, "bold");
     doc.text("TOTAL", 150, y, { align: "right" });
     doc.text(c + " " + num(p.total), 196, y, { align: "right" });
-    doc.save("".concat(p.po_no, ".pdf"));
+    if (print && window.ghPrintPdf) window.ghPrintPdf(doc);
+    else doc.save("".concat(p.po_no, ".pdf"));
   };
   const REC = {
     table: "recurring_entries",

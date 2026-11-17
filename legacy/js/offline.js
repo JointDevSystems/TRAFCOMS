@@ -107,14 +107,46 @@
       return null;
     }
   }
+  function fingerprint(db, salt) {
+    const s = JSON.stringify(db);
+    let a = 2166136261 | 0, b = 2538058380 | 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      a = Math.imul(a ^ c, 16777619);
+      b = Math.imul(b, 625341585) + c | 0;
+    }
+    return (a >>> 0).toString(36) + "." + (b >>> 0).toString(36) + "." + s.length.toString(36) + "." + String(salt || "");
+  }
+  let _lastHash = null;
   async function saveSnapshot() {
     try {
       if (typeof state === "undefined" || !state.db || !state.currentUser) return false;
       if (state.offlineData || !navigator.onLine) return false;
       if (unsavedCount() > 0) return false;
+      const uid = state.currentUser.id;
+      let h = null;
+      try {
+        h = fingerprint(state.db, uid);
+      } catch (e) {
+        h = null;
+      }
+      if (h) {
+        if (!_lastHash) {
+          try {
+            const m = await kvGet("snapmeta");
+            if (m && m.userId === uid && m.hash) _lastHash = m.hash;
+          } catch (e) {
+          }
+        }
+        if (h === _lastHash) {
+          await kvSet("snapmeta", { savedAt: Date.now(), userId: uid, hash: h });
+          return true;
+        }
+      }
       const savedAt = Date.now();
-      await kvSet("snapshot", { v: 1, savedAt, userId: state.currentUser.id, db: state.db });
-      await kvSet("snapmeta", { savedAt, userId: state.currentUser.id });
+      await kvSet("snapshot", { v: 1, savedAt, userId: uid, db: state.db });
+      await kvSet("snapmeta", { savedAt, userId: uid, hash: h });
+      _lastHash = h;
       return true;
     } catch (e) {
       console.warn("Could not save offline snapshot:", e);
@@ -205,6 +237,7 @@
   }
   async function onLogout() {
     try {
+      _lastHash = null;
       const { n } = dirtyRows();
       if (n > 0) await persistPending();
       else await kvDel("pending").catch(() => {
@@ -382,6 +415,6 @@
     onLogout,
     unsavedCount,
     refreshBanner,
-    _t: { dirtyRows, mergePending, persistPending, kvGet, kvSet, kvDel, onOnline }
+    _t: { dirtyRows, mergePending, persistPending, kvGet, kvSet, kvDel, onOnline, fingerprint }
   };
 })();

@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '2.2.4';
+const CACHE_VERSION = '2.2.5';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -70,6 +70,7 @@ const SHELL_FILES = [
   './js/live-cache.js',
   './js/interchange-lists.js',
   './js/form-guard.js',
+  './js/access-control.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

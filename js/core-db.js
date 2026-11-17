@@ -347,6 +347,7 @@ async function loadDB() {
       lastLogin: p.last_login || null,
       navSections: Array.isArray(p.nav_sections) ? p.nav_sections : null,
       adminSections: Array.isArray(p.admin_sections) ? p.admin_sections : null,
+      deniedSubs: Array.isArray(p.denied_subs) ? p.denied_subs : [],
     }));
 
     if (typeof recomputeAllTruckFuel === 'function') recomputeAllTruckFuel(trucks, fuel);

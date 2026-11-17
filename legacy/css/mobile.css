@@ -111,3 +111,36 @@ summary {
     contain-intrinsic-size: auto 48px;
   }
 }
+@media (max-width: 900px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+  body {
+    overflow-y: visible;
+    overscroll-behavior-y: auto;
+  }
+  #shell,
+  .shell,
+  .app-shell {
+    height: auto;
+  }
+  .body-wrap,
+  .main,
+  .content {
+    display: block;
+    overflow: visible;
+    height: auto;
+    overscroll-behavior: auto;
+  }
+  .table-wrap {
+    overscroll-behavior-y: auto;
+  }
+  body.sidebar-open {
+    overflow: hidden;
+  }
+}

@@ -186,12 +186,16 @@ const ROLE_ADMINRAIL = {
   ops: ["workanalysis", "reports"],
   viewer: []
 };
+function withDataHub(list) {
+  const a = Array.isArray(list) ? list : [];
+  return currentRole() === "driver" || a.includes("reportcentre") ? a : a.concat("reportcentre");
+}
 function allowedSidebarSections() {
   var _a;
   if (isAdmin()) return ROLE_SIDEBAR.admin;
   const custom = (_a = state.profile) == null ? void 0 : _a.nav_sections;
-  if (Array.isArray(custom)) return custom;
-  return ROLE_SIDEBAR[currentRole()] || [];
+  if (Array.isArray(custom)) return withDataHub(custom);
+  return withDataHub(ROLE_SIDEBAR[currentRole()] || []);
 }
 function allowedAdminRailSections() {
   var _a;
@@ -220,7 +224,7 @@ function applyRoleUI() {
     n.style.display = sidebarAllowed.includes(sec) ? "" : "none";
   });
   const dashBtn = document.querySelector('.nav-item[data-section="dashboard"]');
-  if (dashBtn) dashBtn.style.display = "none";
+  if (dashBtn) dashBtn.style.display = sidebarAllowed.includes("dashboard") ? "" : "none";
   const railAllowed = allowedAdminRailSections();
   ["invoicing", "allocation", "workanalysis", "reports", "tripreports", "livetracking", "usermgmt", "settings"].forEach((sec) => {
     const btn = document.getElementById("adminBtn-".concat(sec));
@@ -249,8 +253,8 @@ function applyRoleUI() {
 }
 function defaultSectionForRole() {
   if (isAdmin()) return "dashboard";
-  const allowed = allowedSidebarSections();
-  return allowed[0] || "trips";
+  const allowed = allowedSidebarSections().filter((s) => s !== "reportcentre");
+  return allowed[0] || "reportcentre";
 }
 function myDriverRecord() {
   return state.db.drivers.find((d) => {
@@ -507,6 +511,137 @@ function requireAdminAction(callback, actionKey) {
 function adminDeleteBtn(table, id) {
   return "";
 }
+const _gxPages = {};
+function gxPageLimit(key, sig, size, rerender) {
+  const p = _gxPages[key] || (_gxPages[key] = { shown: size, sig: void 0, size });
+  if (p.sig !== sig) {
+    p.sig = sig;
+    p.shown = size;
+  }
+  p.size = size;
+  p.rerender = rerender;
+  return p.shown;
+}
+function gxPageMore(key, all) {
+  const p = _gxPages[key];
+  if (!p) return;
+  p.shown = all ? Infinity : p.shown + p.size;
+  if (p.rerender) p.rerender();
+}
+function gxPageFooter(key, shown, total, colspan) {
+  if (total <= shown) return "";
+  const p = _gxPages[key] || { size: 50 };
+  const btn = (label, arg) => '<button type="button" class="modal-btn ghost" onclick="gxPageMore(\''.concat(key, "'").concat(arg ? ",true" : "", ')">').concat(label, "</button>");
+  const inner = "Showing ".concat(shown, " of ").concat(total, " \xB7 ").concat(btn("Show " + p.size + " more")).concat(total <= 1e3 ? " " + btn("Show all", true) : "");
+  const style = "padding:14px;text-align:center;font-size:12px;color:var(--text-3)";
+  return colspan ? '<tr><td colspan="'.concat(colspan, '" style="').concat(style, '">').concat(inner, "</td></tr>") : '<div style="grid-column:1/-1;'.concat(style, '">').concat(inner, "</div>");
+}
+var GX_PHOTO_RAW_MAX = 25 * 1024 * 1024;
+var GX_PHOTO_TARGET = 450 * 1024;
+var GX_PHOTO_STORED_MAX = 2.8 * 1024 * 1024;
+var GX_MAX_PHOTOS = 6;
+var GX_MAX_DISPATCH_PHOTOS = 4;
+var GX_MAX_SURVEY_PHOTOS = 10;
+function gxPhotoProblem(file) {
+  if (!file) return "no file chosen";
+  var isImg = /^image\//i.test(file.type || "") || !file.type && /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name || "");
+  if (!isImg) return "not an image";
+  if (file.size > GX_PHOTO_RAW_MAX) return "too large (max " + Math.round(GX_PHOTO_RAW_MAX / 1048576) + " MB before compression)";
+  return "";
+}
+function gxCompressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1280;
+  quality = quality || 0.72;
+  return new Promise(function(resolve) {
+    var plain = function() {
+      var fr = new FileReader();
+      fr.onload = function() {
+        resolve(fr.result);
+      };
+      fr.onerror = function() {
+        resolve("");
+      };
+      fr.readAsDataURL(file);
+    };
+    try {
+      if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || "") || !window.URL || !URL.createObjectURL) return plain();
+      if (!("imageOrientation" in document.documentElement.style) && file.size <= 2 * 1024 * 1024) return plain();
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function() {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h || Math.min(1, maxDim / Math.max(w, h)) === 1 && file.size < 250 * 1024) {
+            URL.revokeObjectURL(url);
+            return plain();
+          }
+          var steps = [[maxDim, quality], [1024, 0.6], [800, 0.5], [640, 0.45]], out = "", i, c, x, s;
+          for (i = 0; i < steps.length; i++) {
+            s = Math.min(1, steps[i][0] / Math.max(w, h));
+            c = document.createElement("canvas");
+            c.width = Math.round(w * s);
+            c.height = Math.round(h * s);
+            x = c.getContext("2d");
+            x.fillStyle = "#fff";
+            x.fillRect(0, 0, c.width, c.height);
+            x.drawImage(img, 0, 0, c.width, c.height);
+            out = c.toDataURL("image/jpeg", steps[i][1]);
+            c.width = 1;
+            c.height = 1;
+            if (out && out.length <= GX_PHOTO_TARGET) break;
+          }
+          URL.revokeObjectURL(url);
+          if (!out || out.length > file.size * 1.37) return plain();
+          resolve(out);
+        } catch (e) {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (e2) {
+          }
+          plain();
+        }
+      };
+      img.onerror = function() {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (e) {
+        }
+        plain();
+      };
+      img.src = url;
+    } catch (e) {
+      plain();
+    }
+  });
+}
+function gxImageReader() {
+  var r = {
+    result: null,
+    onload: null,
+    onerror: null,
+    readAsDataURL: function(file) {
+      var fail = function(msg) {
+        if (typeof toast === "function") toast((file && file.name ? file.name + ": " : "") + msg, "error", 6e3);
+        if (r.onerror) r.onerror(new Error(msg));
+      };
+      gxCompressImage(file).then(function(u) {
+        if (!u) return fail("could not read this file");
+        if (/^image\//i.test(file && file.type || "") && u.length > GX_PHOTO_STORED_MAX) return fail("could not be compressed enough. Choose a JPEG or PNG photo");
+        r.result = u;
+        var fire = function() {
+          if (r.onload) r.onload({ target: r });
+        };
+        if (window.GargoPhotos && /^data:image/.test(u)) window.GargoPhotos.put(u, { category: "other" }).then(function(link) {
+          r.result = link;
+          fire();
+        }, fire);
+        else fire();
+      }, function(e) {
+        if (r.onerror) r.onerror(e);
+      });
+    }
+  };
+  return r;
+}
 function triggerImageUpload(table, id, field, afterFn) {
   const input = document.createElement("input");
   input.type = "file";
@@ -514,11 +649,12 @@ function triggerImageUpload(table, id, field, afterFn) {
   input.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast("Image too large \u2014 max 2MB", "error");
+    const problem = gxPhotoProblem(file);
+    if (problem) {
+      toast("Image " + problem, "error");
       return;
     }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => {
       const rec = state.db[table].find((r) => r.id === id);
       if (!rec) return;

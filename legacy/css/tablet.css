@@ -105,7 +105,12 @@ html.gx-touch .table-wrap,
 html.gx-touch .content,
 html.gx-touch .modal-box {
   -webkit-overflow-scrolling: touch;
+}
+html.gx-touch .modal-box {
   overscroll-behavior: contain;
+}
+html.gx-touch .table-wrap {
+  overscroll-behavior-x: contain;
 }
 html.gx-touch .action-btn,
 html.gx-touch .filter-btn,
@@ -319,4 +324,60 @@ html.gx-touch .leaflet-touch .leaflet-bar a {
 }
 html.gx-touch .install-app-btn {
   min-height: 40px;
+}
+.search-results-panel {
+  max-height: calc(100vh - 120px);
+  max-height: calc(var(--gx-vvh,100vh) - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.search-result-item {
+  -webkit-tap-highlight-color: rgba(201, 162, 39, .18);
+}
+.search-result-item:active {
+  background: var(--hover);
+}
+@media (hover: none) {
+  .search-result-item:hover {
+    background: transparent;
+  }
+}
+@media (max-width: 900px) {
+  body.gx-search-open {
+    overflow: hidden;
+  }
+  #gxSearchScrim {
+    touch-action: none;
+  }
+  body.gx-search-open .search-results-panel {
+    max-height: calc(100vh - 110px - env(safe-area-inset-top, 0px));
+    max-height: calc(var(--gx-vvh,100vh) - 110px - env(safe-area-inset-top, 0px));
+  }
+}
+@supports (-webkit-touch-callout:none) {
+  html input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  html select,
+  html textarea,
+  html .search-input,
+  html .search-input:focus {
+    font-size: 16px !important;
+  }
+}
+@media (min-width: 641px) and (max-width: 1100px) {
+  .modal-box {
+    max-height: 88vh;
+    max-height: 88dvh;
+  }
+}
+.sidebar-backdrop {
+  touch-action: none;
+}
+.modal-backdrop {
+  overscroll-behavior: contain;
+}
+.sidebar.nx .nx-scroll,
+.sidebar {
+  -webkit-overflow-scrolling: touch;
 }

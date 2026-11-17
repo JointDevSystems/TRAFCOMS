@@ -1,15 +1,16 @@
 "use strict";
 const ROLE_SIDEBAR = {
-  admin: ["dashboard", "trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "prestaking", "depotreport", "shippinglines", "requisitions", "finance", "hr", "workshop"],
-  clerk: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "shutout", "interchange", "prestaking", "depotreport"],
-  dispatch: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "shutout", "interchange", "prestaking", "depotreport", "fuel"],
-  ops: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "prestaking", "depotreport", "shippinglines", "requisitions", "workshop"],
-  finance: ["finance", "trips", "shippinglines"],
-  hr: ["hr", "drivers"],
-  viewer: ["trucks", "drivers", "trips"]
+  admin: ["dashboard", "trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "prestaking", "depotreport", "shippinglines", "requisitions", "finance", "approvals", "hr", "workshop", "reportcentre"],
+  clerk: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "shutout", "interchange", "prestaking", "depotreport", "reportcentre"],
+  dispatch: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "shutout", "interchange", "prestaking", "depotreport", "fuel", "reportcentre"],
+  ops: ["trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "prestaking", "depotreport", "shippinglines", "requisitions", "workshop", "reportcentre"],
+  finance: ["finance", "approvals", "trips", "shippinglines", "reportcentre"],
+  hr: ["hr", "approvals", "drivers", "reportcentre"],
+  viewer: ["trucks", "drivers", "trips", "reportcentre"]
 };
 function buildBadges() {
   const db = state.db;
+  const _gxToday = (/* @__PURE__ */ new Date()).toDateString();
   const set = (id, val) => {
     const el = document.getElementById(id);
     if (el) {
@@ -21,7 +22,7 @@ function buildBadges() {
   set("badge-drivers", db.drivers.filter((d) => d.status === "on_trip").length);
   set("badge-trips", db.trips.filter((t) => t.status === "active").length);
   set("badge-dispatch", awaitingDispatchTrips().length);
-  set("badge-inward", db.interchange.filter((i) => (i.type === "Gate-In" || i.type === "Depot-In") && new Date(i.date).toDateString() === (/* @__PURE__ */ new Date()).toDateString()).length);
+  set("badge-inward", db.interchange.filter((i) => (i.type === "Gate-In" || i.type === "Depot-In") && new Date(i.date).toDateString() === _gxToday).length);
   set("badge-allocation", awaitingDispatchTrips().length);
   set("badge-maintenance", db.maintenance.filter((m) => m.status === "open").length);
   set("badge-shutout", db.shutouts.filter((s) => s.status === "open").length);
@@ -30,7 +31,7 @@ function buildBadges() {
   set("badge-requisitions", db.requisitions.filter((r) => r.status === "pending").length);
   set("badge-workshop", (db.containerRepairs || []).filter((c) => c.status === "awaiting_approval").length);
   set("badge-invoices", db.invoices.filter((i) => i.status === "overdue").length);
-  set("badge-depotreport", computeDepotReportDuplicates().length);
+  set("badge-depotreport", typeof _depotReportDupes !== "undefined" && _depotReportDupes ? _depotReportDupes.length : 0);
   if (typeof refreshBookingBadge === "function") refreshBookingBadge();
 }
 function buildAlerts() {
@@ -118,12 +119,14 @@ const SECTION_META = {
   allocation: ["Intelligence", "Allocation"],
   workanalysis: ["Intelligence", "Work Analysis"],
   reports: ["Intelligence", "Reports"],
-  tripreports: ["Intelligence", "Trip Reports & Audit Centre"],
+  tripreports: ["Intelligence", "Audit Log"],
   livetracking: ["Platform", "Live Tracking"],
   usermgmt: ["Platform", "User Management"],
   settings: ["Platform", "Settings"],
   finance: ["Finance", "Finance Hub"],
-  hr: ["Human Resources", "HR Hub"]
+  hr: ["Human Resources", "HR Hub"],
+  approvals: ["Finance", "Approvals"],
+  reportcentre: ["Insights", "Data Hub"]
 };
 function showSection(sec, btn) {
   if (!canSeeSection(sec)) {
@@ -173,13 +176,13 @@ const sectionRenderers = {
   dashboard: renderDashboard,
   trucks: () => renderTrucks("all"),
   drivers: () => renderDrivers("all"),
-  trips: () => renderTrips("active"),
+  trips: () => renderTrips(typeof _tripFilter !== "undefined" ? _tripFilter : "active"),
   dispatch: renderDispatch,
   maintenance: () => renderMaint("all"),
   inward: renderInward,
   fuel: renderFuel,
   shutout: () => renderShutout("all"),
-  interchange: () => renderInterchange("all"),
+  interchange: () => renderInterchange(typeof _icFilter !== "undefined" ? _icFilter : "all"),
   prestaking: () => renderPrestaking("staged"),
   depotreport: renderDepotReport,
   shippinglines: () => renderLines("all"),
@@ -368,10 +371,10 @@ function renderUserMgmt() {
   }
   const roles = [
     { name: "System Administrator", perms: "Full access \u2014 all modules including Settings, Finance & Invoicing" },
-    { name: "Operations Officer", perms: "Dashboard, Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange" },
+    { name: "Operations Officer", perms: "Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange, Depot Report and the Data Hub" },
     { name: "Finance Manager", perms: "Revenue Reports (admin only), Billing Rates (admin only)" },
     { name: "Dispatch Controller", perms: "Dispatch Console, Active Trips, Driver/Truck visibility" },
-    { name: "Read-Only Viewer", perms: "Dashboard and reports only \u2014 no edit access" }
+    { name: "Read-Only Viewer", perms: "Trucks, drivers, trips and the Data Hub reports \u2014 no edit access" }
   ];
   const rl = document.getElementById("roleList");
   if (rl) {
@@ -402,7 +405,7 @@ async function toggleUserActive(id) {
   renderUserMgmt();
   toast("".concat(u.name, " ").concat(u.active ? "activated" : "deactivated"), "success");
 }
-const ALL_SIDEBAR_SECTIONS = ["dashboard", "trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "depotreport", "shippinglines", "requisitions", "workshop"];
+const ALL_SIDEBAR_SECTIONS = ["dashboard", "trucks", "drivers", "trips", "dispatch", "inward", "publicbookings", "depops", "maintenance", "fuel", "shutout", "interchange", "depotreport", "shippinglines", "requisitions", "workshop", "prestaking", "finance", "approvals", "hr", "reportcentre"];
 const ALL_ADMINRAIL_SECTIONS = ["invoicing", "allocation", "workanalysis", "reports", "tripreports", "livetracking", "usermgmt", "settings"];
 function groupedSectionCheckboxes(idPrefix, sections, selected) {
   const groups = {};
@@ -539,7 +542,7 @@ function showEditAccessModal(id) {
   if (!u) return;
   const nav = Array.isArray(u.navSections) ? u.navSections : ROLE_SIDEBAR[u.role] || [];
   const admin = Array.isArray(u.adminSections) ? u.adminSections : ROLE_ADMINRAIL[u.role] || [];
-  openModal("Edit Access \u2014 ".concat(u.name), '\n    <div class="fg"><label>Role</label><select id="ea_role" onchange="refreshAccessCheckboxesForRole(\'ea\', this.value)">\n      '.concat(["ops", "dispatch", "clerk", "finance", "viewer", "driver", "admin"].map((r) => '<option value="'.concat(r, '" ').concat(u.role === r ? "selected" : "", ">").concat(roleLabel(r), "</option>")).join(""), '\n    </select></div>\n    <div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">Tick exactly which nav bar and admin sections ').concat(u.name, " can access. Changing role does not reset your ticks unless you use the checkboxes yourself.</div>\n    ").concat((function() {
+  openModal("Edit Access \u2014 ".concat(u.name), '\n    <div class="fg"><label>Role</label><select id="ea_role" onchange="refreshAccessCheckboxesForRole(\'ea\', this.value)">\n      '.concat(["ops", "dispatch", "clerk", "finance", "hr", "viewer", "driver", "admin"].map((r) => '<option value="'.concat(r, '" ').concat(u.role === r ? "selected" : "", ">").concat(roleLabel(r), "</option>")).join(""), '\n    </select></div>\n    <div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">Tick exactly which nav bar and admin sections ').concat(u.name, " can access. Changing role does not reset your ticks unless you use the checkboxes yourself.</div>\n    ").concat((function() {
     const navHtml = groupedSectionCheckboxes("ea_nav", ALL_SIDEBAR_SECTIONS, nav);
     const adminHtml = groupedSectionCheckboxes("ea_admin", ALL_ADMINRAIL_SECTIONS, admin);
     return '<div class="fg"><label>Nav Bar Access</label>'.concat(navHtml, '</div><div class="fg"><label>Admin Rail Access</label>').concat(adminHtml, "</div>");
@@ -784,6 +787,7 @@ function closeModal(e) {
 function handleSearch(q) {
   q = (q || "").toLowerCase().trim();
   const panel = document.getElementById("searchResults");
+  if (!panel) return;
   if (!q || !state.db) {
     panel.style.display = "none";
     return;
@@ -807,9 +811,10 @@ function handleSearch(q) {
   db.shutouts.forEach((s) => {
     if ((s.container || "").toLowerCase().includes(q)) containers.add(s.container.toUpperCase());
   });
-  db.interchange.forEach((i) => {
-    if ((i.container || "").toLowerCase().includes(q) || (i.eirNumber || "").toLowerCase().includes(q) || (i.vessel || "").toLowerCase().includes(q) || (i.voyage || "").toLowerCase().includes(q) || (i.blNumber || "").toLowerCase().includes(q))
-      containers.add(i.container.toUpperCase());
+  (db.interchange || []).forEach((i) => {
+    if ((i.container || "").toLowerCase().includes(q) || (i.eirNumber || "").toLowerCase().includes(q) || (i.vessel || "").toLowerCase().includes(q) || (i.voyage || "").toLowerCase().includes(q) || (i.blNumber || "").toLowerCase().includes(q)) {
+      if (i.container) containers.add(String(i.container).toUpperCase());
+    }
   });
   [...containers].forEach((c) => {
     const tripCount = db.trips.filter((t) => (t.container || "").toUpperCase() === c).length;
@@ -831,6 +836,19 @@ function handleSearch(q) {
   ).join("") : '<div class="search-result-item search-result-empty">No matches</div>';
   window._searchResults = shown.map((r) => r.action);
   panel.style.display = "block";
+  const sent = window._icSearched || (window._icSearched = {});
+  if (window.ICR && ICR.enabled && navigator.onLine && q.length >= 3 && !sent[q]) {
+    clearTimeout(window._icSearchT);
+    window._icSearchT = setTimeout(() => {
+      if (Object.keys(sent).length > 60) window._icSearched = {};
+      window._icSearched[q] = true;
+      const n0 = (state.db.interchange || []).length;
+      ICR.search({ q, limit: 10 }).then(() => {
+        const gs = document.getElementById("globalSearch");
+        if ((state.db.interchange || []).length > n0 && gs && gs.value.toLowerCase().trim() === q) window.handleSearch(gs.value);
+      }).catch((e) => console.warn("search: server lookup failed", e && e.message));
+    }, 300);
+  }
 }
 function runSearchResult(i) {
   const panel = document.getElementById("searchResults");
@@ -865,24 +883,41 @@ window.showAdminSection = function(sec, btn) {
   if (sec === "invoicing") renderInvoicing(_invFilter);
 };
 async function hardRefreshSystem() {
+  var _a;
   const btn = document.getElementById("refreshAppBtn");
   const icon = document.getElementById("refreshIcon");
+  if (btn && btn.disabled) return;
+  if (!navigator.onLine) {
+    toast("You are offline -- showing saved data. It refreshes by itself when the connection returns.", "warning", 4500);
+    return;
+  }
+  if ((_a = document.getElementById("modalOverlay")) == null ? void 0 : _a.classList.contains("active")) {
+    toast("Close the open dialog first, then refresh.", "warning", 3500);
+    return;
+  }
+  if (typeof _refreshInFlight !== "undefined" && _refreshInFlight) {
+    toast("Already refreshing...", "info", 1800);
+    return;
+  }
   if (btn) btn.disabled = true;
   if (icon) icon.classList.add("spinning");
-  toast("Refreshing system\u2026", "info", 4e3);
+  const before = window._gargoLastRefresh || 0;
   try {
-    if ("serviceWorker" in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((r) => r.unregister()));
-    }
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
+    await refreshFromServer();
+    if ((window._gargoLastRefresh || 0) > before) toast("Data refreshed", "success", 1800);
+    else toast("Could not refresh -- check your connection", "error", 4e3);
+    try {
+      if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {
+      });
+    } catch (e) {
     }
   } catch (e) {
-    console.warn("Could not clear cache/service worker during refresh:", e);
+    console.warn("Refresh failed:", e);
+    toast("Could not refresh -- check your connection", "error", 4e3);
+  } finally {
+    setTimeout(() => {
+      if (btn) btn.disabled = false;
+      if (icon) icon.classList.remove("spinning");
+    }, 400);
   }
-  const url = new URL(window.location.href);
-  url.searchParams.set("_refresh", Date.now());
-  window.location.replace(url.toString());
 }

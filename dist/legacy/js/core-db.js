@@ -37,17 +37,27 @@ function operationalCutoffISO() {
   d.setDate(d.getDate() - OPERATIONAL_WINDOW_DAYS);
   return d.toISOString();
 }
-async function fetchAllPaginated(queryFactory, pageSize = 1e3) {
+async function fetchAllPaginated(queryFactory, pageSize = 1e3, concurrency = 4) {
   let all = [];
   let from = 0;
+  let first = true;
   for (; ; ) {
-    const { data, error } = await queryFactory(from, from + pageSize - 1);
-    if (error) return { data: all, error };
-    all = all.concat(data || []);
-    if (!data || data.length < pageSize) break;
-    from += pageSize;
+    const n = first ? 1 : concurrency;
+    const reqs = [];
+    for (let i = 0; i < n; i++) {
+      const f = from + i * pageSize;
+      reqs.push(Promise.resolve(queryFactory(f, f + pageSize - 1)));
+    }
+    const results = await Promise.all(reqs);
+    for (let i = 0; i < results.length; i++) {
+      const { data, error } = results[i];
+      if (error) return { data: all, error };
+      all = all.concat(data || []);
+      if (!data || data.length < pageSize) return { data: all, error: null };
+    }
+    from += n * pageSize;
+    first = false;
   }
-  return { data: all, error: null };
 }
 async function ensureRowsLoaded(table, ids, existing, fromRowFn) {
   const have = new Set(existing.map((r) => r.id));
@@ -260,6 +270,15 @@ function _settingsRow(settings) {
     fuel_price_history: settings.fuelPriceHistory || null
   };
 }
+function _icFullLoad() {
+  try {
+    const m = /[?&]ic=(full|lazy)/.exec(location.search);
+    if (m) return m[1] === "full";
+    return localStorage.getItem("gargo-ic-full") === "1";
+  } catch (e) {
+    return false;
+  }
+}
 async function loadDB() {
   try {
     const [
@@ -287,29 +306,18 @@ async function loadDB() {
     ] = await Promise.all([
       supabase.from("trucks").select("*"),
       supabase.from("drivers").select("*"),
-      // Operational window, not the full table: any trip that's still open
-      // (not completed) regardless of age, PLUS anything from the last
-      // OPERATIONAL_WINDOW_DAYS days so recent completed trips still show
-      // up in Dispatch/Dashboard history. Older completed trips are fetched
-      // on demand (see ensureTripsLoaded) or browsed via Trip Reports, which
-      // already queries Supabase directly with its own date range.
       fetchAllPaginated(
         (from, to) => supabase.from("trips").select("*").or("status.neq.completed,start_time.gte.".concat(operationalCutoffISO())).order("start_time", { ascending: false }).range(from, to)
       ),
       supabase.from("maintenance").select("*"),
-      // Paginated: the bulk trip-fuel import can take this table well past the 1,000-row API cap.
       fetchAllPaginated((from, to) => supabase.from("fuel_logs").select("*").order("date", { ascending: false }).range(from, to)),
-      supabase.from("shipping_lines").select("*"),
+      supabase.from("shipping_lines_with_rates").select("*"),
+      // rates come from shipping_line_rates: filled for admin/finance, null for everyone else (RLS)
       supabase.from("shutouts").select("*"),
-      // Same idea for interchange: keep everything still actionable
-      // (pending/approved, not yet reconciled) plus a recent window for the
-      // Interchange Management screen and day-to-day Depot Report browsing.
-      // The full register is only ever needed for the duplicate scan, which
-      // now runs server-side via find_interchange_duplicates() instead of
-      // requiring the whole table in the browser.
-      fetchAllPaginated(
-        (from, to) => supabase.from("interchange").select("*").or("status.neq.reconciled,date.gte.".concat(operationalCutoffISO())).order("date", { ascending: false }).range(from, to)
-      ),
+      _icFullLoad() ? fetchAllPaginated(
+        (from, to) => supabase.from("interchange").select("*").or("status.neq.reconciled,date.gte.".concat(operationalCutoffISO())).order("date", { ascending: false }).order("id", { ascending: false }).range(from, to)
+      ) : Promise.resolve({ data: [], error: null }),
+      // ~24k rows: loaded on demand by ic-remote.js, not at start-up
       supabase.from("requisitions").select("*"),
       supabase.from("workshop_jobs").select("*"),
       supabase.from("invoices").select("*"),
@@ -374,7 +382,8 @@ async function loadDB() {
       created: p.created_at || p.created || (/* @__PURE__ */ new Date()).toISOString(),
       lastLogin: p.last_login || null,
       navSections: Array.isArray(p.nav_sections) ? p.nav_sections : null,
-      adminSections: Array.isArray(p.admin_sections) ? p.admin_sections : null
+      adminSections: Array.isArray(p.admin_sections) ? p.admin_sections : null,
+      deniedSubs: Array.isArray(p.denied_subs) ? p.denied_subs : []
     }));
     if (typeof recomputeAllTruckFuel === "function") recomputeAllTruckFuel(trucks, fuel);
     return {
@@ -406,6 +415,7 @@ async function loadDB() {
 }
 async function saveDB() {
   if (!state.db) return { ok: true, failures: [] };
+  if (!state.currentUser) return { ok: true, failures: [] };
   const db = state.db;
   const failures = [];
   try {
@@ -436,7 +446,9 @@ async function saveDB() {
         plan.commit();
       }
     }
-    await saveChanged("billingRates", (rows) => upsertRows("billing_rates", rows, { onConflict: "ctype" }));
+    if (typeof canFinance === "function" && canFinance()) {
+      await saveChanged("billingRates", (rows) => upsertRows("billing_rates", rows, { onConflict: "ctype" }));
+    }
     await saveChanged("allocationRules", (rows) => upsertRows("allocation_rules", rows));
     const unsavedAudit = (db.auditLog || []).filter((a) => !a._saved);
     if (unsavedAudit.length) {
@@ -682,9 +694,12 @@ const LIVE_TABLE_LOADERS = {
   trips: { key: "trips", load: async () => (await _livePaged((from, to) => supabase.from("trips").select("*").or("status.neq.completed,start_time.gte.".concat(operationalCutoffISO())).order("start_time", { ascending: false }).range(from, to))).map(tripFromRow) },
   maintenance: { key: "maintenance", load: async () => (await _liveRows(supabase.from("maintenance").select("*"))).map(maintFromRow) },
   fuel_logs: { key: "fuel", load: async () => (await _livePaged((from, to) => supabase.from("fuel_logs").select("*").order("date", { ascending: false }).range(from, to))).map(fuelFromRow) },
-  shipping_lines: { key: "shippingLines", load: async () => (await _liveRows(supabase.from("shipping_lines").select("*"))).map(lineFromRow) },
+  shipping_lines: { key: "shippingLines", load: async () => (await _liveRows(supabase.from("shipping_lines_with_rates").select("*"))).map(lineFromRow) },
   shutouts: { key: "shutouts", load: async () => (await _liveRows(supabase.from("shutouts").select("*"))).map(shutoutFromRow) },
-  interchange: { key: "interchange", load: async () => (await _livePaged((from, to) => supabase.from("interchange").select("*").or("status.neq.reconciled,date.gte.".concat(operationalCutoffISO())).order("date", { ascending: false }).range(from, to))).map(icFromRow) },
+  interchange: { key: "interchange", load: async () => {
+    if (!_icFullLoad()) return state.db && state.db.interchange || [];
+    return (await _livePaged((from, to) => supabase.from("interchange").select("*").or("status.neq.reconciled,date.gte.".concat(operationalCutoffISO())).order("date", { ascending: false }).order("id", { ascending: false }).range(from, to))).map(icFromRow);
+  } },
   requisitions: { key: "requisitions", load: async () => (await _liveRows(supabase.from("requisitions").select("*"))).map(reqFromRow) },
   workshop_jobs: { key: "workshop", load: async () => (await _liveRows(supabase.from("workshop_jobs").select("*"))).map(wsFromRow) },
   invoices: { key: "invoices", load: async () => {
@@ -719,6 +734,85 @@ function queueLiveRefresh(table, delayMs) {
 function _runQueuedLiveRefresh() {
   return refreshFromServer({ queued: true });
 }
+const _PATCHABLE = {
+  // mappers are looked up lazily: those scripts load AFTER this one
+  interchange: { key: "interchange", from: (r) => icFromRow(r) },
+  trips: { key: "trips", from: (r) => tripFromRow(r) }
+};
+const PATCH_MAX = 25, PATCH_DELAY = 800;
+let _patchQ = {}, _patchTimer = null;
+function queueRowPatch(table, payload) {
+  const p = _PATCHABLE[table];
+  const ev = payload && payload.eventType;
+  const id = payload && (payload.new && payload.new.id || payload.old && payload.old.id);
+  if (!p || !id || ev !== "INSERT" && ev !== "UPDATE" && ev !== "DELETE") return false;
+  const b = _patchQ[table] || (_patchQ[table] = { ids: /* @__PURE__ */ new Map(), full: false });
+  if (!b.full) {
+    b.ids.set(id, ev === "DELETE");
+    if (b.ids.size > PATCH_MAX) {
+      b.full = true;
+      b.ids.clear();
+    }
+  }
+  clearTimeout(_patchTimer);
+  _patchTimer = setTimeout(_flushRowPatches, PATCH_DELAY);
+  return true;
+}
+async function _flushRowPatches() {
+  var _a;
+  if ((_a = document.getElementById("modalOverlay")) == null ? void 0 : _a.classList.contains("active")) {
+    _patchTimer = setTimeout(_flushRowPatches, 1500);
+    return;
+  }
+  const q = _patchQ;
+  _patchQ = {};
+  _patchTimer = null;
+  let changed = false;
+  for (const table of Object.keys(q)) {
+    const b = q[table], p = _PATCHABLE[table], arr = state.db && state.db[p.key];
+    if (b.full || !Array.isArray(arr) || !navigator.onLine) {
+      queueLiveRefresh(table, 0);
+      continue;
+    }
+    try {
+      const upIds = [];
+      b.ids.forEach((isDel, id) => {
+        if (!isDel) {
+          upIds.push(id);
+          return;
+        }
+        const i = arr.findIndex((r) => r.id === id);
+        if (i > -1 && !arr[i]._dirty) {
+          arr.splice(i, 1);
+          changed = true;
+        }
+      });
+      if (upIds.length) {
+        const { data, error } = await supabase.from(table).select("*").in("id", upIds);
+        if (error) throw error;
+        const at = new Map(arr.map((r, i) => [r.id, i]));
+        (data || []).forEach((row) => {
+          const next = p.from(row), i = at.get(row.id);
+          if (i === void 0) {
+            arr.unshift(next);
+            changed = true;
+          } else if (!arr[i]._dirty) {
+            Object.assign(arr[i], next);
+            changed = true;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("Live sync row patch failed, reloading " + table + ":", e);
+      queueLiveRefresh(table, 0);
+    }
+  }
+  if (changed) {
+    buildBadges();
+    buildAlerts();
+    renderSection(state.currentSection);
+  }
+}
 function subscribeLiveSync() {
   if (state._liveSyncChannel) return;
   const tables = Object.keys(LIVE_TABLE_LOADERS);
@@ -729,7 +823,9 @@ function subscribeLiveSync() {
       { event: "*", schema: "public", table: t },
       (payload) => {
         if (_bulkWriteInProgress) return;
-        queueLiveRefresh(payload && payload.table || t, 2e3);
+        const table = payload && payload.table || t;
+        if (queueRowPatch(table, payload)) return;
+        queueLiveRefresh(table, 2e3);
       }
     );
   });
@@ -811,6 +907,7 @@ async function refreshFromServer(opts) {
         buildAlerts();
         renderSection(state.currentSection);
         startWialonPolling();
+        window._gargoLastRefresh = Date.now();
       }
     } else if (tables.length) {
       const done = await _refreshTables(tables);

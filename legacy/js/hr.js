@@ -15,7 +15,7 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
-const hrCan = () => isAdmin() || currentRole() === "hr";
+const hrCan = () => isAdmin() || currentRole() === "hr" || state.profile && state.profile.can_manage_hr === true;
 const HR_DEPTS = ["Gate & Security", "Yard Operations", "Weighbridge", "Workshop", "Reefer Unit", "Transport & Fleet", "Finance", "HR & Admin", "Management"];
 const today10 = () => {
   const d = /* @__PURE__ */ new Date(), p = (n) => String(n).padStart(2, "0");
@@ -60,7 +60,8 @@ function hrLeaveForm() {
 function hrCsv(name, rows) {
   const q = (v) => '"' + String(v != null ? v : "").replace(/"/g, '""') + '"';
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" }));
+  const pre = /template|^bank-payments/i.test(name) ? "" : ghCsvPreamble("\n");
+  a.href = URL.createObjectURL(new Blob([pre + rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" }));
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5e3);
@@ -158,7 +159,7 @@ const HR = {
       { k: "net", l: "Net Pay", t: "number", ro: 1 },
       { k: "status", l: "Status", t: "select", o: ["draft", "approved", "paid"] }
     ],
-    rowActions: (r) => '<button class="action-btn ghost" onclick="hrPayslipPdf(\''.concat(r.id, "')\">Payslip PDF</button> "),
+    rowActions: (r) => '<button class="action-btn ghost" onclick="hrPayslipPdf(\''.concat(r.id, '\')">Payslip PDF</button> <button class="action-btn ghost" onclick="hrPayslipPdf(\'').concat(r.id, "',true)\">Print</button> "),
     extra: () => '<button class="action-btn ghost" onclick="hrRunPayroll()">\u2699 Run payroll</button>'.concat(canApprove() ? '<button class="action-btn ghost" onclick="hrApproveDrafts()">\u2713 Approve drafts</button>' : "", '<button class="action-btn ghost" onclick="hrExportBank()">\u2B07 Bank file</button><button class="action-btn ghost" onclick="hrExportStatutory()">\u2B07 Statutory</button>')
   },
   compliance: {
@@ -432,7 +433,7 @@ async function hrExportEmployees() {
   const rows = await GARGO_HUB.loadEmployees();
   hrCsv("employees.csv", [["Staff No", "Name", "Department", "Title", "Contract", "Phone", "Start", "Status"]].concat(rows.map((e) => [e.staff_no, e.full_name, e.department, e.job_title, e.employment_type, e.phone, e.start_date, e.status])));
 }
-function hrPayslipPdf(id) {
+function hrPayslipPdf(id, print) {
   const r = (GARGO_HUB.rows.payroll || []).find((x) => x.id === id), e = GARGO_HUB.emp[r == null ? void 0 : r.employee_id] || {};
   if (!r || !window.jspdf) return toast("PDF library not loaded", "error");
   const doc = new window.jspdf.jsPDF();
@@ -467,5 +468,6 @@ function hrPayslipPdf(id) {
   doc.setFontSize(12);
   doc.text("NET PAY (KSh)", 14, y);
   doc.text(money(r.net), 196, y, { align: "right" });
-  doc.save("payslip-".concat(e.staff_no || "staff", "-").concat(r.period, ".pdf"));
+  if (print && window.ghPrintPdf) window.ghPrintPdf(doc);
+  else doc.save("payslip-".concat(e.staff_no || "staff", "-").concat(r.period, ".pdf"));
 }

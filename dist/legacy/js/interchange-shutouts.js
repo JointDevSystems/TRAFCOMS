@@ -1,4 +1,20 @@
 "use strict";
+var __defProp = Object.defineProperty;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
 function lineToRow(l) {
   return { id: l.id, code: l.code, name: l.name, contact: l.contact, rate_20ft: l.rate20, rate_40ft: l.rate40, rate_hc: l.rateHC, currency: l.currency || "USD", active: l.active, rates: l.rates && typeof l.rates === "object" ? l.rates : null };
 }
@@ -17,8 +33,22 @@ function shutoutToRow(s) {
 function shutoutFromRow(r) {
   return { id: r.id, container: r.container, vessel: r.vessel, voyage: r.voyage, line: r.line_id, date: r.date, status: r.status, reason: r.reason, truckId: r.truck_id, driverId: r.driver_id, notes: r.notes, img: r.img || "" };
 }
+function gxIcCustomOut(i) {
+  try {
+    return window.GargoForms && GargoForms.icOut ? GargoForms.icOut(i && i.custom) : {};
+  } catch (e) {
+    return {};
+  }
+}
+function gxIcCustomIn(r) {
+  try {
+    return window.GargoForms && GargoForms.icIn ? GargoForms.icIn(r) : {};
+  } catch (e) {
+    return {};
+  }
+}
 function icToRow(i) {
-  return { id: i.id, container: i.container, line_id: i.line || null, date: i.date, type: i.type, truck_id: i.truck || null, driver_id: i.driver || null, condition: i.condition, notes: i.notes, status: i.status, img: i.img || "", eir_number: i.eirNumber || null, vessel: i.vessel || null, voyage: i.voyage || null, bl_number: i.blNumber || null, ctype: i.ctype || null, repairs: JSON.stringify(i.repairs || []), repair_total: i.repairTotal || 0, survey_id: i.surveyId || null, booking_id: i.bookingId || null, truck_reg_text: i.truckRegText || null, driver_name_text: i.driverNameText || null, needs_survey: !!i.needsSurvey, survey_status: i.surveyStatus || null, surveyed_at: i.surveyedAt || null, surveyed_by: i.surveyedBy || null, delivering_party: i.deliveringParty || null, guarantee_no: i.guaranteeNo || null, cargo_status: i.cargoStatus || null, date_out: i.dateOut || null, receiving_party: i.receivingParty || null, release_order_no: i.releaseOrderNo || null, flagged_for_review: !!i.flaggedForReview, flag_reasons: JSON.stringify(i.flagReasons || []), duplicate_of_id: i.duplicateOfId || null, import_batch_id: i.importBatchId || null, transporter: i.transporter || null, driver_id_number: i.driverIdNumber || null, photos: JSON.stringify(i.photos || []), iso_code: i.isoCode || null, trailer_no: i.trailerNo || null, gross_weight: i.grossWeight === "" || i.grossWeight == null ? null : Number(i.grossWeight), manufacture_date: i.manufactureDate || null, clerk_name: i.clerkName || null, storage_zone: i.storageZone || null, storage_block: i.storageBlock || null, storage_slot: i.storageSlot || null };
+  return __spreadValues({ id: i.id, container: i.container, line_id: i.line || null, date: i.date, type: i.type, truck_id: i.truck || null, driver_id: i.driver || null, condition: i.condition, notes: i.notes, status: i.status, img: i.img || "", eir_number: i.eirNumber || null, vessel: i.vessel || null, voyage: i.voyage || null, bl_number: i.blNumber || null, ctype: i.ctype || null, repairs: JSON.stringify(i.repairs || []), repair_total: i.repairTotal || 0, survey_id: i.surveyId || null, booking_id: i.bookingId || null, truck_reg_text: i.truckRegText || null, driver_name_text: i.driverNameText || null, needs_survey: !!i.needsSurvey, survey_status: i.surveyStatus || null, surveyed_at: i.surveyedAt || null, surveyed_by: i.surveyedBy || null, delivering_party: i.deliveringParty || null, guarantee_no: i.guaranteeNo || null, cargo_status: i.cargoStatus || null, date_out: i.dateOut || null, receiving_party: i.receivingParty || null, release_order_no: i.releaseOrderNo || null, flagged_for_review: !!i.flaggedForReview, flag_reasons: JSON.stringify(i.flagReasons || []), duplicate_of_id: i.duplicateOfId || null, import_batch_id: i.importBatchId || null, transporter: i.transporter || null, driver_id_number: i.driverIdNumber || null, photos: JSON.stringify(i.photos || []), iso_code: i.isoCode || null, trailer_no: i.trailerNo || null, gross_weight: i.grossWeight === "" || i.grossWeight == null ? null : Number(i.grossWeight), manufacture_date: i.manufactureDate || null, clerk_name: i.clerkName || null, storage_zone: i.storageZone || null, storage_block: i.storageBlock || null, storage_slot: i.storageSlot || null }, gxIcCustomOut(i));
 }
 function icFromRow(r) {
   let repairs = [];
@@ -39,7 +69,7 @@ function icFromRow(r) {
   } catch (e) {
     photos = [];
   }
-  return { gateInAt: r.date, depotInAt: r.type === "Depot-In" && r.survey_status && r.survey_status !== "awaiting_survey" ? r.surveyed_at || null : null, id: r.id, container: r.container, line: r.line_id, date: r.date, type: r.type, truck: r.truck_id, driver: r.driver_id, condition: r.condition, notes: r.notes, status: r.status, img: r.img || "", eirNumber: r.eir_number || "", vessel: r.vessel || "", voyage: r.voyage || "", blNumber: r.bl_number || "", ctype: r.ctype || "", repairs, repairTotal: r.repair_total || 0, surveyId: r.survey_id || null, bookingId: r.booking_id || null, truckRegText: r.truck_reg_text || "", driverNameText: r.driver_name_text || "", needsSurvey: !!r.needs_survey, surveyStatus: r.survey_status || null, surveyedAt: r.surveyed_at || null, surveyedBy: r.surveyed_by || null, deliveringParty: r.delivering_party || "", guaranteeNo: r.guarantee_no || "", cargoStatus: r.cargo_status || "", dateOut: r.date_out || null, receivingParty: r.receiving_party || "", releaseOrderNo: r.release_order_no || "", flaggedForReview: !!r.flagged_for_review, flagReasons, duplicateOfId: r.duplicate_of_id || null, importBatchId: r.import_batch_id || null, transporter: r.transporter || "", driverIdNumber: r.driver_id_number || "", photos, isoCode: r.iso_code || "", trailerNo: r.trailer_no || "", grossWeight: r.gross_weight == null ? "" : r.gross_weight, manufactureDate: r.manufacture_date || "", clerkName: r.clerk_name || "", storageZone: r.storage_zone || "", storageBlock: r.storage_block || "", storageSlot: r.storage_slot || "" };
+  return { gateInAt: r.date, depotInAt: r.type === "Depot-In" && r.survey_status && r.survey_status !== "awaiting_survey" ? r.surveyed_at || null : null, id: r.id, container: r.container, line: r.line_id, date: r.date, type: r.type, truck: r.truck_id, driver: r.driver_id, condition: r.condition, notes: r.notes, status: r.status, img: r.img || "", eirNumber: r.eir_number || "", vessel: r.vessel || "", voyage: r.voyage || "", blNumber: r.bl_number || "", ctype: r.ctype || "", repairs, repairTotal: r.repair_total || 0, surveyId: r.survey_id || null, bookingId: r.booking_id || null, truckRegText: r.truck_reg_text || "", driverNameText: r.driver_name_text || "", needsSurvey: !!r.needs_survey, surveyStatus: r.survey_status || null, surveyedAt: r.surveyed_at || null, surveyedBy: r.surveyed_by || null, deliveringParty: r.delivering_party || "", guaranteeNo: r.guarantee_no || "", cargoStatus: r.cargo_status || "", dateOut: r.date_out || null, receivingParty: r.receiving_party || "", releaseOrderNo: r.release_order_no || "", flaggedForReview: !!r.flagged_for_review, flagReasons, duplicateOfId: r.duplicate_of_id || null, importBatchId: r.import_batch_id || null, transporter: r.transporter || "", driverIdNumber: r.driver_id_number || "", photos, isoCode: r.iso_code || "", trailerNo: r.trailer_no || "", grossWeight: r.gross_weight == null ? "" : r.gross_weight, manufactureDate: r.manufacture_date || "", clerkName: r.clerk_name || "", storageZone: r.storage_zone || "", storageBlock: r.storage_block || "", storageSlot: r.storage_slot || "", custom: gxIcCustomIn(r) };
 }
 function normContainerKey(c) {
   return String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -47,8 +77,8 @@ function normContainerKey(c) {
 function localContainerConflict(container, ignoreIcId) {
   const key = normContainerKey(container);
   if (!key) return null;
-  const rows = state.db.interchange || [];
-  const live = rows.find((i) => i.id !== ignoreIcId && (i.type === "Gate-In" || i.type === "Depot-In") && !i.dateOut && normContainerKey(i.container) === key && !rows.some((o) => (o.type === "Gate-Out" || o.type === "Depot-Out") && normContainerKey(o.container) === key && new Date(o.date) >= new Date(i.date)));
+  const same = (state.db.interchange || []).filter((i) => normContainerKey(i.container) === key);
+  const live = same.find((i) => i.id !== ignoreIcId && (i.type === "Gate-In" || i.type === "Depot-In") && !i.dateOut && !same.some((o) => (o.type === "Gate-Out" || o.type === "Depot-Out") && new Date(o.date) >= new Date(i.date)));
   return live ? "".concat(key, " is already in the yard (received ").concat(fmtDate(live.date), "). A container cannot be entered again until it has been gated out.") : null;
 }
 async function checkContainerAvailable(container, opts) {
@@ -136,12 +166,13 @@ let _pendingShutoutImg = { sh: "", dp: "" };
 function captureShutoutPhoto(input, boxId, key) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    toast("Image too large \u2014 max 2MB", "error");
+  const problem = gxPhotoProblem(file);
+  if (problem) {
+    toast("Image " + problem, "error");
     input.value = "";
     return;
   }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     _pendingShutoutImg[key] = reader.result;
     const box = document.getElementById(boxId);
@@ -259,21 +290,34 @@ function filterInterchange(f, btn) {
   btn.classList.add("active");
   renderInterchange(f);
 }
+const IC_PAGE = 40;
+let _icShown = IC_PAGE, _icLastF = null;
+function icShowMore(all) {
+  _icShown = all ? Infinity : _icShown + IC_PAGE;
+  renderInterchange(_icFilter);
+}
 function renderInterchange(f) {
+  if (f !== _icLastF) {
+    _icShown = IC_PAGE;
+    _icLastF = f;
+  }
   const issued = issuedInterchanges();
   const waiting = (state.db.interchange || []).length - issued.length;
   let items = f === "all" ? issued : f === "flagged" ? issued.filter((i) => i.flaggedForReview) : issued.filter((i) => i.status === f);
   const el = document.getElementById("interchangeList");
   if (!el) return;
+  const _total = items.length;
+  items = items.map((i) => [+new Date(i.date) || 0, i]).sort((a, b) => b[0] - a[0]).map((x) => x[1]).slice(0, _icShown);
   const _icIdx = icOutIndex();
   const waitNote = waiting ? '<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0"><b>'.concat(waiting, "</b> gated-in container").concat(waiting === 1 ? " is" : "s are", " waiting for survey. The interchange (EIR) is issued automatically when the survey is complete.</span></div>") : "";
   el.innerHTML = waitNote + items.map((ic) => {
     const meta = [ic.eirNumber ? "EIR ".concat(ic.eirNumber) : null, ic.vessel || ic.voyage ? "".concat(ic.vessel || "\u2014", " / ").concat(ic.voyage || "\u2014") : null, ic.dateOut ? "Out ".concat(fmtDate(ic.dateOut)) : null].filter(Boolean).join(" \xB7 ");
-    const repairBadge = ic.repairs && ic.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px">'.concat(ic.repairs.length, " damage item").concat(ic.repairs.length > 1 ? "s" : "", " \xB7 KSh ").concat(Number(ic.repairTotal || 0).toLocaleString(void 0, { minimumFractionDigits: 2 }), "</div>") : "";
+    const repairBadge = ic.repairs && ic.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px">'.concat(ic.repairs.length, " damage item").concat(ic.repairs.length > 1 ? "s" : "", " \xB7 ").concat(GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs)), "</div>") : "";
     const canQuickDispatch = icInYard(ic, _icIdx);
     const canSendToSurvey = (ic.type === "Gate-In" || ic.type === "Depot-In") && !ic.surveyStatus;
-    return '<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload(\'interchange\',\''.concat(ic.id, "','img',()=>renderInterchange('").concat(f, '\'))" title="Upload container photo">').concat(ic.img ? '<img src="'.concat(ic.img, '" style="width:100%;height:100%;object-fit:cover" />') : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>', '</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">').concat(ic.container, "</div>").concat(sbadge(ic.status)).concat(ic.flaggedForReview ? '<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="'.concat(esc((ic.flagReasons || []).join("; ")), '">\u26A0 Flagged</span>') : "", '</div><div style="font-size:11.5px;color:var(--text-2)">').concat(ic.type, " \xB7 ").concat(lineName(ic.line), " \xB7 ").concat(ic.condition).concat(ic.ctype ? " \xB7 " + ic.ctype : "", '</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">').concat(ic.truck ? truckName(ic.truck) : ic.truckRegText || "\u2014", " \xB7 ").concat(ic.driver ? driverName(ic.driver) : ic.driverNameText || "\u2014", " \xB7 ").concat(fmtDate(ic.date), "</div>").concat(meta ? '<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">'.concat(meta, "</div>") : "").concat(repairBadge).concat(ic.notes ? '<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">'.concat(ic.notes, "</div>") : "", '</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">').concat(isAdmin() && ic.status === "pending" ? '<button class="modal-btn success" onclick="approveInterchange(\''.concat(ic.id, "')\">Approve</button>") : "").concat(canQuickDispatch ? '<button class="modal-btn ghost" onclick="quickDispatchOut(\''.concat(ic.id, "')\">Quick Dispatch \u2192</button>") : "").concat(canSendToSurvey ? '<button class="modal-btn ghost" onclick="sendToSurvey(\''.concat(ic.id, "')\">Send to Survey \u2192</button>") : "", '<button class="modal-btn ghost" onclick="downloadInterchangeSlip(\'').concat(ic.id, '\')">\u2B07 Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip(\'').concat(ic.id, '\')" title="Print">\u{1F5A8} Print</button>').concat(ic.flaggedForReview ? "<button class=\"modal-btn ghost\" onclick=\"clearReviewFlag('interchange','".concat(ic.id, "')\">\u2713 Mark Reviewed</button>") : "").concat(ic.surveyId ? '<button class="modal-btn ghost" onclick="downloadInspectionReport(\''.concat(ic.surveyId, '\')">\u2B07 Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport(\'').concat(ic.surveyId, '\')" title="Print">\u{1F5A8} Print Report</button>') : "").concat(ic.surveyId || ic.img || ic.photos && ic.photos.length ? '<button class="modal-btn ghost" onclick="showContainerPhotos(\''.concat(ic.id, "')\">\u{1F4F7} Photos</button>") : "", "</div></div>");
+    return '<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload(\'interchange\',\''.concat(ic.id, "','img',()=>renderInterchange('").concat(f, '\'))" title="Upload container photo">').concat(ic.img ? '<img loading="lazy" decoding="async" src="'.concat(ic.img, '" style="width:100%;height:100%;object-fit:cover" />') : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>', '</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">').concat(ic.container, "</div>").concat(sbadge(ic.status)).concat(ic.flaggedForReview ? '<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="'.concat(esc((ic.flagReasons || []).join("; ")), '">\u26A0 Flagged</span>') : "", '</div><div style="font-size:11.5px;color:var(--text-2)">').concat(ic.type, " \xB7 ").concat(lineName(ic.line), " \xB7 ").concat(ic.condition).concat(ic.ctype ? " \xB7 " + ic.ctype : "", '</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">').concat(ic.truck ? truckName(ic.truck) : ic.truckRegText || "\u2014", " \xB7 ").concat(ic.driver ? driverName(ic.driver) : ic.driverNameText || "\u2014", " \xB7 ").concat(fmtDate(ic.date), "</div>").concat(meta ? '<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">'.concat(meta, "</div>") : "").concat(repairBadge).concat(ic.notes ? '<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">'.concat(ic.notes, "</div>") : "", '</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">').concat(isAdmin() && ic.status === "pending" ? '<button class="modal-btn success" onclick="approveInterchange(\''.concat(ic.id, "')\">Approve</button>") : "").concat(canQuickDispatch ? '<button class="modal-btn ghost" onclick="quickDispatchOut(\''.concat(ic.id, "')\">Quick Dispatch \u2192</button>") : "").concat(canSendToSurvey ? '<button class="modal-btn ghost" onclick="sendToSurvey(\''.concat(ic.id, "')\">Send to Survey \u2192</button>") : "", '<button class="modal-btn ghost" onclick="downloadInterchangeSlip(\'').concat(ic.id, '\')">\u2B07 Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip(\'').concat(ic.id, '\')" title="Print">\u{1F5A8} Print</button>').concat(ic.flaggedForReview ? "<button class=\"modal-btn ghost\" onclick=\"clearReviewFlag('interchange','".concat(ic.id, "')\">\u2713 Mark Reviewed</button>") : "").concat(ic.surveyId ? '<button class="modal-btn ghost" onclick="downloadInspectionReport(\''.concat(ic.surveyId, '\')">\u2B07 Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport(\'').concat(ic.surveyId, '\')" title="Print">\u{1F5A8} Print Report</button>') : "").concat(ic.surveyId || ic.img || ic.photos && ic.photos.length ? '<button class="modal-btn ghost" onclick="showContainerPhotos(\''.concat(ic.id, "')\">\u{1F4F7} Photos</button>") : "", "</div></div>");
   }).join("") || '<div class="empty-state"><div class="empty-state-icon">\u{1F504}</div><div class="empty-state-label">No interchange records</div></div>';
+  if (_total > items.length) el.innerHTML += '<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3)">Showing '.concat(items.length, " of ").concat(_total, ' \xB7 <button class="modal-btn ghost" onclick="icShowMore()">Show ').concat(IC_PAGE, " more</button> ").concat(_total <= 1e3 ? '<button class="modal-btn ghost" onclick="icShowMore(true)">Show all</button>' : "", "</div>");
 }
 async function sendToSurvey(id) {
   const ic = state.db.interchange.find((i) => i.id === id);
@@ -351,9 +395,9 @@ function printInterchangeList() {
     toast("Nothing to print yet", "error");
     return;
   }
-  const rows = items.map((ic) => "<tr>\n    <td>".concat(fmtDate(ic.date), "</td><td>").concat(sanitize(ic.container || "\u2014"), "</td><td>").concat(sanitize(ic.eirNumber || "\u2014"), "</td><td>").concat(sanitize(ic.type || "\u2014"), "</td>\n    <td>").concat(sanitize(lineName(ic.line)), "</td><td>").concat(sanitize(ic.condition || "\u2014"), "</td>\n    <td>").concat(sanitize(truckName(ic.truck)), "</td><td>").concat(sanitize(driverName(ic.driver)), "</td>\n    <td>").concat(ic.repairTotal ? "KSh " + Number(ic.repairTotal).toLocaleString(void 0, { minimumFractionDigits: 2 }) : "\u2014", "</td><td>").concat(sanitize((ic.status || "").toUpperCase()), "</td>\n  </tr>")).join("");
+  const rows = items.map((ic) => "<tr>\n    <td>".concat(fmtDate(ic.date), "</td><td>").concat(sanitize(ic.container || "\u2014"), "</td><td>").concat(sanitize(ic.eirNumber || "\u2014"), "</td><td>").concat(sanitize(ic.type || "\u2014"), "</td>\n    <td>").concat(sanitize(lineName(ic.line)), "</td><td>").concat(sanitize(ic.condition || "\u2014"), "</td>\n    <td>").concat(sanitize(truckName(ic.truck)), "</td><td>").concat(sanitize(driverName(ic.driver)), "</td>\n    <td>").concat(ic.repairTotal ? GargoMoney.fmt(ic.repairTotal, GargoMoney.itemsCur(ic.repairs)) : "\u2014", "</td><td>").concat(sanitize((ic.status || "").toUpperCase()), "</td>\n  </tr>")).join("");
   const w = window.open("", "_blank");
-  w.document.write("<html><head><title>Interchange Records</title><style>\n    body{font-family:Arial,sans-serif;padding:20px;color:#111}\n    table{width:100%;border-collapse:collapse;font-size:11px}\n    th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}\n    th{background:#f2f2f2;text-transform:uppercase;font-size:9px}\n    h2{margin-bottom:4px}\n  </style></head><body>".concat(ghPrintHeaderHtml(), '<h2>Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ').concat((/* @__PURE__ */ new Date()).toLocaleString("en-KE"), " \xB7 Filter: ").concat(_icFilter, "</div>\n  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>").concat(rows).concat(customBlock, "</tbody></table>\n  </body></html>"));
+  w.document.write("<html><head><title>Interchange Records</title><style>\n    body{font-family:Arial,sans-serif;padding:20px;color:#111}\n    table{width:100%;border-collapse:collapse;font-size:11px}\n    th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}\n    th{background:#f2f2f2;text-transform:uppercase;font-size:9px}\n    h2{margin-bottom:4px}\n  </style></head><body>".concat(ghPrintHeaderHtml(), '<h2>Interchange Records</h2><div style="font-size:11px;color:#555;margin-bottom:12px">Generated ').concat((/* @__PURE__ */ new Date()).toLocaleString("en-KE"), " \xB7 Filter: ").concat(_icFilter, "</div>\n  <table><thead><tr><th>Date</th><th>Container</th><th>EIR No.</th><th>Type</th><th>Line</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Repair Cost</th><th>Status</th></tr></thead><tbody>").concat(rows, "</tbody></table>\n  </body></html>"));
   w.document.close();
   w.focus();
   w.print();
@@ -394,7 +438,7 @@ function downloadInterchangeCSV() {
     ic.status,
     ic.notes
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
+  const csv = ghCsvPreamble("\n") + [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -483,7 +527,7 @@ function normalizeManufactureDate(raw) {
 function showAddInterchangeModal() {
   window._repairItems.ic = [];
   const typeOptions = CONTAINER_TYPE_OPTIONS.map((t) => "<option>".concat(t, "</option>")).join("");
-  openModal("Record Interchange", '\n    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">The <strong>EIR No.</strong> is generated automatically when the interchange is recorded. Inward interchanges (Gate-In / Depot-In) are not entered here: they are issued automatically when the container\'s survey is complete.</span></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 \u2014 pick existing or type new" oninput="markContainerValidity(this)"/></div>\n      <div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-Out</option><option>Depot-Out</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Container Type/Size</label><select id="ic_ctype">'.concat(typeOptions, '</select></div>\n      <div class="fg"><label>ISO Code <span class="label-optional">(optional)</span></label><input id="ic_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Consignee / C&amp;F</label><input id="ic_consignee" placeholder="Consignee / clearing &amp; forwarding agent"/></div>\n      <div class="fg"><label>Shipping Line / Agent</label><select id="ic_line">').concat(state.db.shippingLines.map((l) => '<option value="'.concat(l.id, '">').concat(l.code, "</option>")).join(""), '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Vessel</label><input id="ic_vessel"/></div>\n      <div class="fg"><label>Voyage</label><input id="ic_voyage"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Guarantee / B/L No.</label><input id="ic_bl" placeholder="Guarantee form / B/L no."/></div>\n      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="ic_gross" type="number" min="0" step="1" placeholder="e.g. 30480"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Lorry No.</label><select id="ic_truck">').concat(state.db.trucks.map((t) => '<option value="'.concat(t.id, '">').concat(t.reg, "</option>")).join(""), '</select></div>\n      <div class="fg"><label>Trailer No. <span class="label-optional">(optional)</span></label><input id="ic_trailer" placeholder="e.g. ZD502"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Driver Name</label><select id="ic_driver">').concat(state.db.drivers.map((d) => '<option value="'.concat(d.id, '">').concat(d.name, "</option>")).join(""), '</select></div>\n      <div class="fg"><label>ID / Driving No. <span class="label-optional">(optional)</span></label><input id="ic_driver_id" placeholder="National ID / driving licence no."/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="ic_transporter" placeholder="Transporting company"/></div>\n      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="ic_dom" placeholder="MM/YYYY" maxlength="7"/></div>\n    </div>\n    <div class="fg"><label>Overall Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div>\n    ').concat(tariffPickerHtml("ic"), '\n    <div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks\u2026"></textarea></div>\n    <button class="submit-btn" onclick="saveInterchange()">Record Interchange \u2192</button>'));
+  openModal("Record Interchange", '\n    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">The <strong>EIR No.</strong> is generated automatically when the interchange is recorded. Inward interchanges (Gate-In / Depot-In) are not entered here: they are issued automatically when the container\'s survey is complete.</span></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU1234566 \u2014 pick existing or type new" oninput="markContainerValidity(this)"/></div>\n      <div class="fg"><label>Movement</label><select id="ic_type"><option>Gate-Out</option><option>Depot-Out</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Container Type/Size</label><select id="ic_ctype">'.concat(typeOptions, '</select></div>\n      <div class="fg"><label>ISO Code <span class="label-optional">(optional)</span></label><input id="ic_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Consignee / C&amp;F</label><input id="ic_consignee" placeholder="Consignee / clearing &amp; forwarding agent"/></div>\n      <div class="fg"><label>Shipping Line / Agent</label><select id="ic_line">').concat(state.db.shippingLines.map((l) => '<option value="'.concat(l.id, '">').concat(l.code, "</option>")).join(""), '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Vessel</label><input id="ic_vessel"/></div>\n      <div class="fg"><label>Voyage</label><input id="ic_voyage"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Guarantee / B/L No.</label><input id="ic_bl" placeholder="Guarantee form / B/L no."/></div>\n      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="ic_gross" type="number" min="0" step="1" placeholder="e.g. 30480"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Lorry No.</label><select id="ic_truck">').concat(state.db.trucks.map((t) => '<option value="'.concat(t.id, '">').concat(t.reg, "</option>")).join(""), '</select></div>\n      <div class="fg"><label>Trailer No. <span class="label-optional">(optional)</span></label><input id="ic_trailer" placeholder="e.g. ZD502"/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Driver Name</label><select id="ic_driver">').concat(state.db.drivers.map((d) => '<option value="'.concat(d.id, '">').concat(d.name, "</option>")).join(""), '</select></div>\n      <div class="fg"><label>ID / Driving No. <span class="label-optional">(optional)</span></label><input id="ic_driver_id" placeholder="National ID / driving licence no."/></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Transporter <span class="label-optional">(optional)</span></label><input id="ic_transporter" placeholder="Transporting company"/></div>\n      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="ic_dom" placeholder="MM/YYYY" maxlength="7"/></div>\n    </div>\n    <div class="fg"><label>Container Status</label><select id="ic_cond"><option>Repat</option><option>Sale</option><option>Shipper</option></select></div>\n    ').concat(tariffPickerHtml("ic"), '\n    <div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks\u2026"></textarea></div>\n    <button class="submit-btn" onclick="saveInterchange()">Record Interchange \u2192</button>'));
   renderRepairItemsList("ic");
 }
 let _icSaving = false;
@@ -575,7 +619,8 @@ async function saveInterchange() {
     _icSaving = false;
   }
 }
-function buildInterchangeSlip(icId) {
+function buildInterchangeSlip(icId, opts) {
+  opts = opts || {};
   const ic = state.db.interchange.find((i) => i.id === icId);
   if (!ic) {
     toast("Interchange record not found", "error");
@@ -593,6 +638,7 @@ function buildInterchangeSlip(icId) {
     return null;
   }
   const inward = isInwardMovement(ic.type);
+  if (!inward) return icBuildOutwardSlip(ic, doc, opts);
   const money = (n) => Number(n || 0).toLocaleString(void 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   function cell(x, y2, w, h, label, value) {
     doc.setDrawColor(90);
@@ -614,10 +660,7 @@ function buildInterchangeSlip(icId) {
       doc.text(lines, x + w / 2, y2 + 9.4, { align: "center" });
     }
   }
-  ghPdfLetterhead(doc, MARGIN, 8, 122);
-  doc.setDrawColor(180);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN, 36, RIGHT, 36);
+  ghPdfLetterhead(doc, MARGIN, 8, CONTENT_W);
   let y = 40;
   doc.setFont(void 0, "bold");
   doc.setFontSize(12);
@@ -703,7 +746,7 @@ function buildInterchangeSlip(icId) {
   if (repairs.length) {
     repairs.forEach((r) => {
       const hrs = Number(r.hours || 0);
-      const labour = hrs * REPAIR_LABOUR_RATE_PER_HOUR;
+      const labour = hrs * GargoMoney.labourRate(GargoMoney.itemCur(r));
       const material = Number(r.material || 0);
       totHrs += hrs;
       totLabour += labour;
@@ -736,7 +779,7 @@ function buildInterchangeSlip(icId) {
   doc.setFont(void 0, "bold");
   doc.setFontSize(8.5);
   cols.forEach((c) => doc.rect(c.x, y, c.w, 7.5));
-  doc.text("Totals :   KSh", cols[1].x + cols[1].w - 1.5, y + 5, { align: "right" });
+  doc.text("Totals :   " + GargoMoney.sym(GargoMoney.itemsCur(repairs)), cols[1].x + cols[1].w - 1.5, y + 5, { align: "right" });
   put(3, totHrs.toFixed(2), y + 5);
   put(4, money(totLabour), y + 5);
   put(5, money(totMaterial), y + 5);
@@ -751,8 +794,9 @@ function buildInterchangeSlip(icId) {
   doc.setTextColor(20);
   doc.text("THIS CONTAINER WAS ".concat(inward ? "RECEIVED" : "RELEASED", " IN GOOD CONDITION EXCEPT AS NOTED ABOVE."), MARGIN, y);
   y += 7;
-  if (ic.notes) {
-    const noteLines = doc.splitTextToSize(String(ic.notes), CONTENT_W - 4).slice(0, 5);
+  const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || "")) ? "" : String(ic.notes || "");
+  if (slipNotes) {
+    const noteLines = doc.splitTextToSize(slipNotes, CONTENT_W - 4).slice(0, 5);
     const boxH = 9 + noteLines.length * 4;
     if (y + boxH > 285) {
       doc.addPage();
@@ -769,22 +813,352 @@ function buildInterchangeSlip(icId) {
     doc.setFontSize(8.5);
     doc.setTextColor(20);
     doc.text(noteLines, MARGIN + 2, y + 8.6);
+    y += boxH + 4;
   }
+  const SO_H = 36;
+  let soY = Math.max(y + 4, 286 - SO_H);
+  if (soY + SO_H > 288) {
+    doc.addPage();
+    soY = 20;
+  }
+  ghPdfSignOff(doc, MARGIN, soY, CONTENT_W, {
+    surveyLabel: inward ? "Surveyed by" : "Issued by (clerk)",
+    surveyor: ic.clerkName || "",
+    surveyedAt: inward ? ic.surveyedAt || ic.depotInAt || ic.date : ic.date,
+    printedBy: opts.printedBy || "",
+    printedAt: /* @__PURE__ */ new Date()
+  });
   return { doc, filename: "interchange-".concat((ic.container || ic.id).replace(/\s+/g, ""), ".pdf") };
+}
+const IC_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function icFmtDMY(v) {
+  if (!v) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+  if (m && String(v).length <= 10) return m[3] + "-" + IC_MON[Number(m[2]) - 1] + "-" + m[1];
+  const d = new Date(v);
+  if (isNaN(d)) return "";
+  return String(d.getDate()).padStart(2, "0") + "-" + IC_MON[d.getMonth()] + "-" + d.getFullYear();
+}
+function icFmtTime12(v) {
+  const d = new Date(v);
+  if (isNaN(d)) return "";
+  const h = d.getHours(), h12 = h % 12 || 12;
+  return String(h12).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + " " + (h < 12 ? "AM" : "PM");
+}
+async function icSlipPrefetch(ic) {
+  if (!ic || isInwardMovement(ic.type)) return;
+  const S = ic._slip = { extra: {}, inward: null, survey: null, trip: null };
+  try {
+    const tid = typeof gxOutwardIcId === "function" ? gxOutwardIcId(ic.id) : null;
+    if (tid) S.trip = (state.db.trips || []).find((t) => String(t.id).toLowerCase() === tid) || null;
+  } catch (e) {
+  }
+  const key = normContainerKey(ic.container);
+  let rows = (state.db.interchange || []).filter((i) => normContainerKey(i.container) === key);
+  if (window.ICR && ICR.enabled && navigator.onLine) {
+    try {
+      rows = rows.concat(await ICR.byContainer(String(ic.container).trim().toUpperCase()));
+    } catch (e) {
+    }
+  }
+  const seen = /* @__PURE__ */ new Map();
+  rows.forEach((r) => seen.set(r.id, r));
+  const outAt = new Date(ic.date).getTime() + 864e5;
+  const ins = Array.from(seen.values()).filter((i) => isInwardMovement(i.type) && !icAwaitingSurvey(i)).sort((a, b) => new Date(b.date) - new Date(a.date));
+  S.inward = ins.find((i) => i.eirNumber && new Date(i.date).getTime() <= outAt) || ins.find((i) => i.eirNumber) || ins[0] || null;
+  if (!navigator.onLine || typeof supabase === "undefined") return;
+  try {
+    const { data, error } = await supabase.from("interchange").select("release_order_date,final_destination,csc_approval").eq("id", ic.id).maybeSingle();
+    if (!error && data) S.extra = data;
+  } catch (e) {
+  }
+  if (S.inward && S.inward.surveyId) {
+    try {
+      let r = await supabase.from("depot_surveys").select("tare_weight,mgwt,iso_code,csc_approval").eq("id", S.inward.surveyId).maybeSingle();
+      if (r.error) r = await supabase.from("depot_surveys").select("tare_weight,mgwt,iso_code").eq("id", S.inward.surveyId).maybeSingle();
+      if (!r.error && r.data) S.survey = r.data;
+    } catch (e) {
+    }
+  }
+}
+function icBuildOutwardSlip(ic, doc, opts) {
+  opts = opts || {};
+  const S = ic._slip || {}, X = S.extra || {}, inw = S.inward || null, sv = S.survey || {}, trip = S.trip || null;
+  const U = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().toUpperCase();
+  const num = (v) => v === "" || v == null || !isFinite(Number(v)) || Number(v) <= 0 ? "" : String(Number(v));
+  const M = 14, W = 182, LINE = 150, INK = 20, VAL = 55;
+  const lineRec = (state.db.shippingLines || []).find((l) => l.id === ic.line);
+  const agent = lineRec ? lineRec.code || lineRec.name : ic.line ? lineName(ic.line) : "";
+  const sz = ic.ctype ? decomposeCtype(ic.ctype) : { size: "", type: "" };
+  const drv = ic.driver ? (state.db.drivers || []).find((d) => d.id === ic.driver) : null;
+  const truckReg = ic.truck ? String(truckName(ic.truck)).split(" \xB7 ")[0] : ic.truckRegText || "";
+  const tripRef = trip && trip.ref && !/^REF-\d+$/.test(trip.ref) ? trip.ref : "";
+  const rmk = String(ic.notes || "").trim();
+  const userRemark = /^(Auto-issued|Booking\s)/.test(rmk) ? "" : rmk;
+  const D = {
+    eir: ic.eirNumber || "",
+    shipper: ic.receivingParty || trip && trip.receivingParty || ic.deliveringParty || "",
+    reference: tripRef || ic.guaranteeNo || ic.blNumber || inw && (inw.guaranteeNo || inw.blNumber) || "",
+    date: icFmtDMY(ic.date),
+    time: icFmtTime12(ic.date),
+    container: ic.container || "",
+    agent,
+    finalDest: X.final_destination || (trip && trip.dest && trip.dest !== "\u2014" ? trip.dest : ""),
+    releaseNo: ic.releaseOrderNo || trip && trip.releaseOrderNo || "",
+    releaseDate: icFmtDMY(X.release_order_date),
+    iso: ic.isoCode || sv.iso_code || inw && inw.isoCode || "",
+    size: String(sz.size || "").replace(/ft$/i, ""),
+    type: sz.type || "",
+    vessel: ic.vessel || trip && trip.vessel || "",
+    voyage: ic.voyage || trip && trip.voyage || "",
+    mtwt: num(sv.tare_weight),
+    mgwt: num(sv.mgwt) || num(inw && inw.grossWeight),
+    csc: X.csc_approval || sv.csc_approval || "",
+    transporter: ic.transporter || "",
+    lorry: [truckReg, ic.trailerNo].filter(Boolean).join("/"),
+    driver: ic.driver ? driverName(ic.driver) : ic.driverNameText || "",
+    driverId: ic.driverIdNumber || drv && (drv.idNo || drv.id_no) || "",
+    preparedBy: opts.printedBy || "",
+    clerk: ic.clerkName || "",
+    remarks: [ic.condition, userRemark].filter(Boolean).join(" \u2014 "),
+    inDate: inw ? icFmtDMY(inw.date) : "",
+    inEir: inw ? inw.eirNumber || "" : "",
+    inVessel: inw ? inw.vessel || "" : "",
+    inVoyage: inw ? inw.voyage || "" : ""
+  };
+  const box = (x, y2, w, h) => {
+    doc.setDrawColor(LINE);
+    doc.setLineWidth(0.25);
+    doc.rect(x, y2, w, h);
+  };
+  const label = (t, x, y2, sz2, align) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(sz2 || 7.4);
+    doc.setTextColor(INK);
+    doc.text(t, x, y2, align ? { align } : void 0);
+  };
+  const fit = (t, x, y2, w, size, o) => {
+    o = o || {};
+    let s = size;
+    doc.setFont("helvetica", o.bold ? "bold" : "normal");
+    doc.setFontSize(s);
+    doc.setTextColor(o.ink || VAL);
+    while (s > 5 && doc.getTextWidth(t) > w) {
+      s -= 0.25;
+      doc.setFontSize(s);
+    }
+    doc.text(t, x, y2, o.align ? { align: o.align } : void 0);
+  };
+  const lv = (x, y2, w, h, cap, val, o) => {
+    box(x, y2, w, h);
+    label(cap, x + 2, y2 + 4.4);
+    if (val) fit(o && o.raw ? String(val) : U(val), x + 2, y2 + h - 3.4, w - 4, o && o.size || 9, o);
+  };
+  const inline = (x, y2, w, h, cap, val) => {
+    box(x, y2, w, h);
+    label(cap, x + 2, y2 + h / 2 + 1.3, 8.4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.4);
+    const off = doc.getTextWidth(cap) + 4;
+    if (val) fit(U(val), x + off, y2 + h / 2 + 1.7, w - off - 2, 11, { bold: true, ink: INK });
+  };
+  const strip = (x, y2, w, hH, hV, cap, val) => {
+    box(x, y2, w, hH);
+    label(cap, x + w / 2, y2 + hH - 1.9, 7.2, "center");
+    box(x, y2 + hH, w, hV);
+    if (val) fit(U(val), x + w / 2, y2 + hH + hV - 2.6, w - 3, 9, { align: "center" });
+  };
+  ghPdfLetterhead(doc, M, 8, W);
+  let y = 37;
+  box(M, y, 101, 11);
+  label("CONTAINER INTERCHANGE REPORT / RECEIPT", M + 2, y + 6.9, 9.2);
+  box(M + 101, y, 81, 11);
+  label("OUTWARD EIR NO.", M + 103, y + 6.9, 8.6);
+  if (D.eir) fit(U(D.eir), M + W - 3, y + 7.8, 38, 15, { bold: true, ink: INK, align: "right" });
+  y += 11;
+  lv(M, y, 87, 13, "SHIPPER NAME", D.shipper);
+  lv(M + 87, y, 47, 13, "REFERENCE No", D.reference);
+  lv(M + 134, y, 25, 13, "DATE", D.date, { size: 8.5, raw: true });
+  lv(M + 159, y, 23, 13, "TIME", D.time, { size: 8.5, raw: true });
+  y += 13;
+  inline(M, y, 84, 11, "CONTAINER NO. :", D.container);
+  inline(M + 84, y, 98, 11, "AGENT / LINE :", D.agent);
+  y += 11;
+  lv(M, y, 90, 14, "FINAL DESTINATION", D.finalDest);
+  lv(M + 90, y, 50, 14, "RELEASE ORDER NO.", D.releaseNo);
+  lv(M + 140, y, 42, 14, "R. ORDER DATE", D.releaseDate, { raw: true });
+  y += 14;
+  const strips = [
+    ["ISO", 20, D.iso],
+    ["SIZE", 15, D.size],
+    ["TYPE", 15, D.type],
+    ["VESSEL NAME", 35, D.vessel],
+    ["VOY NO.", 22, D.voyage],
+    ["MTWT", 19, D.mtwt],
+    ["MGWT", 20, D.mgwt],
+    ["CSC Approval", 36, D.csc]
+  ];
+  let sx = M;
+  strips.forEach((s) => {
+    strip(sx, y, s[1], 6, 8, s[0], s[2]);
+    sx += s[1];
+  });
+  y += 14;
+  lv(M, y, 38, 13, "TRANSPORTER", D.transporter);
+  lv(M + 38, y, 46, 13, "TRUCK / TRAILER NO.", D.lorry);
+  lv(M + 84, y, 44, 13, "DRIVER NAME", D.driver);
+  lv(M + 128, y, 34, 13, "ID/DRIVING NO.", D.driverId);
+  lv(M + 162, y, 20, 13, "SIGN.", "");
+  y += 13;
+  lv(M, y, 100, 13, "EIR PREPARED / COMPILED BY :", D.preparedBy, { size: 9.5 });
+  lv(M + 100, y, 82, 13, "LOADING / RELEASING CLERK :", D.clerk, { size: 9.5 });
+  y += 13;
+  lv(M, y, 100, 13, "REMARKS :", D.remarks, { size: 9.5 });
+  lv(M + 100, y, 82, 13, "GHD SIGN / STAMP :", "");
+  y += 13 + 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(INK);
+  doc.text([
+    "NB: CONTAINER RELEASED / RECEIVED IN GOOD CONDITION.",
+    "IT IS THE RESPONSIBILITY OF THE SHIPPER / TRANSPORTER / AGENT FOR ANY LOSS / DAMAGE",
+    "OR CLEANLINESS OF THE EQUIPMENT AFTER IT HAS LEFT THE DEPOT."
+  ], M, y, { lineHeightFactor: 1.35 });
+  const fy = 262, cols = [["DATE IN", 41, D.inDate], ["EIR IN", 42, D.inEir], ["VESSEL IN", 53, D.inVessel], ["VOYAGE IN", 46, D.inVoyage]];
+  let fx = M;
+  cols.forEach((c) => {
+    box(fx, fy, c[1], 7);
+    label(c[0], fx + c[1] / 2, fy + 4.9, 8.4, "center");
+    box(fx, fy + 7, c[1], 8);
+    if (c[2]) fit(c[0] === "DATE IN" ? String(c[2]) : U(c[2]), fx + c[1] / 2, fy + 12.4, c[1] - 3, 9, { align: "center" });
+    fx += c[1];
+  });
+  doc.setTextColor(INK);
+  doc.setDrawColor(INK);
+  return { doc, filename: "interchange-".concat(String(ic.container || ic.id).replace(/\s+/g, ""), ".pdf") };
+}
+async function icEditOutwardDetails(id) {
+  let ic = (state.db.interchange || []).find((i) => i.id === id);
+  if (!ic && window.ICR) {
+    try {
+      ic = await ICR.ensureRow(id);
+    } catch (e) {
+    }
+  }
+  if (!ic) {
+    toast("Record not found on this device", "error");
+    return;
+  }
+  await icSlipPrefetch(ic);
+  const S = ic._slip || {}, X = S.extra || {}, sv = S.survey || {}, trip = S.trip || null;
+  const f = (k, l, v, ex) => '<div class="fg"><label>'.concat(l, '</label><input id="oe_').concat(k, '" value="').concat(sanitize(v || ""), '" ').concat(ex || "", "/></div>");
+  openModal("Outward EIR details \u2014 " + sanitize(ic.container), '\n    <div class="ops-notice" style="margin-bottom:12px">These print in the matching boxes of the outward EIR. Leave a box empty to print it blank.</div>\n    '.concat(f("shipper", "Shipper name", ic.receivingParty || trip && trip.receivingParty || ic.deliveringParty), '\n    <div class="form-row-2">').concat(f("dest", "Final destination", X.final_destination || (trip && trip.dest !== "\u2014" ? trip.dest : ""), 'placeholder="e.g. Shippers own"'), "\n    ").concat(f("rel", "Release order no.", ic.releaseOrderNo || trip && trip.releaseOrderNo), '</div>\n    <div class="form-row-2">').concat(f("reldate", "Release order date", X.release_order_date ? String(X.release_order_date).slice(0, 10) : "", 'type="date"'), "\n    ").concat(f("csc", "CSC approval", X.csc_approval || sv.csc_approval, 'placeholder="e.g. USA/AB-077/10-10"'), '</div>\n    <div class="form-row-2">').concat(f("trp", "Transporter", ic.transporter)).concat(f("trl", "Trailer no.", ic.trailerNo), "</div>\n    ").concat(f("did", "Driver ID / driving licence no.", ic.driverIdNumber), '\n    <button class="submit-btn" onclick="icEditOutwardSave(\'').concat(sanitize(id), "')\">Save details \u2192</button>"));
+}
+async function icEditOutwardSave(id) {
+  const ic = (state.db.interchange || []).find((i) => i.id === id);
+  if (!ic) {
+    closeModal();
+    return;
+  }
+  if (!navigator.onLine) {
+    toast("You are offline \u2014 connect to save these details.", "error");
+    return;
+  }
+  const v = (k) => sanitize(((document.getElementById("oe_" + k) || {}).value || "").trim());
+  const patch = {
+    receiving_party: v("shipper") || null,
+    final_destination: v("dest") || null,
+    release_order_no: v("rel") || null,
+    release_order_date: v("reldate") || null,
+    csc_approval: v("csc") || null,
+    transporter: v("trp") || null,
+    trailer_no: v("trl") || null,
+    driver_id_number: v("did") || null
+  };
+  const { error } = await supabase.from("interchange").update(patch).eq("id", id);
+  if (error) {
+    const missing = /release_order_date|final_destination|csc_approval/i.test(error.message || "");
+    toast(missing ? "Database not updated yet \u2014 run supabase_outward_eir_migration.sql first." : "Could not save: " + error.message, "error", 8e3);
+    return;
+  }
+  ic.receivingParty = patch.receiving_party || "";
+  ic.releaseOrderNo = patch.release_order_no || "";
+  ic.transporter = patch.transporter || "";
+  ic.trailerNo = patch.trailer_no || "";
+  ic.driverIdNumber = patch.driver_id_number || "";
+  if (ic._slip) ic._slip.extra = { release_order_date: patch.release_order_date, final_destination: patch.final_destination, csc_approval: patch.csc_approval };
+  try {
+    addAudit(state.profile.username, "Outward EIR Details Edited", "".concat(ic.container, " \xB7 ").concat(ic.eirNumber || ""));
+  } catch (e) {
+  }
+  closeModal();
+  toast("Outward EIR details saved", "success");
+  if (window.GargoDocs) GargoDocs.eir(id, "preview");
+}
+async function icPrinter(ic, what) {
+  if (typeof ghAskPrinter !== "function") return "";
+  const by = await ghAskPrinter({ title: (what || "Interchange") + " \u2014 who is printing?", detail: ic ? [ic.container, ic.eirNumber].filter(Boolean).join(" \xB7 ") : "" });
+  if (by) {
+    try {
+      addAudit(state.profile && state.profile.username || "system", (what || "Interchange") + " Printed", (ic ? [ic.container, ic.eirNumber].filter(Boolean).join(" \xB7 ") + " \xB7 " : "") + "by " + by);
+    } catch (e) {
+    }
+  }
+  return by;
 }
 async function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find((x) => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
-  const r = buildInterchangeSlip(icId);
+  if (ic) {
+    try {
+      await icSlipPrefetch(ic);
+    } catch (e) {
+      console.warn("slip data", e);
+    }
+  }
+  const by = await icPrinter(ic);
+  if (by === null) return;
+  const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) r.doc.save(r.filename);
 }
 async function printInterchangeSlip(icId) {
   const ic = state.db.interchange.find((x) => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
-  const r = buildInterchangeSlip(icId);
+  if (ic) {
+    try {
+      await icSlipPrefetch(ic);
+    } catch (e) {
+      console.warn("slip data", e);
+    }
+  }
+  const by = await icPrinter(ic);
+  if (by === null) return;
+  const r = buildInterchangeSlip(icId, { printedBy: by });
   if (r) ghPrintPdf(r.doc);
 }
-async function buildInspectionReport(surveyId) {
+async function collectInspectionPhotos(s) {
+  const out = { survey: [], post_repair: [], other: [] }, seen = /* @__PURE__ */ new Set(), MAXG = 12;
+  const push = (grp, url, title) => {
+    if (!url || typeof url !== "string" || seen.has(url) || out[grp].length >= MAXG) return;
+    seen.add(url);
+    out[grp].push({ url, title: title || "" });
+  };
+  (Array.isArray(s.photos) ? s.photos : []).forEach((p, i) => push("survey", typeof p === "string" ? p : p && p.url, "Survey photo " + (i + 1)));
+  try {
+    if (window.GargoPhotos && s.container) {
+      (await GargoPhotos.list(s.container, true)).forEach((r) => push(r.category === "survey" ? "survey" : r.category === "post_repair" ? "post_repair" : "other", r.url, r.title || GargoPhotos.catLabel(r.category)));
+    }
+  } catch (e) {
+    console.warn("container photo file not loaded", e);
+  }
+  const all = [].concat(out.survey, out.post_repair, out.other);
+  for (let i = 0; i < all.length; i += 4) await Promise.all(all.slice(i, i + 4).map(async (ph) => {
+    ph.data = window.GargoPhotos ? await GargoPhotos.toDataUrl(ph.url) : /^data:/.test(ph.url) ? ph.url : "";
+  }));
+  return out;
+}
+async function buildInspectionReport(surveyId, opts) {
+  opts = opts || {};
   if (!surveyId) {
     toast("No survey on file for this record", "error");
     return null;
@@ -839,35 +1213,29 @@ async function buildInspectionReport(surveyId) {
     return y2;
   }
   const repairs = s.tariff_items || [];
-  const damageTotal = repairs.reduce((sum, r) => sum + (Number(r.price) || Number(r.material) || Number(r.hours || 0) * REPAIR_LABOUR_RATE_PER_HOUR || 0), 0);
+  const damageTotal = repairs.reduce((sum, r) => sum + (Number(r.price) || Number(r.material) || Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r)) || 0), 0);
   const now = /* @__PURE__ */ new Date();
   const reportId = "REP-INS-".concat(String(s.id).replace(/-/g, "").slice(0, 8).toUpperCase());
-  ghPdfLetterhead(doc, MARGIN, 6, 118);
-  doc.setFont(void 0, "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(110);
-  doc.text("Email: info@gargohavendepot.co.ke", MARGIN, 29);
+  ghPdfLetterhead(doc, MARGIN, 6, CONTENT_W);
   doc.setFont(void 0, "bold");
-  doc.setFontSize(20);
+  doc.setFontSize(13);
   doc.setTextColor(20);
-  doc.text("INSPECTION", RIGHT, 17, { align: "right" });
+  doc.text("CONTAINER INSPECTION REPORT", MARGIN, 38);
   doc.setFont(void 0, "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(9);
   doc.setTextColor(...GOLD);
-  doc.text(reportId, RIGHT, 23, { align: "right" });
+  doc.text(reportId, RIGHT, 36, { align: "right" });
   doc.setFont(void 0, "normal");
   doc.setFontSize(7.5);
-  doc.setTextColor(140);
-  doc.text(now.toLocaleString("en-KE"), RIGHT, 27.5, { align: "right" });
-  doc.setDrawColor(20);
-  doc.setLineWidth(0.6);
-  doc.line(MARGIN, 31, RIGHT, 31);
-  let y = 37;
+  doc.setTextColor(120);
+  doc.text(now.toLocaleString("en-KE"), RIGHT, 40.5, { align: "right" });
+  doc.setTextColor(20);
+  let y = 45;
   infoBox(MARGIN, y, CONTENT_W, 18, [232, 245, 233]);
   kv(MARGIN + 4, y + 8, "Report ID", reportId, GREEN);
   kv(MARGIN + 4, y + 15.5, "Type", "Container Inspection Report", GREEN);
   kv(MARGIN + 95, y + 8, "Generated", fmtDate(now.toISOString()), GREEN);
-  kv(MARGIN + 95, y + 15.5, "Generated By", s.clerk_name || "\u2014", GREEN);
+  kv(MARGIN + 95, y + 15.5, "Printed By", opts.printedBy || "\u2014", GREEN);
   y += 24;
   infoBox(MARGIN, y, CONTENT_W, 10, [219, 234, 254]);
   doc.setFont(void 0, "bold");
@@ -915,11 +1283,26 @@ async function buildInspectionReport(surveyId) {
   kv(MARGIN, y, "Seal Number", s.seal_number);
   kv(MARGIN + 63, y, "Gate Pass No.", s.gate_pass_number);
   y += 18;
+  const extraVals = window.GargoForms && GargoForms.valuesFromRow ? GargoForms.valuesFromRow("survey", s) : [];
+  if (extraVals.length) {
+    y = ensureSpace(y, 26);
+    sectionHeading("Additional Details", y);
+    y += 8;
+    extraVals.forEach((x, i) => {
+      if (i && i % 3 === 0) {
+        y += 12;
+        y = ensureSpace(y, 14);
+      }
+      const v = String(x.value);
+      kv(MARGIN + i % 3 * 63, y, x.label, v.length > 34 ? v.slice(0, 33) + "\u2026" : v);
+    });
+    y += 18;
+  }
   y = ensureSpace(y, 24);
   const stripW = CONTENT_W / 3 - 3;
   [
     { label: "DAMAGE REPORTS", value: String(repairs.length) },
-    { label: "EST. REPAIR COST", value: "KSh ".concat(damageTotal.toLocaleString(void 0, { minimumFractionDigits: 2 })) },
+    { label: "EST. REPAIR COST", value: GargoMoney.fmt(damageTotal, GargoMoney.itemsCur(repairs)) },
     { label: "CONDITION", value: conditionStatusLabel(s.condition_status).toUpperCase() }
   ].forEach((box, i) => {
     const bx = MARGIN + i * (stripW + 4.5);
@@ -953,29 +1336,48 @@ async function buildInspectionReport(surveyId) {
     doc.setTextColor(20);
     y += 16;
   }
-  const photos = Array.isArray(s.photos) ? s.photos : [];
-  if (photos.length) {
-    y = ensureSpace(y, 20);
-    sectionHeading("Inspection Photos", y);
-    y += 7;
-    const cellW = (CONTENT_W - 8) / 3, cellH = 32;
-    photos.slice(0, 9).forEach((src, i) => {
-      const col = i % 3, row = Math.floor(i / 3);
-      if (row > 0 && row % 3 === 0 && col === 0) {
-        doc.addPage();
-        y = 20;
-      }
-      const px = MARGIN + col * (cellW + 4);
-      const py = y + row % 3 * (cellH + 4);
-      try {
-        doc.addImage(src, void 0, px, py, cellW, cellH, void 0, "FAST");
-      } catch (e) {
-      }
-      doc.setDrawColor(210);
-      doc.rect(px, py, cellW, cellH, "S");
-    });
-    y += Math.ceil(Math.min(photos.length, 9) / 3) * (cellH + 4) + 4;
-  }
+  const photoGroups = await collectInspectionPhotos(s);
+  const photoSection = (title, list) => {
+    if (!list.length) return;
+    y = ensureSpace(y, 60);
+    sectionHeading("".concat(title, " (").concat(list.length, ")"), y);
+    y += 6;
+    const cellW = (CONTENT_W - 8) / 3, cellH = 40, capH = 8;
+    for (let i = 0; i < list.length; i += 3) {
+      y = ensureSpace(y, cellH + capH + 2);
+      list.slice(i, i + 3).forEach((ph, c) => {
+        const px = MARGIN + c * (cellW + 4);
+        doc.setDrawColor(210);
+        doc.setLineWidth(0.3);
+        doc.rect(px, y, cellW, cellH, "S");
+        let drawn = false;
+        if (ph.data) {
+          try {
+            const p = doc.getImageProperties(ph.data), sc = Math.min((cellW - 2) / p.width, (cellH - 2) / p.height), dw = p.width * sc, dh = p.height * sc;
+            doc.addImage(ph.data, void 0, px + (cellW - dw) / 2, y + (cellH - dh) / 2, dw, dh, void 0, "FAST");
+            drawn = true;
+          } catch (e) {
+          }
+        }
+        if (!drawn) {
+          doc.setFont(void 0, "italic");
+          doc.setFontSize(7);
+          doc.setTextColor(150);
+          doc.text("image unavailable", px + cellW / 2, y + cellH / 2, { align: "center" });
+        }
+        doc.setFont(void 0, "normal");
+        doc.setFontSize(6.8);
+        doc.setTextColor(80);
+        doc.text(doc.splitTextToSize(String(ph.title || ""), cellW - 1).slice(0, 2), px + 0.5, y + cellH + 3.4);
+      });
+      y += cellH + capH + 2;
+    }
+    doc.setTextColor(20);
+    y += 4;
+  };
+  photoSection("Inspection Photos", photoGroups.survey);
+  photoSection("Post-Repair Photos", photoGroups.post_repair);
+  photoSection("Other Photos", photoGroups.other);
   y = ensureSpace(y, 20);
   sectionHeading("Damage Reports (".concat(repairs.length, ")"), y);
   y += 8;
@@ -989,7 +1391,7 @@ async function buildInspectionReport(surveyId) {
   } else {
     repairs.forEach((r) => {
       y = ensureSpace(y, 30);
-      const price = Number(r.price) || Number(r.material) || Number(r.hours || 0) * REPAIR_LABOUR_RATE_PER_HOUR || 0;
+      const price = Number(r.price) || Number(r.material) || Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r)) || 0;
       doc.setDrawColor(210);
       doc.setLineWidth(0.3);
       doc.roundedRect(MARGIN, y, CONTENT_W, 26, 1.5, 1.5, "S");
@@ -1006,41 +1408,36 @@ async function buildInspectionReport(surveyId) {
       doc.setTextColor(20);
       kv(MARGIN + 3, y + 15, "Location", r.side || "\u2014");
       kv(MARGIN + 63, y + 15, "Damage / Repair Code", r.code || "\u2014");
-      kv(MARGIN + 126, y + 15, "Tariff / Repair Price", "KSh ".concat(price.toLocaleString(void 0, { minimumFractionDigits: 2 })), [200, 60, 60]);
+      kv(MARGIN + 126, y + 15, "Tariff / Repair Price", GargoMoney.fmt(price, GargoMoney.itemCur(r)), [200, 60, 60]);
       y += 30;
     });
   }
-  y = ensureSpace(y, 40);
+  y = ensureSpace(y, 70);
   doc.setDrawColor(20);
   doc.setLineWidth(0.5);
-  doc.rect(MARGIN, y, CONTENT_W, 22);
+  doc.rect(MARGIN, y, CONTENT_W, 20);
   doc.setFont(void 0, "bold");
   doc.setFontSize(9);
   doc.setTextColor(20);
-  doc.text("Certification", MARGIN + CONTENT_W / 2, y + 7, { align: "center" });
+  doc.text("Certification", MARGIN + CONTENT_W / 2, y + 6.5, { align: "center" });
   doc.setFont(void 0, "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(80);
-  const certLines = doc.splitTextToSize("This inspection report was generated by GARGO HAVEN DEPOT Ltd and represents an accurate record of the container inspection performed.", CONTENT_W - 8);
-  doc.text(certLines, MARGIN + CONTENT_W / 2, y + 13, { align: "center" });
-  y += 30;
-  doc.setDrawColor(150);
-  doc.line(MARGIN, y, MARGIN + 70, y);
-  doc.setFont(void 0, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(110);
-  doc.text("Inspector Signature", MARGIN, y + 5);
-  doc.setFontSize(7.5);
-  doc.setTextColor(150);
-  doc.text("GARGO HAVEN DEPOT Ltd \u2014 Generated by ".concat(s.clerk_name || "system", " on ").concat(now.toLocaleDateString("en-KE")), RIGHT, y + 5, { align: "right" });
+  doc.text(doc.splitTextToSize("This inspection report was generated by GARGO HAVEN DEPOT Ltd and represents an accurate record of the container inspection performed.", CONTENT_W - 8), MARGIN + CONTENT_W / 2, y + 12, { align: "center" });
+  y += 26;
+  ghPdfSignOff(doc, MARGIN, y, CONTENT_W, { surveyLabel: "Surveyed by", surveyor: s.clerk_name || "", surveyedAt: s.surveyed_at, printedBy: opts.printedBy || "", printedAt: now });
   return { doc, filename: "inspection-report-".concat((s.container || s.id).replace(/\s+/g, ""), ".pdf") };
 }
 async function downloadInspectionReport(surveyId) {
-  const r = await buildInspectionReport(surveyId);
+  const by = await icPrinter(null, "Inspection report");
+  if (by === null) return;
+  const r = await buildInspectionReport(surveyId, { printedBy: by });
   if (r) r.doc.save(r.filename);
 }
 async function printInspectionReport(surveyId) {
-  const r = await buildInspectionReport(surveyId);
+  const by = await icPrinter(null, "Inspection report");
+  if (by === null) return;
+  const r = await buildInspectionReport(surveyId, { printedBy: by });
   if (r) ghPrintPdf(r.doc);
 }
 let _linesFilter = "all";
@@ -1230,7 +1627,7 @@ function showLineRateCard(id) {
     return '<tr style="border-top:1px solid var(--border)"><td style="padding:7px 8px;font-size:12px">'.concat(esc(def.label)).concat(extra, '</td><td class="mono" style="padding:7px 8px;text-align:right">').concat(cell(r["20ft"]), '</td><td class="mono" style="padding:7px 8px;text-align:right">').concat(cell(r["40ft"]), "</td></tr>");
   }).join("")).join("");
   const customRows = Object.entries(l.rates || {}).filter(([k, v]) => v && v.custom).map(([k, v]) => '<tr style="border-top:1px solid var(--border)"><td style="padding:7px 8px;font-size:12px">'.concat(esc(v.label), '<div style="font-size:10px;color:var(--text-3)">').concat(esc(v.unit || ""), '</div></td><td class="mono" style="padding:7px 8px;text-align:right">').concat(cell(v["20ft"]), '</td><td class="mono" style="padding:7px 8px;text-align:right">').concat(cell(v["40ft"]), "</td></tr>")).join("");
-  const customBlock2 = customRows ? '<tr><td colspan="3" style="padding:12px 8px 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">Custom Billing Items</td></tr>' + customRows : "";
+  const customBlock = customRows ? '<tr><td colspan="3" style="padding:12px 8px 4px;font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">Custom Billing Items</td></tr>' + customRows : "";
   openModal("".concat(esc(l.code), " \u2014 Rate Card"), '\n    <div style="font-size:11.5px;color:var(--text-2);margin-bottom:8px">'.concat(esc(l.name), " \xB7 billed in <b>").concat(esc(l.currency || "USD"), '</b></div>\n    <table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:1px"><th style="padding:6px 8px">Service</th><th style="padding:6px 8px;text-align:right">20 ft</th><th style="padding:6px 8px;text-align:right">40 ft</th></tr></thead><tbody>').concat(rows, "</tbody></table>\n    ").concat(canFinance() ? '<button class="submit-btn" style="margin-top:14px" onclick="showEditLineModal(\''.concat(esc(l.id), "')\">\u270E Edit this line</button>") : ""));
 }
 function saveShippingLineEdit(id) {
@@ -1486,7 +1883,7 @@ function showContainerDetail(contRaw) {
   }).join("") : "";
   const interchangeHtml = interchange.length ? '<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Interchange History ('.concat(interchange.length, ")</div>") + interchange.map((i) => {
     const meta = [i.eirNumber ? "EIR ".concat(i.eirNumber) : null, i.vessel || i.voyage ? "".concat(i.vessel || "\u2014", " / ").concat(i.voyage || "\u2014") : null].filter(Boolean).join(" \xB7 ");
-    const repairBadge = i.repairs && i.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px">'.concat(i.repairs.length, " damage item").concat(i.repairs.length > 1 ? "s" : "", " \xB7 KSh ").concat(Number(i.repairTotal || 0).toLocaleString(void 0, { minimumFractionDigits: 2 }), "</div>") : "";
+    const repairBadge = i.repairs && i.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px">'.concat(i.repairs.length, " damage item").concat(i.repairs.length > 1 ? "s" : "", " \xB7 ").concat(GargoMoney.fmt(i.repairTotal || 0, GargoMoney.itemsCur(i.repairs)), "</div>") : "";
     const thumb = i.img ? '<img src="'.concat(i.img, '" style="width:44px;height:44px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="showContainerPhotos(\'').concat(i.id, "')\" />") : '<div style="width:44px;height:44px;border-radius:5px;border:1px dashed var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:16px">\u{1F4E6}</div>';
     return '<div class="activity-row" style="align-items:flex-start;gap:10px">'.concat(thumb, '<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-size:11.5px;color:var(--text)">').concat(i.type, " \xB7 ").concat(i.condition, "</div>").concat(sbadge(i.status), '</div><div style="font-size:10px;color:var(--text-3)">').concat(lineName(i.line), " \xB7 ").concat(fmtDate(i.date), "</div>").concat(meta ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">'.concat(meta, "</div>") : "").concat(repairBadge).concat(i.notes ? '<div style="font-size:10.5px;color:var(--text-3);margin-top:3px">'.concat(i.notes, "</div>") : "", '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">').concat(i.surveyId || i.img ? '<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="showContainerPhotos(\''.concat(i.id, "')\">\u{1F4F7} Photos</button>") : "").concat(i.surveyId ? '<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInspectionReport(\''.concat(i.surveyId, '\')">\u2B07 Inspection Report</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInspectionReport(\'').concat(i.surveyId, '\')" title="Print">\u{1F5A8} Print Report</button>') : "", '<button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="downloadInterchangeSlip(\'').concat(i.id, '\')">\u2B07 Slip</button><button class="modal-btn ghost" style="padding:3px 8px;font-size:10px" onclick="printInterchangeSlip(\'').concat(i.id, '\')" title="Print">\u{1F5A8} Print</button></div></div></div>');
   }).join("") : "";
@@ -1504,9 +1901,13 @@ function showContainerDetail(contRaw) {
   const actionsHtml = actions.length ? '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">'.concat(actions.join(""), "</div></div>") : "";
   openModal("Container \u2014 ".concat(cont), "".concat(summary).concat(tripsHtml).concat(shutoutsHtml).concat(interchangeHtml).concat(actionsHtml));
 }
+let _chIndex = null;
 function refreshContainerHistory() {
+  _chIndex = null;
   const dl = document.getElementById("containerHistory");
-  if (!dl) return;
+  if (dl && dl.firstChild) dl.innerHTML = "";
+}
+function _chBuild() {
   const labels = /* @__PURE__ */ new Map();
   const tag = (c, label) => {
     if (c && !labels.has(c)) labels.set(c, label);
@@ -1521,8 +1922,29 @@ function refreshContainerHistory() {
   (state.db.interchange || []).forEach((i) => {
     tag(i.container, "Interchange");
   });
-  dl.innerHTML = [...labels.keys()].sort().map((c) => '<option value="'.concat(c, '">').concat(labels.get(c), "</option>")).join("");
+  _chIndex = [...labels.keys()].sort().map((c) => [c.toUpperCase(), c, labels.get(c)]);
 }
+function _chFill(q) {
+  const dl = document.getElementById("containerHistory");
+  if (!dl) return;
+  q = String(q || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (q.length < 2) {
+    if (dl.firstChild) dl.innerHTML = "";
+    return;
+  }
+  if (!_chIndex) _chBuild();
+  const starts = [], inside = [];
+  for (let k = 0; k < _chIndex.length && starts.length < 30; k++) {
+    const e = _chIndex[k], p = e[0].replace(/[^A-Z0-9]/g, "").indexOf(q);
+    if (p === 0) starts.push(e);
+    else if (p > 0 && inside.length < 30) inside.push(e);
+  }
+  dl.innerHTML = starts.concat(inside).slice(0, 30).map((e) => '<option value="'.concat(esc(e[1]), '">').concat(esc(e[2]), "</option>")).join("");
+}
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (el && el.getAttribute && el.getAttribute("list") === "containerHistory") _chFill(el.value);
+}, true);
 function resolveBookingShippingLineId(booking) {
   if (!booking) return null;
   if (booking.shipping_line_id && state.db.shippingLines.some((l) => l.id === booking.shipping_line_id)) {
@@ -1540,15 +1962,62 @@ function repairItemsFor(prefix) {
   return window._repairItems[prefix] || (window._repairItems[prefix] = []);
 }
 function repairItemsTotal(items) {
-  return (items || []).reduce((sum, r) => sum + Number(r.hours || 0) * REPAIR_LABOUR_RATE_PER_HOUR + Number(r.material || 0), 0);
+  return (items || []).reduce((sum, r) => sum + Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r)) + Number(r.material || 0), 0);
+}
+function tariffMode(prefix) {
+  try {
+    if (window.PIL_TARIFF_SCHEDULE && window.GargoMoney && GargoMoney.curFor(prefix) === "KES") return "PIL";
+  } catch (e) {
+  }
+  return "GHD";
+}
+function tariffFor(prefix) {
+  return (tariffMode(prefix) === "PIL" ? window.PIL_TARIFF_SCHEDULE : window.bookingDocs && window.bookingDocs.TARIFF_SCHEDULE) || {};
+}
+function _tariffCatOptions(prefix) {
+  return Object.keys(tariffFor(prefix)).sort().map((c) => "<option>".concat(esc(c), "</option>")).join("");
+}
+function _tariffNote(prefix) {
+  if (tariffMode(prefix) !== "PIL") return "";
+  const want = Number((window.PIL_TARIFF_META || {}).labourRate) || 550;
+  const have = window.GargoMoney && GargoMoney.labourRate ? GargoMoney.labourRate("KES") : 0;
+  const warn = have !== want ? ' <span style="color:var(--amber)">Labour rate is set to KSh '.concat(have, "/hr but this tariff is built for KSh ").concat(want, "/hr, so totals will not match the PIL price list. An administrator sets it in Settings &rarr; Form Designer &rarr; Rules.</span>") : "";
+  return "PIL tariff (KES): labour at KSh ".concat(want, "/hr plus material.").concat(warn);
+}
+function refreshTariffPicker(prefix) {
+  const sel = document.getElementById("".concat(prefix, "_tcat"));
+  if (!sel) return;
+  const mode = tariffMode(prefix);
+  if (sel.getAttribute("data-tariff") !== mode) {
+    sel.setAttribute("data-tariff", mode);
+    sel.innerHTML = '<option value="">\u2014</option>' + _tariffCatOptions(prefix);
+    const codeSel = document.getElementById("".concat(prefix, "_tcode"));
+    if (codeSel) codeSel.innerHTML = '<option value="">Select category first\u2026</option>';
+    _tariffFill(prefix, null, "");
+    const box = document.getElementById("".concat(prefix, "_tsearch"));
+    if (box) box.value = "";
+    const out = document.getElementById("".concat(prefix, "_tsearchResults"));
+    if (out) {
+      out.style.display = "none";
+      out.innerHTML = "";
+    }
+  }
+  const note = document.getElementById("".concat(prefix, "_tnote"));
+  if (note) {
+    const t = _tariffNote(prefix);
+    note.innerHTML = t;
+    note.style.display = t ? "block" : "none";
+  }
+  const wrap = document.getElementById("".concat(prefix, "_tsavewrap"));
+  if (wrap) wrap.style.display = mode === "PIL" ? "none" : "flex";
 }
 function tariffPickerHtml(prefix) {
-  const categoryOptions = Object.keys(window.bookingDocs.TARIFF_SCHEDULE || {}).sort().map((c) => "<option>".concat(esc(c), "</option>")).join("");
+  const categoryOptions = _tariffCatOptions(prefix);
   const canSave = typeof canEditTariffCatalog === "function" && canEditTariffCatalog();
-  return '\n    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">\n      <span>Damage / Repair Items</span>\n      '.concat(canSave ? '<button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="openTariffCatalogEditor()">Edit tariff codes</button>' : "", '\n    </div>\n    <div class="fg"><label>Search tariff <span class="label-optional">(code or words, e.g. cold wash, D10)</span></label>\n      <input id="').concat(prefix, '_tsearch" autocomplete="off" placeholder="Type to search every category\u2026" oninput="onTariffSearch(\'').concat(prefix, '\')" />\n      <div id="').concat(prefix, '_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Category</label><select id="').concat(prefix, '_tcat" onchange="onRepairCategoryChange(\'').concat(prefix, '\')"><option value="">\u2014</option>').concat(categoryOptions, '</select></div>\n      <div class="fg"><label>Code / Item</label><select id="').concat(prefix, '_tcode" onchange="onRepairCodeChange(\'').concat(prefix, '\')"><option value="">Select category first\u2026</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Code</label><input id="').concat(prefix, '_tcodetext" placeholder="Auto-filled \u2014 or type your own" /></div>\n      <div class="fg"><label>Description</label><input id="').concat(prefix, '_titem" placeholder="Auto-filled \u2014 editable" /></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Hours</label><input id="').concat(prefix, '_thours" type="number" step="0.1" min="0" placeholder="0" /></div>\n      <div class="fg"><label>Material (KSh)</label><input id="').concat(prefix, '_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>\n    </div>\n    ').concat(canSave ? '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="'.concat(prefix, '_tsavecat" /> Also save this to the tariff catalog for next time</label>') : "", '\n    <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem(\'').concat(prefix, '\')">+ Add item</button>\n    <div id="').concat(prefix, '_repairList"></div>');
+  return '\n    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">\n      <span>Damage / Repair Items</span>\n      '.concat(canSave ? '<button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="openTariffCatalogEditor()">Edit tariff codes</button>' : "", '\n    </div>\n    <div class="fg"><label>Search tariff <span class="label-optional">(code or words, e.g. cold wash, D10)</span></label>\n      <input id="').concat(prefix, '_tsearch" autocomplete="off" placeholder="Type to search every category\u2026" oninput="onTariffSearch(\'').concat(prefix, '\')" />\n      <div id="').concat(prefix, '_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>\n    </div>\n    <div id="').concat(prefix, '_tnote" style="display:none;font-size:11px;color:var(--text-2);margin:-2px 0 8px"></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Category</label><select id="').concat(prefix, '_tcat" data-tariff="').concat(tariffMode(prefix), '" onchange="onRepairCategoryChange(\'').concat(prefix, '\')"><option value="">\u2014</option>').concat(categoryOptions, '</select></div>\n      <div class="fg"><label>Code / Item</label><select id="').concat(prefix, '_tcode" onchange="onRepairCodeChange(\'').concat(prefix, '\')"><option value="">Select category first\u2026</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Code</label><input id="').concat(prefix, '_tcodetext" placeholder="Auto-filled \u2014 or type your own" /></div>\n      <div class="fg"><label>Description</label><input id="').concat(prefix, '_titem" placeholder="Auto-filled \u2014 editable" /></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Hours</label><input id="').concat(prefix, '_thours" type="number" step="0.1" min="0" placeholder="0" /></div>\n      <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="').concat(prefix, '">USD</span>)</label><input id="').concat(prefix, '_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>\n    </div>\n    ').concat(canSave ? '<label id="'.concat(prefix, '_tsavewrap" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="').concat(prefix, '_tsavecat" /> Also save this to the tariff catalog for next time</label>') : "", '\n    <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem(\'').concat(prefix, '\')">+ Add item</button>\n    <div id="').concat(prefix, '_repairList"></div>');
 }
-function _tariffRows(cat) {
-  return (window.bookingDocs.TARIFF_SCHEDULE || {})[cat] || [];
+function _tariffRows(cat, prefix) {
+  return tariffFor(prefix)[cat] || [];
 }
 function _tariffFill(prefix, row, cat) {
   const set = (id, v) => {
@@ -1571,7 +2040,7 @@ function onTariffSearch(prefix) {
     return;
   }
   const hits = [];
-  const sched = window.bookingDocs.TARIFF_SCHEDULE || {};
+  const sched = tariffFor(prefix);
   Object.keys(sched).forEach((cat) => sched[cat].forEach((row, idx) => {
     const hay = "".concat(row.code, " ").concat(row.item, " ").concat(cat).toLowerCase();
     if (terms.every((t) => hay.indexOf(t) !== -1)) hits.push({ cat, idx, row });
@@ -1592,21 +2061,21 @@ function pickTariffHit(prefix, cat, idx) {
   }
   const codeSel = document.getElementById("".concat(prefix, "_tcode"));
   if (codeSel) codeSel.value = String(idx);
-  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
+  _tariffFill(prefix, _tariffRows(cat, prefix)[idx], cat);
   const out = document.getElementById("".concat(prefix, "_tsearchResults"));
   if (out) out.style.display = "none";
 }
 function onRepairCategoryChange(prefix) {
   const cat = document.getElementById("".concat(prefix, "_tcat")).value;
   const codeSel = document.getElementById("".concat(prefix, "_tcode"));
-  const rows = _tariffRows(cat);
+  const rows = _tariffRows(cat, prefix);
   _tariffFill(prefix, null, cat);
   codeSel.innerHTML = rows.length ? '<option value="">Select\u2026</option>' + rows.map((r, i) => '<option value="'.concat(i, '">').concat(esc(r.code), " \u2014 ").concat(esc(r.item), "</option>")).join("") : '<option value="">Select category first\u2026</option>';
 }
 function onRepairCodeChange(prefix) {
   const cat = document.getElementById("".concat(prefix, "_tcat")).value;
   const idx = document.getElementById("".concat(prefix, "_tcode")).value;
-  _tariffFill(prefix, _tariffRows(cat)[idx], cat);
+  _tariffFill(prefix, _tariffRows(cat, prefix)[idx], cat);
 }
 function addRepairItem(prefix) {
   const val = (id) => {
@@ -1626,12 +2095,12 @@ function addRepairItem(prefix) {
   }
   const hours = Math.max(0, parseFloat(val("thours")) || 0);
   const material = Math.max(0, parseFloat(val("tmaterial")) || 0);
-  const entry = { category: cat || "CUSTOM", code: sanitize(code) || "CUSTOM", item: sanitize(item), hours, material };
-  const picked = _tariffRows(cat)[val("tcode")];
+  const entry = { category: cat || "CUSTOM", code: sanitize(code) || "CUSTOM", item: sanitize(item), hours, material, currency: GargoMoney.curFor(prefix) };
+  const picked = _tariffRows(cat, prefix)[val("tcode")];
   if (!picked) entry.custom = true;
   repairItemsFor(prefix).push(entry);
   const save = document.getElementById("".concat(prefix, "_tsavecat"));
-  if (save && save.checked && typeof saveTariffCatalogEntry === "function") {
+  if (save && save.checked && tariffMode(prefix) !== "PIL" && typeof saveTariffCatalogEntry === "function") {
     saveTariffCatalogEntry({ category: entry.category, code: entry.code, item: entry.item, hours, material }).catch(() => {
     });
     save.checked = false;
@@ -1651,14 +2120,16 @@ function removeRepairItem(prefix, i) {
 function renderRepairItemsList(prefix) {
   const el = document.getElementById("".concat(prefix, "_repairList"));
   if (!el) return;
+  GargoMoney.refreshLabels();
+  refreshTariffPicker(prefix);
   const items = repairItemsFor(prefix);
   if (!items.length) {
     el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added \u2014 container will be logged as good condition.</div>';
     return;
   }
-  const rows = items.map((r, i) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">\n    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">'.concat(esc(r.code), "</span> \u2014 ").concat(esc(r.item)).concat(r.side ? ' <span style="color:var(--text-3)">('.concat(esc(r.side), ")</span>") : "").concat(r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : "", '</div>\n    <div style="font-size:11px;color:var(--text-2)">').concat(esc(r.hours), "h \xB7 KSh ").concat(Number(r.material).toLocaleString(), ' <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem(\'').concat(prefix, "',").concat(i, ')">\u2715</button></div>\n  </div>')).join("");
+  const rows = items.map((r, i) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">\n    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">'.concat(esc(r.code), "</span> \u2014 ").concat(esc(r.item)).concat(r.side ? ' <span style="color:var(--text-3)">('.concat(esc(r.side), ")</span>") : "").concat(r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : "", '</div>\n    <div style="font-size:11px;color:var(--text-2)">').concat(esc(r.hours), "h \xB7 ").concat(GargoMoney.sym(GargoMoney.itemCur(r)), " ").concat(Number(r.material).toLocaleString(), ' <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem(\'').concat(prefix, "',").concat(i, ')">\u2715</button></div>\n  </div>')).join("");
   const total = repairItemsTotal(items);
-  el.innerHTML = rows + '<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">\n    <span>Total (labour @ KSh '.concat(REPAIR_LABOUR_RATE_PER_HOUR, "/hr + material)</span><span>KSh ").concat(total.toLocaleString(void 0, { minimumFractionDigits: 2 }), "</span>\n  </div>");
+  el.innerHTML = rows + '<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">\n    <span>Total (labour @ '.concat(GargoMoney.sym(GargoMoney.itemsCur(items)), " ").concat(GargoMoney.labourRate(GargoMoney.itemsCur(items)), "/hr + material)</span><span>").concat(GargoMoney.fmt(total, GargoMoney.itemsCur(items)), "</span>\n  </div>").concat(GargoMoney.labourWarning(items));
 }
 function _tripToInterchangeReportRow(t) {
   const outward = isOutwardWorkType(t.workType);

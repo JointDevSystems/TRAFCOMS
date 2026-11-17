@@ -787,7 +787,7 @@ function renderFuelReport() {
   const host = document.getElementById("fuelReportPanel");
   if (!host) return;
   if (!document.getElementById("frep_results")) {
-    host.innerHTML = '\n      <div class="panel-head"><span class="panel-title">Fuel &amp; Trip Payments Report</span>\n        <span class="panel-meta"><button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport()">Export to Excel</button></span></div>\n      <div style="padding:10px 14px 4px">\n        <div id="frep_ranges" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>\n        <div id="frep_custom" style="display:none;gap:8px;align-items:center;margin-bottom:8px;font-size:11px;color:var(--text-3)">\n          From <input type="date" id="frep_from" onchange="frepSet(\'from\', this.value)" /> to <input type="date" id="frep_to" onchange="frepSet(\'to\', this.value)" />\n        </div>\n        <div id="frep_groups" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>\n      </div>\n      <div id="frep_results" style="padding:0 14px 14px"></div>';
+    host.innerHTML = '\n      <div class="panel-head"><span class="panel-title">Fuel &amp; Trip Payments Report</span>\n        <span class="panel-meta"><button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport()">Export to Excel</button> <button type="button" class="modal-btn ghost" style="padding:2px 10px;font-size:10px" onclick="exportFuelReport(\'print\')">Print</button></span></div>\n      <div style="padding:10px 14px 4px">\n        <div id="frep_ranges" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>\n        <div id="frep_custom" style="display:none;gap:8px;align-items:center;margin-bottom:8px;font-size:11px;color:var(--text-3)">\n          From <input type="date" id="frep_from" onchange="frepSet(\'from\', this.value)" /> to <input type="date" id="frep_to" onchange="frepSet(\'to\', this.value)" />\n        </div>\n        <div id="frep_groups" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>\n      </div>\n      <div id="frep_results" style="padding:0 14px 14px"></div>';
   }
   const chip = (key, cur, label, fn) => '<button type="button" class="modal-btn '.concat(key === cur ? "" : "ghost", '" style="padding:3px 10px;font-size:10.5px" onclick="').concat(fn, "('").concat(key, "')\">").concat(label, "</button>");
   document.getElementById("frep_ranges").innerHTML = _FREP_RANGES.map(([k, l]) => chip(k, _FREP.range, l, "frepRange")).join("");
@@ -815,8 +815,8 @@ function frepSet(which, v) {
   _FREP[which] = v;
   renderFuelReport();
 }
-function exportFuelReport() {
-  if (typeof XLSX === "undefined") {
+function exportFuelReport(mode) {
+  if (mode !== "print" && typeof XLSX === "undefined") {
     toast("Spreadsheet library still loading \u2014 try again in a moment", "error");
     return;
   }
@@ -844,9 +844,14 @@ function exportFuelReport() {
       f.receipt || ""
     ])
   );
+  const top = (window.GH_BRAND && GH_BRAND.lines || ["GARGO HAVEN DEPOT LIMITED"]).map((l) => [l]).concat([["Fuel Report"], []]);
+  if (mode === "print") {
+    if (window.GargoPrint) GargoPrint.sheets("Fuel Report", [{ title: "By " + by, rows: sum }, { title: "Entries", rows: detail }]);
+    return;
+  }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "By ".concat(by).slice(0, 31));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), "Entries");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(sum)), "By ".concat(by).slice(0, 31));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(top.concat(detail)), "Entries");
   XLSX.writeFile(wb, "fuel_report_".concat((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), ".xlsx"));
 }
 (function waitForSignIn() {

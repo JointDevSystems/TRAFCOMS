@@ -120,12 +120,13 @@ function handleReceiptFileSelect(input, previewId, scope) {
     input.value = "";
     return;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast("Image too large \u2014 max 2MB", "error");
+  const problem = gxPhotoProblem(file);
+  if (problem) {
+    toast("Image " + problem, "error");
     input.value = "";
     return;
   }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     _pendingReceiptImg[scope] = reader.result;
     const prev = document.getElementById(previewId);
@@ -571,10 +572,12 @@ function renderFuel() {
   updateFuelTruckHint();
 }
 function renderFuelTable() {
-  const logs = [...state.db.fuel].sort((a, b) => new Date(b.date) - new Date(a.date));
   const tbody = document.getElementById("fuelTableBody");
   if (!tbody) return;
-  tbody.innerHTML = logs.slice(0, 200).map((f) => '<tr><td class="mono" style="font-size:10px">'.concat(fmtDate(f.date), "</td><td>").concat(esc(fuelTruckLabel(f)), "</td><td>").concat(esc(fuelDriverLabel(f)), '</td><td class="mono" style="text-align:right">').concat(fmt(f.litres), ' L</td><td class="mono" style="text-align:right">').concat(fmt(f.pricePerLitre), '</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">').concat(fmtKsh(fuelLogTotal(f)), '</td><td style="color:var(--text-3);font-size:11px">').concat(f.station, "</td><td>").concat(f.receiptImg ? '<img src="'.concat(f.receiptImg, '" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox(\'').concat(f.receiptImg, "')\"/>") : '<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload(\'fuel\',\''.concat(f.id, "','receiptImg',()=>renderFuelTable())\">Attach</button>"), "</td><td>").concat(canEditFuel() ? '<button class="tbl-btn" onclick="showEditFuelModal(\''.concat(esc(f.id), "')\">Edit</button>") : "", "</td></tr>")).join("") || '<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>';
+  const _all = state.db.fuel.map((f) => [+new Date(f.date) || 0, f]).sort((a, b) => b[0] - a[0]).map((x) => x[1]);
+  const logs = _all.slice(0, gxPageLimit("fuel", "all", 100, renderFuelTable));
+  tbody.innerHTML = logs.map((f) => '<tr><td class="mono" style="font-size:10px">'.concat(fmtDate(f.date), "</td><td>").concat(esc(fuelTruckLabel(f)), "</td><td>").concat(esc(fuelDriverLabel(f)), '</td><td class="mono" style="text-align:right">').concat(fmt(f.litres), ' L</td><td class="mono" style="text-align:right">').concat(fmt(f.pricePerLitre), '</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">').concat(fmtKsh(fuelLogTotal(f)), '</td><td style="color:var(--text-3);font-size:11px">').concat(f.station, "</td><td>").concat(f.receiptImg ? '<img src="'.concat(f.receiptImg, '" style="width:32px;height:32px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoLightbox(\'').concat(f.receiptImg, "')\"/>") : '<button class="modal-btn ghost" style="padding:2px 8px;font-size:9px" onclick="triggerImageUpload(\'fuel\',\''.concat(f.id, "','receiptImg',()=>renderFuelTable())\">Attach</button>"), "</td><td>").concat(canEditFuel() ? '<button class="tbl-btn" onclick="showEditFuelModal(\''.concat(esc(f.id), "')\">Edit</button>") : "", "</td></tr>")).join("") || '<tr><td colspan="9" class="empty-td">No fuel logs</td></tr>';
+  if (_all.length > logs.length) tbody.innerHTML += gxPageFooter("fuel", logs.length, _all.length, 9);
 }
 function renderFuelSummary() {
   if (typeof renderFuelReport === "function") renderFuelReport();
@@ -763,7 +766,7 @@ function renderContainerRepairs(f) {
   el.innerHTML = items.map((c) => {
     const thumb = c.gateInPhoto ? '<img src="'.concat(c.gateInPhoto, '" style="width:100%;height:100%;object-fit:cover" />') : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
     const itemsCount = (c.repairs || []).length;
-    const damageLine = itemsCount ? "".concat(itemsCount, " damage item").concat(itemsCount > 1 ? "s" : "", " \xB7 KSh ").concat(Number(c.repairTotal || 0).toLocaleString(void 0, { minimumFractionDigits: 2 })) : "No itemised damage on file";
+    const damageLine = itemsCount ? "".concat(itemsCount, " damage item").concat(itemsCount > 1 ? "s" : "", " \xB7 ").concat(GargoMoney.fmt(c.repairTotal || 0, GargoMoney.itemsCur(c.repairs))) : "No itemised damage on file";
     const approvalLine = c.approvalDoc ? "\u2713 Shipping line approval on file".concat(c.approvalReference ? " \xB7 Ref ".concat(esc(c.approvalReference)) : "") : "\u26A0 Awaiting shipping line approval document";
     const postCount = (c.postRepairPhotos || []).length;
     const actions = [];
@@ -826,12 +829,12 @@ function captureCRApprovalDoc(input) {
     input.value = "";
     return;
   }
-  if (file.size > 4 * 1024 * 1024) {
-    toast("File too large \u2014 max 4MB", "error");
+  if (isPdf ? file.size > 4 * 1024 * 1024 : file.size > GX_PHOTO_RAW_MAX) {
+    toast(isPdf ? "File too large \u2014 max 4MB" : "Image too large \u2014 max 25 MB before compression", "error");
     input.value = "";
     return;
   }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
     window._pendingCRApprovalDocName = file.name;
@@ -920,12 +923,12 @@ function captureCRApprovalDoc2(input) {
     input.value = "";
     return;
   }
-  if (file.size > 4 * 1024 * 1024) {
-    toast("File too large \u2014 max 4MB", "error");
+  if (isPdf ? file.size > 4 * 1024 * 1024 : file.size > GX_PHOTO_RAW_MAX) {
+    toast(isPdf ? "File too large \u2014 max 4MB" : "Image too large \u2014 max 25 MB before compression", "error");
     input.value = "";
     return;
   }
-  const reader = new FileReader();
+  const reader = gxImageReader();
   reader.onload = () => {
     window._pendingCRApprovalDoc = reader.result;
     window._pendingCRApprovalDocName = file.name;
@@ -1011,8 +1014,8 @@ function advanceContainerRepair(id, status) {
 function uploadPostRepairPhoto(id) {
   const c = state.db.containerRepairs.find((x) => x.id === id);
   if (!c) return;
-  if ((c.postRepairPhotos || []).length >= 8) {
-    toast("Maximum 8 post-repair photos per job", "error");
+  if ((c.postRepairPhotos || []).length >= GX_MAX_PHOTOS) {
+    toast("Maximum ".concat(GX_MAX_PHOTOS, " post-repair photos per job"), "error");
     return;
   }
   const input = document.createElement("input");
@@ -1022,11 +1025,12 @@ function uploadPostRepairPhoto(id) {
   input.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast("Image too large \u2014 max 2MB", "error");
+    const problem = gxPhotoProblem(file);
+    if (problem) {
+      toast("Image " + problem, "error");
       return;
     }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => {
       c.postRepairPhotos = c.postRepairPhotos || [];
       c.postRepairPhotos.push(reader.result);

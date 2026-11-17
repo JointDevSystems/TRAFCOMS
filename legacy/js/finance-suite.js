@@ -161,7 +161,10 @@
   };
   window.fsExport = () => {
     if (!repCsv) return;
-    H.downloadCSV(repCsv.name, ["Section", "Item", "Amount"], repCsv.rows);
+    {
+      const co = (window.GH_BRAND && GH_BRAND.lines || ["GARGO HAVEN DEPOT LIMITED"]).map((l) => [l]);
+      H.downloadCSV(repCsv.name, co[0], co.slice(1).concat([["Finance report"], [], ["Section", "Item", "Amount"]], repCsv.rows));
+    }
     addAudit(who(), "Exported finance report", repCsv.name);
   };
   let todo = [];

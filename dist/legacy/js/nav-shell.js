@@ -66,7 +66,7 @@
       blurb: "Gate, yard and shipping lines",
       hue: "#D9B23A",
       icon: IC.depot,
-      groups: [["Gate and yard", ["depops", "inward", "publicbookings", "interchange", "shutout"]], ["Vessels and lines", ["prestaking", "depotreport", "shippinglines"]]]
+      groups: [["Gate and yard", ["depops", "inward", "publicbookings", "interchange", "shutout", "gatesecurity", "loadingdesk"]], ["Vessels and lines", ["prestaking", "repatreserve", "depotreport", "shippinglines"]]]
     },
     {
       id: "fleet",
@@ -102,7 +102,7 @@
       blurb: "Allocation, analysis and reports",
       hue: "#A78BFA",
       icon: IC.insights,
-      groups: [["", ["allocation", "workanalysis", "reports", "tripreports"]]]
+      groups: [["", ["allocation", "workanalysis", "reports", "reportcentre", "tripreports"]]]
     },
     {
       id: "platform",
@@ -126,7 +126,10 @@
     publicbookings: "Bookings sent in through the public booking page",
     interchange: "Gate-in and gate-out records",
     shutout: "Containers turned away at the gate",
+    gatesecurity: "Gate desk, loading instructions, loading desk and the vehicle register",
+    loadingdesk: "Loading clerk: complete Part 2 of loading instructions",
     prestaking: "Containers staged ahead of a vessel",
+    repatreserve: "Hold empty containers for a shipping line's repat request",
     depotreport: "Inward and outward register",
     shippinglines: "Shipping lines, contacts and portal links",
     dispatch: "Assign trucks and drivers to waiting jobs",
@@ -146,12 +149,15 @@
     allocation: "Match waiting containers to trucks",
     workanalysis: "Work done, by type",
     reports: "Operational and financial reports",
-    tripreports: "Trip reports and the audit centre",
+    reportcentre: "Depot, fleet, finance and HR reports in one place",
+    tripreports: "Who did what, and when (administrators)",
     usermgmt: "Staff accounts, roles and access",
     settings: "System settings and thresholds"
   };
   const KW = {
     interchange: "gate in out eir receipt",
+    gatesecurity: "guard vehicle truck trailer driver register gate pass log receiving releasing officer loading instruction verify gate processes",
+    loadingdesk: "loading clerk field marshal part 2 containers loaded releasing instruction",
     inward: "receive arrival gate in",
     shutout: "refused rejected",
     trips: "journey haulage",
@@ -166,6 +172,7 @@
     dispatch: "assign allocate",
     depops: "yard zones surveys master",
     reports: "analytics export",
+    reportcentre: "data hub stock advising daily in out lift yard fleet payroll",
     settings: "configuration admin",
     usermgmt: "accounts roles access passwords",
     requisitions: "requests purchase",

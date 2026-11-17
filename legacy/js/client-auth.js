@@ -110,7 +110,15 @@ async function performLogout(auditDetail) {
   stopAutoRefresh();
   addAudit(((_a = state.profile) == null ? void 0 : _a.username) || "system", "Logout", auditDetail);
   try {
+    await saveNowAwaited();
+  } catch (e) {
+  }
+  try {
     if (window.GargoOffline) await GargoOffline.onLogout();
+  } catch (e) {
+  }
+  try {
+    if (window.GargoRates) GargoRates.clear();
   } catch (e) {
   }
   await supabase.auth.signOut();
@@ -177,6 +185,11 @@ function bootShell() {
   subscribeLiveSync();
   startWialonPolling();
   initAutoRefresh();
+  try {
+    if (window.GargoRates) GargoRates.load();
+  } catch (e) {
+    console.warn("Rates load failed:", e);
+  }
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector('.nav-item[data-section="'.concat(landing, '"]')));
   populateSelects();

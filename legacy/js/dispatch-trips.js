@@ -15,8 +15,22 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
+function gxTripCustomOut(t) {
+  try {
+    return window.GargoForms && GargoForms.tripOut ? GargoForms.tripOut(t && t.custom) : {};
+  } catch (e) {
+    return {};
+  }
+}
+function gxTripCustomIn(r) {
+  try {
+    return window.GargoForms && GargoForms.tripIn ? GargoForms.tripIn(r) : {};
+  } catch (e) {
+    return {};
+  }
+}
 function tripToRow(t) {
-  return { id: t.id, truck_id: t.truckId || null, driver_id: t.driverId || null, container: t.container, container_type: t.ctype, work_type: t.workType, outward_type: t.outwardType || null, origin: t.origin, destination: t.dest, shipping_line_id: t.shippingLine || null, status: t.status, start_time: t.startTime, eta: t.eta, distance: t.distance, priority: t.priority, notes: t.notes, reference: t.ref, container_images: JSON.stringify(t.containerImages || []), booking_id: t.bookingId || null, storage_zone_id: t.storageZoneId || null, storage_teu: t.storageTeu || null, storage_released: !!t.storageReleased, eir_number: t.eirNumber || null, receiving_party: t.receivingParty || null, release_order_no: t.releaseOrderNo || null, vessel: t.vessel || null, voyage: t.voyage || null, date_out: t.dateOut || null, flagged_for_review: !!t.flaggedForReview, flag_reasons: JSON.stringify(t.flagReasons || []), duplicate_of_id: t.duplicateOfId || null, import_batch_id: t.importBatchId || null };
+  return __spreadValues({ id: t.id, truck_id: t.truckId || null, driver_id: t.driverId || null, container: t.container, container_type: t.ctype, work_type: t.workType, outward_type: t.outwardType || null, origin: t.origin, destination: t.dest, shipping_line_id: t.shippingLine || null, status: t.status, start_time: t.startTime, eta: t.eta, distance: t.distance, priority: t.priority, notes: t.notes, reference: t.ref, container_images: JSON.stringify(t.containerImages || []), booking_id: t.bookingId || null, storage_zone_id: t.storageZoneId || null, storage_teu: t.storageTeu || null, storage_released: !!t.storageReleased, eir_number: t.eirNumber || null, receiving_party: t.receivingParty || null, release_order_no: t.releaseOrderNo || null, vessel: t.vessel || null, voyage: t.voyage || null, date_out: t.dateOut || null, flagged_for_review: !!t.flaggedForReview, flag_reasons: JSON.stringify(t.flagReasons || []), duplicate_of_id: t.duplicateOfId || null, import_batch_id: t.importBatchId || null }, gxTripCustomOut(t));
 }
 function tripFromRow(r) {
   let imgs = [];
@@ -31,7 +45,7 @@ function tripFromRow(r) {
   } catch (e) {
     flagReasons = [];
   }
-  return { id: r.id, truckId: r.truck_id, driverId: r.driver_id, container: r.container, ctype: r.container_type, workType: r.work_type, outwardType: r.outward_type || null, origin: r.origin, dest: r.destination, shippingLine: r.shipping_line_id, status: r.status, startTime: r.start_time, eta: r.eta, distance: r.distance, priority: r.priority, notes: r.notes, ref: r.reference, containerImages: imgs, bookingId: r.booking_id || null, storageZoneId: r.storage_zone_id || null, storageTeu: r.storage_teu || null, storageReleased: !!r.storage_released, eirNumber: r.eir_number || "", receivingParty: r.receiving_party || "", releaseOrderNo: r.release_order_no || "", vessel: r.vessel || "", voyage: r.voyage || "", dateOut: r.date_out || null, flaggedForReview: !!r.flagged_for_review, flagReasons, duplicateOfId: r.duplicate_of_id || null, importBatchId: r.import_batch_id || null };
+  return { id: r.id, truckId: r.truck_id, driverId: r.driver_id, container: r.container, ctype: r.container_type, workType: r.work_type, outwardType: r.outward_type || null, origin: r.origin, dest: r.destination, shippingLine: r.shipping_line_id, status: r.status, startTime: r.start_time, eta: r.eta, distance: r.distance, priority: r.priority, notes: r.notes, ref: r.reference, containerImages: imgs, bookingId: r.booking_id || null, storageZoneId: r.storage_zone_id || null, storageTeu: r.storage_teu || null, storageReleased: !!r.storage_released, eirNumber: r.eir_number || "", receivingParty: r.receiving_party || "", releaseOrderNo: r.release_order_no || "", vessel: r.vessel || "", voyage: r.voyage || "", dateOut: r.date_out || null, flaggedForReview: !!r.flagged_for_review, flagReasons, duplicateOfId: r.duplicate_of_id || null, importBatchId: r.import_batch_id || null, custom: gxTripCustomIn(r) };
 }
 function isOutwardWorkType(workType) {
   return workType === "Depot \u2192 Port";
@@ -135,7 +149,10 @@ function renderTrips(f) {
   else if (f !== "all") trips = trips.filter((t) => t.status === f);
   const el = document.getElementById("tripsList");
   if (!el) return;
+  const _total = trips.length;
+  trips = trips.map((t) => [+new Date(t.startTime) || 0, t]).sort((a, b) => b[0] - a[0]).map((x) => x[1]).slice(0, gxPageLimit("trips", f, 40, () => renderTrips(_tripFilter)));
   el.innerHTML = trips.map((t) => '<div class="trip-card status-'.concat(t.status, '" onclick="showTripDetail(\'').concat(t.id, '\')"><div class="trip-card-head"><div class="trip-route">').concat(t.origin, '<span class="arrow">\u2192</span>').concat(t.dest, "</div>").concat(sbadge(t.status)).concat(t.flaggedForReview ? '<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="'.concat(esc((t.flagReasons || []).join("; ")), '">\u26A0 Flagged</span>') : "", '</div><div class="trip-meta"><span>\u{1F69B} ').concat(truckName(t.truckId), "</span><span>\u{1F464} ").concat(driverName(t.driverId), '</span><span class="mono" style="font-size:10.5px;color:var(--gold)">').concat(t.container, "</span><span>").concat(t.ctype, " \xB7 ").concat(t.workType).concat(t.outwardType ? " \xB7 " + sanitize(t.outwardType) : "", "</span><span>\u{1F550} Started ").concat(timeAgo(t.startTime), " \xB7 ETA ").concat(fmtTime(t.eta), "</span><span>").concat(t.distance, "km \xB7 ").concat(sbadge(t.priority.toLowerCase()), "</span></div></div>")).join("") || '<div class="empty-state"><div class="empty-state-icon">\u{1F5FA}\uFE0F</div><div class="empty-state-label">No trips in this filter</div></div>';
+  el.innerHTML += gxPageFooter("trips", trips.length, _total);
 }
 function showTripDetail(id) {
   const t = state.db.trips.find((t2) => t2.id === id);
@@ -164,6 +181,270 @@ function canUpdateTripStatus(t) {
     return !!d && t.driverId === d.id;
   }
   return false;
+}
+function gxOutwardIcId(tripId) {
+  const s = String(tripId || "").toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return null;
+  return (15 - parseInt(s.charAt(0), 16)).toString(16) + s.slice(1);
+}
+function gxOutIcIds() {
+  const set = /* @__PURE__ */ new Set();
+  (state.db.interchange || []).forEach((i) => {
+    if (/Out$/.test(i.type || "")) set.add(String(i.id).toLowerCase());
+  });
+  return set;
+}
+async function gxInwardEirFor(container) {
+  const key = normContainerKey(container);
+  if (!key) return null;
+  let rows = (state.db.interchange || []).filter((i) => normContainerKey(i.container) === key);
+  if (!rows.some((i) => isInwardMovement(i.type) && i.eirNumber) && window.ICR && ICR.enabled && navigator.onLine) {
+    try {
+      rows = rows.concat(await ICR.byContainer(String(container).trim().toUpperCase()));
+    } catch (e) {
+    }
+  }
+  const inward = rows.filter((i) => isInwardMovement(i.type) && i.eirNumber).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const ic = inward[0] || null;
+  if (ic) {
+    const t0 = new Date(ic.date).getTime();
+    ic._gxInYard = !rows.some((i) => /Out$/.test(i.type || "") && new Date(i.date).getTime() >= t0);
+  }
+  return ic;
+}
+async function dispatchPrefillFromEir(soft) {
+  const input = document.getElementById("d_container"), box = document.getElementById("d_eir_info");
+  if (!input) return;
+  const el = (id) => document.getElementById(id);
+  const clear = () => {
+    if (box) {
+      box.style.display = "none";
+      box.innerHTML = "";
+    }
+    const f2 = el("d_ineir"), v2 = el("d_ineir_view");
+    if (f2) {
+      f2.value = "";
+      delete f2.dataset.icId;
+    }
+    if (v2) v2.style.display = "none";
+  };
+  const cont = input.value.trim().toUpperCase();
+  if (cont.length < 10) {
+    clear();
+    return;
+  }
+  if (input.dataset.eirFor === cont && soft !== true) return;
+  const ic = await gxInwardEirFor(cont);
+  if (input.value.trim().toUpperCase() !== cont) return;
+  input.dataset.eirFor = cont;
+  if (!ic) {
+    clear();
+    return;
+  }
+  const empty = (id) => {
+    const e = el(id);
+    return !!e && !String(e.value || "").trim();
+  };
+  const setIf = (id, val) => {
+    const e = el(id);
+    if (e && val && (soft !== true || empty(id))) e.value = val;
+  };
+  const f = el("d_ineir"), v = el("d_ineir_view");
+  if (f) {
+    f.value = ic.eirNumber || "";
+    f.dataset.icId = ic.id;
+  }
+  if (v) v.style.display = "";
+  if (ic.ctype && soft !== true) populateSizeTypeSelects("d_size", "d_type", ic.ctype);
+  if (ic.line && el("d_line") && [...el("d_line").options].some((o) => o.value === ic.line) && (soft !== true || empty("d_line"))) el("d_line").value = ic.line;
+  setIf("d_vessel", ic.vessel);
+  setIf("d_voyage", ic.voyage);
+  setIf("d_ref", ic.guaranteeNo || ic.blNumber);
+  setIf("d_receiving", ic.receivingParty);
+  const wt = el("d_worktype");
+  if (soft !== true && ic._gxInYard && wt && wt.value === "Port \u2192 Depot") {
+    wt.value = "Depot \u2192 Port";
+    toggleDispatchOutwardType();
+    setIf("d_origin", "Depot");
+    setIf("d_dest", "Kilindini Port");
+  }
+  if (box) {
+    box.style.display = "flex";
+    box.innerHTML = '<span style="flex:1;min-width:0"><strong>Inward EIR '.concat(esc(ic.eirNumber), "</strong> found for ").concat(esc(cont), " (").concat(esc(ic.type), ", ").concat(esc(fmtDate(ic.date))).concat(ic.condition ? ", " + esc(ic.condition) : "").concat(ic._gxInYard ? ", in storage" : "", "). Size/type, shipping line, vessel, voyage and B/L were filled in from it. The outward EIR is issued automatically when this dispatch is saved or completed.</span>");
+  }
+}
+function dispatchViewInwardEir() {
+  const f = document.getElementById("d_ineir");
+  if (f && f.dataset.icId && window.GargoDocs) GargoDocs.eir(f.dataset.icId, "preview");
+}
+let _dpsT = null;
+function dispatchPickFromStorage() {
+  openModal("Containers in storage", '<div class="fg"><input id="dps_q" placeholder="Search container, vessel or EIR\u2026" oninput="dispatchStorageSearch()" autocomplete="off" /></div><div id="dps_list"></div>');
+  dispatchStorageSearch(true);
+  setTimeout(() => {
+    const q = document.getElementById("dps_q");
+    if (q) q.focus();
+  }, 60);
+}
+function dispatchStorageSearch(now) {
+  clearTimeout(_dpsT);
+  _dpsT = setTimeout(dispatchStorageRun, now === true ? 0 : 250);
+}
+async function dispatchStorageRun() {
+  const list = document.getElementById("dps_list");
+  if (!list) return;
+  const q = ((document.getElementById("dps_q") || {}).value || "").trim();
+  list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">Loading\u2026</div>';
+  let items = [];
+  try {
+    if (window.ICR && ICR.enabled && navigator.onLine) items = (await ICR.yard({ q, limit: 40 })).items;
+    else {
+      const ql = q.toLowerCase();
+      items = (state.db.interchange || []).filter((i) => typeof icInYard === "function" && icInYard(i) && (!ql || [i.container, i.vessel, i.eirNumber].join(" ").toLowerCase().indexOf(ql) > -1)).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 40);
+    }
+  } catch (e) {
+    list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">Could not load the yard list. Check your connection.</div>';
+    return;
+  }
+  if (!document.getElementById("dps_list")) return;
+  if (!items.length) {
+    list.innerHTML = '<div class="empty-state-label" style="padding:12px 0">No containers in storage match.</div>';
+    return;
+  }
+  const code = (id) => {
+    const l = (state.db.shippingLines || []).find((x) => x.id === id);
+    return l ? l.code || l.name : "";
+  };
+  const age = (d) => {
+    const n = Math.floor((Date.now() - new Date(d).getTime()) / 864e5);
+    return isNaN(n) ? "" : n + " d in yard";
+  };
+  list.innerHTML = items.map((i) => '<div class="activity-row" style="cursor:pointer;gap:10px" onclick="dispatchUseStorageContainer(\''.concat(esc(i.container), '\')"><div style="flex:1;min-width:0"><div class="mono" style="color:var(--gold);font-weight:600">').concat(esc(i.container), '</div><div style="font-size:10.5px;color:var(--text-3)">').concat(esc(i.ctype || ""), " ").concat(code(i.line) ? "\xB7 " + esc(code(i.line)) : "", " ").concat(i.vessel ? "\xB7 " + esc(i.vessel) : "", " \xB7 ").concat(i.eirNumber ? "EIR " + esc(i.eirNumber) : "awaiting survey", " \xB7 ").concat(esc(age(i.date)), '</div></div><span style="font-size:11px;color:var(--text-2)">Use \u2192</span></div>')).join("");
+}
+function dispatchUseStorageContainer(c) {
+  closeModal();
+  const el = document.getElementById("d_container");
+  if (!el) return;
+  el.value = c;
+  delete el.dataset.eirFor;
+  try {
+    markContainerValidity(el);
+  } catch (e) {
+  }
+  dispatchPrefillFromEir();
+}
+let _dlT = null;
+document.addEventListener("input", (ev) => {
+  const el = ev.target;
+  if (!el || el.id !== "d_container") return;
+  clearTimeout(_dlT);
+  const q = el.value.trim();
+  _dlT = setTimeout(async () => {
+    if (q.length >= 3 && window.ICR && ICR.enabled && navigator.onLine) {
+      try {
+        const r = await ICR.yard({ q, limit: 12 }), dl = document.getElementById("containerHistory");
+        if (dl && el.value.trim() === q) {
+          const have = new Set([...dl.options].map((o) => o.value));
+          r.items.forEach((i) => {
+            if (!have.has(i.container)) dl.insertAdjacentHTML("beforeend", '<option value="'.concat(esc(i.container), '">In storage').concat(i.eirNumber ? " \xB7 EIR " + esc(i.eirNumber) : "", "</option>"));
+          });
+        }
+      } catch (e) {
+      }
+    }
+    if (el.value.trim().length >= 11) dispatchPrefillFromEir();
+  }, 300);
+}, true);
+const _outIcBusy = /* @__PURE__ */ new Set();
+async function ensureOutwardInterchange(t) {
+  if (!t || !isOutwardWorkType(t.workType) || !t.container) return { skipped: true };
+  const id = gxOutwardIcId(t.id);
+  if (!id || _outIcBusy.has(id)) return { skipped: true };
+  _outIcBusy.add(id);
+  const cont = String(t.container).trim().toUpperCase();
+  try {
+    if (gxOutIcIds().has(id)) return { exists: true };
+    if (navigator.onLine) {
+      const { data } = await supabase.from("interchange").select("id").eq("id", id).maybeSingle();
+      if (data) return { exists: true };
+    }
+    const date = t.dateOut || (/* @__PURE__ */ new Date()).toISOString();
+    if (findDuplicateInterchange(cont, "Gate-Out", date)) return { exists: true, manual: true };
+    const photos = (t.containerImages || []).slice(0, GX_MAX_PHOTOS);
+    const inw = await gxInwardEirFor(cont);
+    const line = t.shippingLine || inw && inw.line || "";
+    const outStatus = outwardTypeLabel(t.outwardType);
+    const eirNumber = sanitize(t.eirNumber || "") || await nextEirNumber("Gate-Out", line);
+    const rec = {
+      id,
+      container: cont,
+      type: "Gate-Out",
+      ctype: t.ctype || inw && inw.ctype || "",
+      line,
+      condition: outStatus || "Good",
+      truck: t.truckId || "",
+      driver: t.driverId || "",
+      truckRegText: "",
+      driverNameText: "",
+      driverIdNumber: (() => {
+        const d = (state.db.drivers || []).find((x) => x.id === t.driverId);
+        return d ? sanitize(d.idNo || d.id_no || "") : "";
+      })(),
+      transporter: sanitize(t.custom && t.custom.transporter || ""),
+      trailerNo: sanitize(t.custom && t.custom.trailer_no || ""),
+      // dispatch-form fields feed the interchange's own columns
+      eirNumber,
+      blNumber: inw && inw.blNumber || "",
+      guaranteeNo: inw && inw.guaranteeNo || "",
+      clerkName: state.profile && state.profile.name || "",
+      vessel: t.vessel || inw && inw.vessel || "",
+      voyage: t.voyage || inw && inw.voyage || "",
+      deliveringParty: inw && inw.deliveringParty || "",
+      receivingParty: t.receivingParty || "",
+      releaseOrderNo: t.releaseOrderNo || "",
+      isoCode: inw && inw.isoCode || "",
+      grossWeight: inw && inw.grossWeight || "",
+      manufactureDate: inw && inw.manufactureDate || "",
+      cargoStatus: inw && inw.cargoStatus || "",
+      repairs: [],
+      repairTotal: 0,
+      notes: "Auto-issued when outward dispatch ".concat(t.ref || String(t.id).slice(0, 8), " (").concat(t.origin || "\u2014", " \u2192 ").concat(t.dest || "\u2014", ") was completed.").concat(outStatus ? " Status: " + outStatus + "." : "").concat(inw ? " Inward EIR " + inw.eirNumber + (inw.condition ? " (" + inw.condition + ")" : "") + "." : "").concat(t.notes ? " " + t.notes : ""),
+      date,
+      status: "pending",
+      img: photos[0] || "",
+      photos,
+      _dirty: true
+    };
+    const saved = await persistNewInterchange(rec);
+    if (!saved.ok) return { error: saved.message };
+    addAudit(state.profile.username, "Outward Interchange Auto-Issued", "".concat(cont, " \xB7 ").concat(eirNumber));
+    try {
+      buildBadges();
+    } catch (e) {
+    }
+    return { created: rec };
+  } catch (e) {
+    console.error("Auto outward interchange failed:", e && e.message, e);
+    return { error: e && e.message || "unknown error" };
+  } finally {
+    _outIcBusy.delete(id);
+  }
+}
+function gxReportOutwardIc(r, cont) {
+  if (!r) return;
+  if (r.created) {
+    toast("Outward interchange issued \u2014 ".concat(r.created.eirNumber), "success", 5e3);
+    try {
+      if (window.GargoDocs) GargoDocs.offerOutward(r.created);
+    } catch (e) {
+    }
+    try {
+      if (state.currentSection === "interchange") renderInterchange(_icFilter || "all");
+    } catch (e) {
+    }
+  } else if (r.error) {
+    toast("Dispatch saved, but the outward interchange for ".concat(cont, " could not be created (").concat(r.error, "). Create it from Interchange \u2192 New."), "warning", 9e3);
+  }
 }
 async function applyTripStatus(t, status, actorLabel) {
   if (!canUpdateTripStatus(t)) return { ok: false, reason: "permission" };
@@ -251,6 +532,7 @@ async function applyTripStatus(t, status, actorLabel) {
       toast("Trip completed, but couldn't auto-release depot storage \u2014 release it manually from DepOps (".concat(e && e.message || "error", ")"), "warning", 6e3);
     }
   }
+  if (status === "completed" && isOutwardWorkType(t.workType)) gxReportOutwardIc(await ensureOutwardInterchange(t), t.container);
   return { ok: true, old, status };
 }
 async function quickSetTripStatus(id, status) {
@@ -467,13 +749,15 @@ function renderAwaitingDispatch() {
   el.innerHTML = rows.map((t) => '\n    <div class="dispatch-queue-item" style="cursor:default">\n      <div class="dqi-ref">'.concat((t.container || "").slice(-7), '</div>\n      <div class="dqi-route">\n        <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(t.origin, " \u2192 ").concat(t.dest, '</div>\n        <div style="font-size:10px;color:var(--text-3)">').concat(t.bookingId ? "From public booking" : "Needs truck & driver", " \xB7 ").concat(t.workType, '</div>\n      </div>\n      <button class="modal-btn primary" onclick="loadTripIntoDispatchForm(\'').concat(t.id, "')\">Complete Dispatch \u2192</button>\n    </div>\n  ")).join("") || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">\u2705</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
 }
 function toggleDispatchOutwardType() {
-  const workType = document.getElementById("d_worktype").value;
-  const row = document.getElementById("d_outwardtype_row");
-  if (!row) return;
-  row.style.display = isOutwardWorkType(workType) ? "block" : "none";
-  if (!isOutwardWorkType(workType)) {
-    const sel = document.getElementById("d_outwardtype");
-    if (sel) sel.value = "";
+  const wt = document.getElementById("d_worktype");
+  const hint = document.getElementById("d_outwardtype_hint");
+  if (hint && wt) hint.textContent = isOutwardWorkType(wt.value) ? "(required for Depot \u2192 Port)" : "(optional)";
+  if (window.RepatReserve && RepatReserve.syncDispatchForm) {
+    try {
+      RepatReserve.syncDispatchForm();
+    } catch (e) {
+      console.warn("Repat form sync failed", e);
+    }
   }
 }
 function loadTripIntoDispatchForm(tripId) {
@@ -508,7 +792,15 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById("d_voyage").value = t.voyage || "";
   const dateOutEl = document.getElementById("d_dateout");
   if (dateOutEl) dateOutEl.value = "";
+  if (window.GargoForms) {
+    try {
+      GargoForms.decorate("dispatch");
+      GargoForms.fill("dispatch", t.custom);
+    } catch (e) {
+    }
+  }
   renderContainerImgGrid();
+  dispatchPrefillFromEir(true);
   const banner = document.getElementById("dispatchEditBanner");
   if (banner) banner.style.display = "flex";
   const btn = document.getElementById("dispatchSubmitBtn");
@@ -525,7 +817,22 @@ function cancelDispatchEdit() {
   });
   const outwardTypeSel = document.getElementById("d_outwardtype");
   if (outwardTypeSel) outwardTypeSel.value = "";
+  {
+    const inf = document.getElementById("d_eir_info"), dc = document.getElementById("d_container");
+    if (inf) {
+      inf.style.display = "none";
+      inf.innerHTML = "";
+    }
+    if (dc) delete dc.dataset.eirFor;
+    const ie = document.getElementById("d_ineir"), iv = document.getElementById("d_ineir_view");
+    if (ie) {
+      ie.value = "";
+      delete ie.dataset.icId;
+    }
+    if (iv) iv.style.display = "none";
+  }
   toggleDispatchOutwardType();
+  if (window.GargoForms) GargoForms.clearForm("dispatch");
   populateDispatchSelects();
   const banner = document.getElementById("dispatchEditBanner");
   if (banner) banner.style.display = "none";
@@ -550,6 +857,14 @@ async function createDispatch() {
     toast("Container number: ".concat(contIssue), "error");
     return;
   }
+  if (window.GargoForms) {
+    const formErr = GargoForms.validate("dispatch");
+    if (formErr) {
+      toast(formErr, "error");
+      return;
+    }
+  }
+  const custom = window.GargoForms ? GargoForms.collect("dispatch") : {};
   const dupTrip = findLiveTripByContainer(cont, editingId || void 0);
   if (dupTrip) {
     toast("".concat(cont, " is already on an active trip (").concat(dupTrip.origin, " \u2192 ").concat(dupTrip.dest, ", status: ").concat(dupTrip.status.replace("_", " "), "). Complete or resolve it before re-dispatching this container."), "error");
@@ -581,9 +896,13 @@ async function createDispatch() {
   const dateOut = dateOutInput ? new Date(dateOutInput).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
   const releaseFile = _dispatchReleaseFile;
   const outwardTypeSel = document.getElementById("d_outwardtype");
-  const outwardType = isOutwardWorkType(workType) ? outwardTypeSel ? outwardTypeSel.value : "" : null;
+  const outwardType = outwardTypeSel && outwardTypeSel.value || null;
   if (isOutwardWorkType(workType) && !OUTWARD_TYPES.includes(outwardType)) {
-    toast("Select an outward type \u2014 Repatriation to Port, Shippers/Export, or Sale units", "error");
+    toast("Select a status \u2014 Repat, Shipper or Sale Unit", "error");
+    return;
+  }
+  if (outwardType && !isOutwardWorkType(workType)) {
+    toast("An outward status (" + outwardTypeLabel(outwardType) + ") is selected but the work type is " + workType + ", so no outward interchange would be issued. Change the work type to Depot \u2192 Port, or clear the status.", "error", 8e3);
     return;
   }
   let newTripId = null;
@@ -607,7 +926,7 @@ async function createDispatch() {
         return;
       }
     }
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, custom: Object.assign({}, t.custom, custom) });
     t._dirty = true;
     const tk = state.db.trucks.find((tr) => tr.id === truck);
     const dv = state.db.drivers.find((d) => d.id === driver);
@@ -657,6 +976,7 @@ async function createDispatch() {
       vessel,
       voyage,
       dateOut,
+      custom,
       _dirty: true
     };
     state.db.trips.push(trip);
@@ -683,6 +1003,10 @@ async function createDispatch() {
       toast("Dispatch saved, but release order upload failed: ".concat(e.message || e), "warning");
     }
   }
+  if (newTripId) {
+    const savedTrip = state.db.trips.find((x) => x.id === newTripId);
+    if (savedTrip && isOutwardWorkType(savedTrip.workType)) gxReportOutwardIc(await ensureOutwardInterchange(savedTrip), cont);
+  }
   clearContainerImgs();
   clearDispatchReleaseFile();
   ["d_truck", "d_driver", "d_container", "d_origin", "d_dest", "d_distance", "d_ref", "d_notes", "d_eir", "d_receiving", "d_release_no", "d_vessel", "d_voyage", "d_dateout"].forEach((id) => {
@@ -691,7 +1015,22 @@ async function createDispatch() {
   });
   const outwardTypeResetSel = document.getElementById("d_outwardtype");
   if (outwardTypeResetSel) outwardTypeResetSel.value = "";
+  {
+    const inf = document.getElementById("d_eir_info"), dc = document.getElementById("d_container");
+    if (inf) {
+      inf.style.display = "none";
+      inf.innerHTML = "";
+    }
+    if (dc) delete dc.dataset.eirFor;
+    const ie = document.getElementById("d_ineir"), iv = document.getElementById("d_ineir_view");
+    if (ie) {
+      ie.value = "";
+      delete ie.dataset.icId;
+    }
+    if (iv) iv.style.display = "none";
+  }
   toggleDispatchOutwardType();
+  if (window.GargoForms) GargoForms.clearForm("dispatch");
   renderDispatch();
   refreshAwaitingDispatchUI();
 }
@@ -723,22 +1062,27 @@ function switchDispatchTab(tab, btn) {
 function previewContainerImgs(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
-  files.forEach((file) => {
-    if (!file.type.startsWith("image/")) {
-      toast("".concat(file.name, " is not an image \u2014 skipped"), "error");
+  const room = GX_MAX_DISPATCH_PHOTOS - _dispatchContainerImages.length;
+  if (room <= 0) {
+    toast("Maximum ".concat(GX_MAX_DISPATCH_PHOTOS, " photos \u2014 remove one to add another"), "error");
+    e.target.value = "";
+    return;
+  }
+  files.slice(0, room).forEach((file) => {
+    const problem = gxPhotoProblem(file);
+    if (problem) {
+      toast("".concat(file.name, " skipped \u2014 ").concat(problem), "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast("".concat(file.name, " is too large \u2014 max 2MB. Skipped."), "error");
-      return;
-    }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = (ev) => {
+      if (_dispatchContainerImages.length >= GX_MAX_DISPATCH_PHOTOS) return;
       _dispatchContainerImages.push(ev.target.result);
       renderContainerImgGrid();
     };
     reader.readAsDataURL(file);
   });
+  if (files.length > room) toast("Only ".concat(room, " more photo").concat(room === 1 ? "" : "s", " could be added (max ").concat(GX_MAX_DISPATCH_PHOTOS, ")"), "warning");
   e.target.value = "";
 }
 function renderContainerImgGrid() {
@@ -859,7 +1203,9 @@ async function processBulkDispatch() {
     "export": "Shippers/Export",
     "shippers": "Shippers/Export",
     "saleunits": "Sale units",
-    "sale": "Sale units"
+    "sale": "Sale units",
+    "repat": "Repatriation to Port",
+    "shipper": "Shippers/Export"
   };
   const btn = document.getElementById("bulkDispatchSubmitBtn");
   const btnOriginalText = btn ? btn.textContent : "";

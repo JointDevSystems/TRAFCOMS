@@ -219,7 +219,7 @@ function applyRoleUI() {
   });
  
   const dashBtn=document.querySelector('.nav-item[data-section="dashboard"]');
-  if (dashBtn) dashBtn.style.display='none';
+  if (dashBtn) dashBtn.style.display = sidebarAllowed.includes('dashboard') ? '' : 'none';   // shown only when an admin ticked it
 
   const railAllowed = allowedAdminRailSections();
   ['invoicing','allocation','workanalysis','reports','tripreports','livetracking','usermgmt','settings'].forEach(sec=>{

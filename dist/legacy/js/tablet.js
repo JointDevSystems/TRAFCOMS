@@ -27,6 +27,12 @@
   } catch (e) {
     canAsync = false;
   }
+  if (inLegacy && !syntaxOld && !/[?&]legacy=1/.test(location.search)) {
+    try {
+      location.replace("../" + location.search + location.hash);
+    } catch (e) {
+    }
+  }
   if (syntaxOld && !inLegacy) {
     d.className += " gx-legacy";
     window.addEventListener("load", function() {
@@ -63,27 +69,71 @@
   function $(id) {
     return document.getElementById(id);
   }
+  var home = null, homeNext = null;
+  function vvh() {
+    var h = window.visualViewport && window.visualViewport.height || window.innerHeight || 600;
+    d.style.setProperty("--gx-vvh", Math.round(h) + "px");
+  }
+  vvh();
+  window.addEventListener("resize", vvh);
+  window.addEventListener("orientationchange", function() {
+    setTimeout(vvh, 250);
+  });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", vvh);
+  function dock() {
+    var w = document.querySelector(".search-wrap");
+    if (w && home && w.parentNode !== home) home.insertBefore(w, homeNext && homeNext.parentNode === home ? homeNext : null);
+  }
   function closeSearch() {
     document.body.className = document.body.className.replace(/\s*gx-search-open/g, "");
     var p = $("searchResults");
     if (p) p.style.display = "none";
     var g = $("globalSearch");
     if (g) g.blur();
+    dock();
   }
   function openSearch() {
-    var g = $("globalSearch");
-    if (!g) return;
+    var g = $("globalSearch"), w = document.querySelector(".search-wrap");
+    if (!g || !w) return;
+    if (w.parentNode !== document.body) {
+      home = w.parentNode;
+      homeNext = w.nextSibling;
+      document.body.appendChild(w);
+    }
     if (document.body.className.indexOf("gx-search-open") < 0) document.body.className += " gx-search-open";
     var j = $("gxJump");
     if (j) j.style.display = $("nxJump") ? "" : "none";
-    setTimeout(function() {
-      g.focus();
-      if (g.value && window.handleSearch) window.handleSearch(g.value);
-    }, 60);
+    vvh();
+    g.focus();
+    if (g.value && window.handleSearch) window.handleSearch(g.value);
   }
   document.addEventListener("DOMContentLoaded", function() {
     var wrap = document.querySelector(".search-wrap"), g = $("globalSearch"), anchor = $("themeBtn");
-    if (!wrap || !g || !anchor || $("gxSearchBtn")) return;
+    if (!wrap || !g) return;
+    var t;
+    g.addEventListener("input", function() {
+      clearTimeout(t);
+      t = setTimeout(function() {
+        if (window.handleSearch) window.handleSearch(g.value);
+      }, 200);
+    });
+    g.setAttribute("autocomplete", "off");
+    g.setAttribute("autocorrect", "off");
+    g.setAttribute("autocapitalize", "off");
+    g.setAttribute("spellcheck", "false");
+    g.setAttribute("enterkeyhint", "search");
+    g.setAttribute("inputmode", "search");
+    var res = $("searchResults");
+    if (res) res.addEventListener("click", function() {
+      setTimeout(closeSearch, 0);
+    });
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Escape") closeSearch();
+    });
+    window.addEventListener("resize", function() {
+      if (window.innerWidth > 900) closeSearch();
+    });
+    if (!anchor || $("gxSearchBtn")) return;
     var btn = document.createElement("button");
     btn.id = "gxSearchBtn";
     btn.type = "button";
@@ -107,23 +157,6 @@
       if (n) n.click();
     };
     wrap.appendChild(jump);
-    var t;
-    g.addEventListener("input", function() {
-      clearTimeout(t);
-      t = setTimeout(function() {
-        if (window.handleSearch && document.body.className.indexOf("gx-search-open") > -1) window.handleSearch(g.value);
-      }, 250);
-    });
-    var res = $("searchResults");
-    if (res) res.addEventListener("click", function() {
-      setTimeout(closeSearch, 0);
-    });
-    document.addEventListener("keydown", function(e) {
-      if (e.key === "Escape") closeSearch();
-    });
-    window.addEventListener("resize", function() {
-      if (window.innerWidth > 900) closeSearch();
-    });
   });
   var installEvt = null;
   function standalone() {

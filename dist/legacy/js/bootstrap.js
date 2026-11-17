@@ -44,8 +44,10 @@ async function runLoader() {
     status.textContent = LOAD_STEPS[step++];
     fill.style.width = Math.round(step / (LOAD_STEPS.length + 1) * 100) + "%";
   }, 200);
+  const sess = restoreSession();
   await initDB();
-  await restoreSession();
+  await sess;
+  if (!state.currentUser && state.offlineData) await restoreSession();
   clearInterval(tick);
   fill.style.width = "100%";
   status.textContent = state.offlineData ? "Offline \u2014 using saved data." : "System ready.";
@@ -161,3 +163,37 @@ if ("serviceWorker" in navigator) {
 }
 initInstallApp();
 window._repairItems = {};
+function paintSyncStatus(mode) {
+  const el = document.getElementById("syncStatus"), lb = document.getElementById("syncLabel");
+  if (!el || !lb) return;
+  let unsaved = 0;
+  try {
+    if (window.GargoOffline) unsaved = GargoOffline.unsavedCount();
+  } catch (e) {
+  }
+  const m = mode || (!navigator.onLine ? "offline" : unsaved > 0 ? "unsaved" : "synced");
+  el.classList.remove("synced", "syncing", "sync-error");
+  el.classList.add(m === "syncing" ? "syncing" : m === "synced" ? "synced" : "sync-error");
+  lb.textContent = m === "syncing" ? "Syncing\u2026" : m === "offline" ? "Offline" : m === "unsaved" ? unsaved + " unsaved" : "Synced";
+}
+async function handleSyncStatusClick() {
+  if (!navigator.onLine) {
+    toast("You are offline. Changes are kept on this device and sync when the signal returns.", "warning", 4e3);
+    paintSyncStatus();
+    return;
+  }
+  paintSyncStatus("syncing");
+  try {
+    await refreshFromServer();
+  } catch (e) {
+    console.warn("Manual refresh failed:", e);
+    toast("Could not refresh. Try again.", "error");
+  }
+  paintSyncStatus();
+}
+window.addEventListener("online", () => setTimeout(paintSyncStatus, 500));
+window.addEventListener("offline", () => paintSyncStatus());
+setInterval(() => {
+  if (!document.hidden) paintSyncStatus();
+}, 5e3);
+document.addEventListener("DOMContentLoaded", () => paintSyncStatus());

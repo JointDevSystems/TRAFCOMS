@@ -421,10 +421,16 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     if (CONDITION_STATUSES.indexOf(payload.conditionStatus || "food_grade") === -1) {
       throw new Error("condition_status must be one of: " + CONDITION_STATUSES.join(", "));
     }
-    const { data: sessionData } = await client().auth.getSession();
-    const userId = sessionData && sessionData.session ? sessionData.session.user.id : null;
+    let { data: sessionData } = await client().auth.getSession();
+    let session = sessionData && sessionData.session;
+    if (navigator.onLine !== false && (!session || session.expires_at && session.expires_at * 1e3 - Date.now() < 6e4)) {
+      const refreshed = await client().auth.refreshSession().catch(() => null);
+      session = refreshed && refreshed.data && refreshed.data.session;
+      if (!session) throw new Error("Your login has expired, so the survey could not be saved. Sign out and sign in again, then save it again.");
+    }
+    const userId = session ? session.user.id : null;
     const isHeavilyDamaged = payload.conditionStatus === "heavily_damaged";
-    const { data, error } = await client().from("depot_surveys").insert({
+    const { data, error } = await client().from("depot_surveys").insert(Object.assign(__spreadProps(__spreadValues({
       booking_id: payload.bookingId || null,
       trip_id: payload.tripId || null,
       container: payload.container || null,
@@ -436,7 +442,9 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       eir_number: payload.eirNumber || null,
       iso_code: payload.isoCode || null,
       mgwt: payload.mgwt || null,
-      tare_weight: payload.tareWeight || null,
+      tare_weight: payload.tareWeight || null
+    }, payload.cscApproval ? { csc_approval: payload.cscApproval } : {}), {
+      // column added by supabase_outward_eir_migration.sql
       vessel: payload.vessel || null,
       voyage: payload.voyage || null,
       source_interchange_id: payload.sourceInterchangeId || null,
@@ -451,6 +459,11 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       condition_status: payload.conditionStatus || "food_grade",
       remarks: payload.remarks || null,
       photos: payload.photos || [],
+      // survey-form fields that used to live only on the interchange row (columns added by supabase_form_designer_links_migration.sql)
+      date_in: payload.dateIn || null,
+      manufacture_date: payload.manufactureDate || null,
+      cargo_status: payload.cargoStatus || null,
+      gross_weight: payload.gross === "" || payload.gross == null ? null : Number(payload.gross),
       tariff_items: payload.tariffItems && payload.tariffItems.length ? payload.tariffItems : null,
       tariff_category: payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].category || null,
       tariff_code: payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].code || null,
@@ -460,7 +473,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       tariff_material: payload.tariffItems && payload.tariffItems[0] && payload.tariffItems[0].material || null,
       escalated: isHeavilyDamaged,
       surveyed_by: userId
-    }).select("*").single();
+    }), window.GargoForms && window.GargoForms.surveyOut ? window.GargoForms.surveyOut(payload.custom) : {})).select("*").single();
     if (error) throw new Error(error.message || "Could not save survey");
     if (payload.bookingId) {
       const { error: updErr } = await client().from("public_bookings").update({ storage_status: isHeavilyDamaged ? "escalated" : "surveyed" }).eq("id", payload.bookingId);

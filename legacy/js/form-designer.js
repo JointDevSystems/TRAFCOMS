@@ -1,0 +1,712 @@
+"use strict";
+var __defProp = Object.defineProperty;
+var __defProps = Object.defineProperties;
+var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
+var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+(function() {
+  const G = window.GargoForms = window.GargoForms || {};
+  const $ = (id) => document.getElementById(id);
+  const LS_DEFS = "gargo-cf-defs";
+  const TABLES = { inward: "interchange", survey: "depot_surveys", dispatch: "trips" };
+  const FORMS = ["inward", "survey", "dispatch"];
+  const TYPES = [["text", "Short text"], ["longtext", "Long text"], ["number", "Number"], ["date", "Date"], ["bool", "Yes / No"], ["select", "Dropdown list"]];
+  const BUILTIN = {
+    inward: [
+      ["iw_container", "Container No.", { locked: 1 }],
+      ["iw_line", "Shipping Line / Agent", { locked: 1 }],
+      ["iw_size", "Size", { locked: 1 }],
+      ["iw_type", "Type", { locked: 1 }],
+      ["iw_status", "Container Status"],
+      ["iw_consignee", "Consignee / C&F"],
+      ["iw_driver", "Driver Name", { locked: 1 }],
+      ["iw_driver_id", "Driver ID / Driving Licence No.", { cfg: "gate.requireDriverId", def: true }],
+      ["iw_truck", "Lorry / Truck No.", { cfg: "gate.requireTruck", def: true }],
+      ["iw_trailer", "Trailer No.", { cfg: "gate.requireTrailer", def: false }]
+    ],
+    survey: [
+      ["sv_container", "Container No.", { locked: 1 }],
+      ["sv_ctype", "Type / Size", { locked: 1 }],
+      ["sv_condition", "Overall Condition", { locked: 1 }],
+      ["sv_datein", "Date IN"],
+      ["sv_line", "Shipping Line"],
+      ["sv_consignee", "Consignee / C&F"],
+      ["sv_bl", "Guarantee / B/L Number"],
+      ["sv_vessel", "Ex Vessel"],
+      ["sv_voyage", "Voyage"],
+      ["sv_transporter", "Transporter"],
+      ["sv_iso", "ISO Code", { cfg: "survey.requireIso", def: false }],
+      ["sv_mgwt", "Max Gross Weight (kg)"],
+      ["sv_tare", "Tare Weight (kg)"],
+      ["sv_csc", "CSC Approval"],
+      ["sv_gross", "Gross Weight (kg)", { cfg: "survey.requireWeight", def: false }],
+      ["sv_dom", "Date of Manufacture", { cfg: "survey.requireManufactureDate", def: false }],
+      ["sv_cargo", "Cargo Status", { cfg: "survey.requireCargoStatus", def: false }],
+      ["sv_gatepass", "Gate Pass No."],
+      ["sv_truck", "Vehicle / Truck No."],
+      ["sv_trailer", "Trailer Number"],
+      ["sv_driver", "Driver Name"],
+      ["sv_driver_id", "Driver ID Number"],
+      ["sv_clerk", "Surveyed By"],
+      ["sv_seal", "Seal Number"],
+      ["sv_remarks", "Remarks / Notes"]
+    ],
+    dispatch: [
+      ["d_container", "Container No.", { locked: 1 }],
+      ["d_size", "Size", { locked: 1 }],
+      ["d_type", "Type", { locked: 1 }],
+      ["d_eir", "EIR No."],
+      ["d_dateout", "Date Out"],
+      ["d_receiving", "Receiving Party"],
+      ["d_release_no", "Release Order No."],
+      ["d_vessel", "Vessel"],
+      ["d_voyage", "Voyage"],
+      ["d_truck", "Truck", { locked: 1 }],
+      ["d_driver", "Driver", { locked: 1 }],
+      ["d_worktype", "Work Type", { locked: 1 }],
+      ["d_line", "Shipping Line"],
+      ["d_outwardtype", "Status (Repat / Shipper / Sale Unit)", { locked: 1 }],
+      ["d_origin", "Origin"],
+      ["d_dest", "Destination"],
+      ["d_distance", "Distance (km)"],
+      ["d_priority", "Priority"],
+      ["d_ref", "Client Reference"],
+      ["d_notes", "Notes"]
+    ]
+  };
+  const RULES = [
+    { key: "survey.minPhotos", label: "Minimum survey photos", type: "number", def: 0, max: 20, hint: "0 = photos optional" },
+    { key: "survey.requireGuarantee", label: "Guarantee form must be uploaded before a survey can be saved", type: "bool", def: false },
+    { key: "survey.labourRate.USD", label: "Repair labour rate per hour (USD)", type: "number", def: 0, max: 1e5, step: "0.01", hint: "Tariff hours x this rate = labour, for surveys priced in USD. 0 = not set, so hours are not priced." },
+    { key: "survey.labourRate.KES", label: "Repair labour rate per hour (KES, used for PIL)", type: "number", def: 300, max: 1e5, step: "0.01", hint: "Surveys priced in KES. The app has always used 300." },
+    { key: "ops.checkDigit", label: "Container number check-digit", type: "select", def: "block", choices: [["block", "Block invalid numbers"], ["warn", "Warn only"], ["off", "Off"]] }
+  ];
+  G.defs = [];
+  G.backend = { ok: null, reason: "" };
+  try {
+    G.defs = JSON.parse(localStorage.getItem(LS_DEFS) || "[]") || [];
+  } catch (e) {
+    G.defs = [];
+  }
+  const custom = (form) => G.defs.filter((d) => d.form_key === form && d.kind === "field").sort((a, b) => a.sort_order - b.sort_order || String(a.created_at).localeCompare(String(b.created_at)));
+  const overrideOf = (form, id) => G.defs.find((d) => d.form_key === form && d.kind === "override" && d.field_key === id);
+  const ruleRow = (key) => G.defs.find((d) => d.kind === "rule" && d.field_key === key);
+  const live = (form) => custom(form).filter((d) => d.active && d.column_status === "ready");
+  function persist() {
+    try {
+      localStorage.setItem(LS_DEFS, JSON.stringify(G.defs));
+    } catch (e) {
+    }
+  }
+  G.columnsFor = function(table) {
+    return G.defs.filter((d) => d.kind === "field" && d.column_status === "ready" && d.column_name && TABLES[d.form_key] === table).map((d) => d.column_name);
+  };
+  G.load = async function(force) {
+    if (G._loading && !force) return G._loading;
+    if (!force && G._at && Date.now() - G._at < 6e4) return G.defs;
+    G._loading = (async () => {
+      try {
+        const { data, error } = await supabase.from("form_fields").select("*").order("sort_order", { ascending: true });
+        if (error) {
+          const missing = /does not exist|schema cache|relation|404/i.test(error.message || "");
+          G.backend = { ok: false, reason: missing ? "missing" : error.message || "error" };
+        } else {
+          G.defs = data || [];
+          G.backend = { ok: true, reason: "" };
+          G._at = Date.now();
+          persist();
+        }
+      } catch (e) {
+        G.backend = { ok: false, reason: "offline" };
+      }
+      G._loading = null;
+      return G.defs;
+    })();
+    return G._loading;
+  };
+  G.cfg = function(k) {
+    const r = ruleRow(k);
+    if (r) {
+      const v = r.options && r.options.value;
+      return v === void 0 ? void 0 : v;
+    }
+    for (const form of Object.keys(BUILTIN)) {
+      const b = BUILTIN[form].find((x) => x[2] && x[2].cfg === k);
+      if (b) {
+        const o = overrideOf(form, b[0]);
+        if (o) return o.hidden ? false : !!o.required;
+      }
+    }
+    return void 0;
+  };
+  if (typeof window.cfgGet !== "function") window.cfgGet = (k) => G.cfg(k);
+  function fieldHtml(form, d) {
+    const id = "gf_".concat(form, "_").concat(d.field_key), ph = d.placeholder ? ' placeholder="'.concat(esc(d.placeholder), '"') : "";
+    let inp;
+    if (d.field_type === "longtext") inp = '<textarea id="'.concat(id, '" rows="3"').concat(ph, "></textarea>");
+    else if (d.field_type === "number") inp = '<input id="'.concat(id, '" type="number" step="any" inputmode="decimal"').concat(ph, ">");
+    else if (d.field_type === "date") inp = '<input id="'.concat(id, '" type="date">');
+    else if (d.field_type === "bool") inp = '<select id="'.concat(id, '"><option value="">\u2014</option><option value="yes">Yes</option><option value="no">No</option></select>');
+    else if (d.field_type === "select") inp = '<select id="'.concat(id, '"><option value="">\u2014</option>').concat((d.options || []).map((o) => '<option value="'.concat(esc(o), '">').concat(esc(o), "</option>")).join(""), "</select>");
+    else inp = '<input id="'.concat(id, '" type="text"').concat(ph, ">");
+    return '<div class="fg gf-field"><label>'.concat(esc(d.label || d.field_key)).concat(d.required ? ' <span class="gf-req">*</span>' : "", "</label>").concat(inp).concat(d.help_text ? '<div class="gf-help">'.concat(esc(d.help_text), "</div>") : "", "</div>");
+  }
+  function rootOf(form) {
+    return form === "inward" ? $("inwardTabSingle") : form === "dispatch" ? $("dispatchTabSingle") : $("modalBody");
+  }
+  G.decorate = function(form) {
+    const root = rootOf(form);
+    if (!root) return;
+    (BUILTIN[form] || []).forEach(([id, label0, opt]) => {
+      const el = root.querySelector("#" + id);
+      if (!el) return;
+      const wrap = el.closest(".fg");
+      if (!wrap) return;
+      const ov = overrideOf(form, id), lab = wrap.querySelector("label");
+      wrap.style.display = ov && ov.hidden && !(opt && opt.locked) ? "none" : "";
+      if (lab) {
+        if (!lab.dataset.gf0) lab.dataset.gf0 = lab.innerHTML;
+        if (ov && ov.label) lab.textContent = ov.label;
+        else lab.innerHTML = lab.dataset.gf0;
+        const req = ov ? ov.required : false;
+        if (req && !(opt && opt.locked) && !lab.querySelector(".gf-req")) lab.insertAdjacentHTML("beforeend", ' <span class="gf-req">*</span>');
+      }
+    });
+    const defs = live(form), boxId = "gfCustom_" + form;
+    let box = root.querySelector("#" + boxId);
+    const sig = JSON.stringify(defs.map((d) => [d.field_key, d.label, d.field_type, d.required, d.options, d.help_text, d.placeholder]));
+    if (!defs.length) {
+      if (box) box.remove();
+      return;
+    }
+    if (box && box.dataset.sig === sig) return;
+    const keep = {};
+    if (box) defs.forEach((d) => {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (e) keep[d.field_key] = e.value;
+    });
+    if (!box) {
+      box = document.createElement("div");
+      box.id = boxId;
+      box.className = "gf-custom";
+      const submit = root.querySelector(".submit-btn");
+      if (submit && submit.parentNode) submit.parentNode.insertBefore(box, submit);
+      else root.appendChild(box);
+    }
+    box.dataset.sig = sig;
+    box.innerHTML = '<div class="gf-custom-head">Additional details</div><div class="gf-grid">'.concat(defs.map((d) => fieldHtml(form, d)).join(""), "</div>");
+    defs.forEach((d) => {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (e && keep[d.field_key] !== void 0) e.value = keep[d.field_key];
+    });
+  };
+  G.collect = function(form) {
+    const out = {};
+    live(form).forEach((d) => {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (!e) return;
+      let v = String(e.value || "").trim();
+      if (d.field_type === "number") out[d.field_key] = v === "" ? null : Number(v);
+      else if (d.field_type === "bool") out[d.field_key] = v === "" ? null : v === "yes";
+      else out[d.field_key] = v === "" ? null : v;
+    });
+    return out;
+  };
+  G.validate = function(form) {
+    for (const d of live(form)) {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (!e) continue;
+      const v = String(e.value || "").trim();
+      if (d.required && v === "") return "".concat(d.label || d.field_key, " is required");
+      if (d.field_type === "number" && v !== "" && !isFinite(Number(v))) return "".concat(d.label || d.field_key, " must be a number");
+    }
+    const root = rootOf(form);
+    for (const [id, label0, opt] of BUILTIN[form] || []) {
+      if (opt && (opt.locked || opt.cfg)) continue;
+      const ov = overrideOf(form, id);
+      if (!ov || !ov.required || ov.hidden) continue;
+      const e = root && root.querySelector("#" + id);
+      if (e && String(e.value || "").trim() === "") return "".concat(ov.label || label0, " is required");
+    }
+    return "";
+  };
+  G.clearForm = function(form) {
+    live(form).forEach((d) => {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (e) e.value = "";
+    });
+  };
+  G.rowOut = function(table, cust) {
+    const row = {};
+    if (!cust) return row;
+    G.columnsFor(table).forEach((col) => {
+      const k = col.slice(3);
+      if (k in cust) row[col] = cust[k] === "" ? null : cust[k];
+    });
+    return row;
+  };
+  G.rowIn = function(table, r) {
+    const out = {};
+    if (!r) return out;
+    G.columnsFor(table).forEach((col) => {
+      if (r[col] !== void 0 && r[col] !== null) out[col.slice(3)] = r[col];
+    });
+    return out;
+  };
+  G.surveyOut = (cust) => G.rowOut("depot_surveys", cust);
+  G.tripOut = (cust) => G.rowOut("trips", cust);
+  G.tripIn = (r) => G.rowIn("trips", r);
+  G.icOut = (cust) => G.rowOut("interchange", cust);
+  G.icIn = (r) => G.rowIn("interchange", r);
+  const showVal = (d, v) => d.field_type === "bool" ? v ? "Yes" : "No" : String(v);
+  const labelOf = (d) => (d.label || d.field_key) + (d.active ? "" : " (archived)");
+  G.valuesFromCustom = function(form, cust) {
+    const out = [];
+    if (!cust) return out;
+    custom(form).forEach((d) => {
+      const v = cust[d.field_key];
+      if (v === void 0 || v === null || v === "") return;
+      out.push({ label: labelOf(d), value: showVal(d, v) });
+    });
+    return out;
+  };
+  G.valuesFromRow = function(form, row) {
+    const out = [];
+    if (!row) return out;
+    custom(form).forEach((d) => {
+      if (d.column_status !== "ready" || !d.column_name) return;
+      const v = row[d.column_name];
+      if (v === void 0 || v === null || v === "") return;
+      out.push({ label: labelOf(d), value: showVal(d, v) });
+    });
+    return out;
+  };
+  G.fill = function(form, cust) {
+    live(form).forEach((d) => {
+      const e = $("gf_".concat(form, "_").concat(d.field_key));
+      if (!e) return;
+      const v = cust ? cust[d.field_key] : void 0;
+      e.value = v === void 0 || v === null ? "" : d.field_type === "bool" ? v ? "yes" : "no" : String(v);
+    });
+  };
+  async function ensureColumn(row) {
+    const { data, error } = await supabase.rpc("gargo_ensure_field_column", { p_form: row.form_key, p_field_key: row.field_key, p_type: row.field_type });
+    const ok = !error && data && data.ok;
+    const patch = ok ? { column_name: data.column, column_status: "ready", column_error: null } : { column_status: "error", column_error: error && error.message || "The database refused the change" };
+    const up = await supabase.from("form_fields").update(__spreadProps(__spreadValues({}, patch), { updated_at: (/* @__PURE__ */ new Date()).toISOString() })).eq("id", row.id).select("*").single();
+    if (up.data) Object.assign(row, up.data);
+    else Object.assign(row, patch);
+    return { ok, message: ok ? "" : patch.column_error, created: ok && data.created };
+  }
+  G.ensureColumn = ensureColumn;
+  function afterSchemaChange() {
+    persist();
+    document.querySelectorAll(".gf-custom").forEach((b) => b.remove());
+    G.decorate("inward");
+    G.decorate("survey");
+    G.decorate("dispatch");
+  }
+  const D = { tab: "survey", editing: null, adding: false };
+  const css = "\n.gf-custom{margin:12px 0 4px;padding:12px;border:1px dashed var(--border-mid);border-radius:12px}\n.gf-custom-head{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}\n.gf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}\n.gf-req{color:var(--red)} .gf-help{font-size:11px;color:var(--text-3);margin-top:3px}\n.gf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}\n.gf-row{display:grid;grid-template-columns:minmax(0,1.6fr) auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}\n.gf-row input[type=text],.gf-row select{width:100%}\n.gf-chip{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--border)}\n.gf-chip.ready{color:var(--green);border-color:var(--green)} .gf-chip.error{color:var(--red);border-color:var(--red)} .gf-chip.pending{color:var(--amber);border-color:var(--amber)}\n.gf-sub{font-size:11px;color:var(--text-3)} .gf-h{font-size:12px;font-weight:600;margin:16px 0 6px;color:var(--gold)}\n.gf-box{border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px;background:var(--surface-2)}\n.gf-mini{padding:4px 9px;font-size:11px}\n@media (max-width:640px){.gf-row{grid-template-columns:1fr 1fr}.gf-row>:first-child{grid-column:1/-1}}";
+  if (!$("gfStyle")) {
+    const st = document.createElement("style");
+    st.id = "gfStyle";
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+  const slug = (s) => {
+    let k = String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    if (!/^[a-z]/.test(k)) k = "f_" + k;
+    return k.replace(/_+$/, "");
+  };
+  function backendBanner() {
+    if (G.backend.ok !== false) return "";
+    const missing = G.backend.reason === "missing";
+    return '<div class="ops-notice" style="margin-bottom:12px;border-color:var(--amber)"><span style="flex:1;min-width:0">'.concat(missing ? "<b>The form settings table is missing in the database.</b> Ask the developer to run the form designer migration, then press Re-check." : "<b>Could not reach the form settings</b> (".concat(esc(G.backend.reason), "). Changes cannot be saved until you are online."), '\n      <br><button class="action-btn gf-mini" style="margin-top:8px" onclick="GargoForms.recheck()">Re-check</button></span></div>');
+  }
+  function tabsHtml() {
+    const t = (k, l) => '<button class="filter-btn '.concat(D.tab === k ? "active" : "", '" onclick="GargoForms.tab(\'').concat(k, "')\">").concat(l, "</button>");
+    return '<div class="gf-tabs">'.concat(t("inward", "Inward form")).concat(t("survey", "Survey form")).concat(t("dispatch", "Dispatch form")).concat(t("rules", "Rules")).concat(t("db", "Database"), "</div>");
+  }
+  function builtinTable(form) {
+    return '<div class="gf-h">Built-in fields</div><div class="gf-sub" style="margin-bottom:6px">Rename a field, hide it, or make it required. Fields marked \u{1F512} are needed by the system.</div>' + BUILTIN[form].map(([id, label0, opt]) => {
+      opt = opt || {};
+      const ov = overrideOf(form, id) || {};
+      const hidden = !!ov.hidden, req = opt.cfg ? ov.required !== void 0 && ov.required !== null && G.defs.includes(ov) ? !!ov.required : !!opt.def : !!ov.required;
+      return '<div class="gf-row"><input type="text" value="'.concat(esc(ov.label || label0), '" onchange="GargoForms.setLabel(\'').concat(form, "','").concat(id, '\',this.value)" aria-label="Label for ').concat(esc(label0), '">\n          <label class="gf-sub" style="display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" ').concat(hidden ? "" : "checked", " ").concat(opt.locked ? "disabled" : "", " onchange=\"GargoForms.setFlag('").concat(form, "','").concat(id, "','hidden',!this.checked)\"> ").concat(opt.locked ? "\u{1F512} shown" : "Shown", '</label>\n          <label class="gf-sub" style="display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" ').concat(req || opt.locked ? "checked" : "", " ").concat(opt.locked ? "disabled" : "", " onchange=\"GargoForms.setFlag('").concat(form, "','").concat(id, "','required',this.checked)\"> Required</label></div>");
+    }).join("");
+  }
+  function customTable(form) {
+    const list = custom(form);
+    const rows = list.map((d, i) => '<div class="gf-row" style="'.concat(d.active ? "" : "opacity:.55", '">\n      <div><b>').concat(esc(d.label), '</b> <span class="gf-sub">\xB7 ').concat(esc((TYPES.find((t) => t[0] === d.field_type) || [0, d.field_type])[1])).concat(d.required ? " \xB7 required" : "").concat(d.active ? "" : " \xB7 archived", '</span><br>\n        <span class="gf-chip ').concat(esc(d.column_status), '">').concat(d.column_status === "ready" ? "database column ready" : d.column_status === "error" ? "database error" : "database pending", '</span>\n        <span class="gf-sub">').concat(esc(TABLES[form]), ".").concat(esc(d.column_name || "cf_" + d.field_key), "</span>\n        ").concat(d.column_error ? '<div class="gf-sub" style="color:var(--red)">'.concat(esc(d.column_error), "</div>") : "", '</div>\n      <div style="display:flex;gap:4px"><button class="action-btn ghost gf-mini" ').concat(i === 0 ? "disabled" : "", " onclick=\"GargoForms.move('").concat(d.id, '\',-1)" aria-label="Move up">\u25B2</button><button class="action-btn ghost gf-mini" ').concat(i === list.length - 1 ? "disabled" : "", " onclick=\"GargoForms.move('").concat(d.id, '\',1)" aria-label="Move down">\u25BC</button></div>\n      <div style="display:flex;gap:4px;flex-wrap:wrap">').concat(d.column_status !== "ready" ? '<button class="action-btn gf-mini" onclick="GargoForms.retry(\''.concat(d.id, "')\">Create column</button>") : "", '<button class="action-btn ghost gf-mini" onclick="GargoForms.edit(\'').concat(d.id, '\')">Edit</button><button class="action-btn ghost gf-mini" onclick="GargoForms.toggleActive(\'').concat(d.id, "')\">").concat(d.active ? "Archive" : "Restore", "</button></div></div>")).join("");
+    return '<div class="gf-h">Custom fields</div><div class="gf-sub" style="margin-bottom:6px">'.concat(form === "survey" ? "The <b>Currency</b> field below is a custom field: click Edit to change which currencies are offered (one per line). Values are saved with the survey and printed on the inspection report." : form === "inward" ? "Custom fields appear under \u201CAdditional details\u201D on the Gate-In form and are saved with the interchange record (shown in the container details)." : "Custom fields appear under \u201CAdditional details\u201D on the Dispatch form and are saved with each trip (shown in the trip details).", "</div>").concat(rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>', '\n      <div style="margin-top:10px"><button class="action-btn" onclick="GargoForms.startAdd()">+ Add a field</button></div>').concat(editorHtml(form));
+  }
+  function editorHtml(form) {
+    if (!D.adding && !D.editing) return "";
+    const ed = D.editing ? G.defs.find((d) => d.id === D.editing) : null;
+    const v = ed || { label: "", field_type: "text", required: false, options: [], placeholder: "", help_text: "" };
+    return '<div class="gf-box" id="gfEditor"><div class="gf-h" style="margin-top:0">'.concat(ed ? "Edit field" : "New field", '</div>\n      <div class="form-row-2"><div class="fg"><label>Label *</label><input id="gfe_label" type="text" value="').concat(esc(v.label), '" placeholder="e.g. Seal condition"></div>\n      <div class="fg"><label>Type</label><select id="gfe_type" ').concat(ed ? "disabled" : "", ' onchange="GargoForms.typeChanged()">').concat(TYPES.map((t) => '<option value="'.concat(t[0], '" ').concat(v.field_type === t[0] ? "selected" : "", ">").concat(t[1], "</option>")).join(""), "</select>").concat(ed ? '<div class="gf-help">The type is fixed once the database column exists.</div>' : "", '</div></div>\n      <div class="fg" id="gfe_opts_wrap" style="display:').concat(v.field_type === "select" ? "block" : "none", '"><label>Dropdown choices (one per line)</label><textarea id="gfe_opts" rows="4">').concat(esc((v.options || []).join("\n")), '</textarea></div>\n      <div class="form-row-2"><div class="fg"><label>Placeholder</label><input id="gfe_ph" type="text" value="').concat(esc(v.placeholder || ""), '"></div><div class="fg"><label>Help text</label><input id="gfe_help" type="text" value="').concat(esc(v.help_text || ""), '"></div></div>\n      <label class="gf-sub" style="display:flex;gap:6px;align-items:center;margin:6px 0 10px"><input type="checkbox" id="gfe_req" ').concat(v.required ? "checked" : "", '> Required on this form</label>\n      <div id="gfe_err" style="color:var(--red);font-size:12px;min-height:16px"></div>\n      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="action-btn ghost" onclick="GargoForms.cancelEdit()">Cancel</button><button class="action-btn" id="gfe_go" onclick="GargoForms.saveEditor(\'').concat(form, "')\">").concat(ed ? "Save changes" : "Add field and create database column", "</button></div></div>");
+  }
+  function rulesHtml() {
+    return '<div class="gf-h">Rules</div>' + RULES.map((r) => {
+      const cur = G.cfg(r.key);
+      const val = cur === void 0 ? r.def : cur;
+      let ctl;
+      if (r.type === "bool") ctl = '<input type="checkbox" '.concat(val ? "checked" : "", " onchange=\"GargoForms.setRule('").concat(r.key, "',this.checked)\">");
+      else if (r.type === "select") ctl = "<select onchange=\"GargoForms.setRule('".concat(r.key, "',this.value)\">").concat(r.choices.map((c) => '<option value="'.concat(c[0], '" ').concat(val === c[0] ? "selected" : "", ">").concat(c[1], "</option>")).join(""), "</select>");
+      else ctl = '<input type="number" min="0" max="'.concat(r.max || 20, '" step="').concat(r.step || 1, '" value="').concat(esc(val), '" style="width:110px" onchange="GargoForms.setRule(\'').concat(r.key, "',Number(this.value)||0)\">");
+      return '<div class="gf-row" style="grid-template-columns:minmax(0,1fr) auto"><div>'.concat(esc(r.label)).concat(r.hint ? '<div class="gf-sub">'.concat(esc(r.hint), "</div>") : "", "</div><div>").concat(ctl, "</div></div>");
+    }).join("");
+  }
+  function dbHtml() {
+    const all = G.defs.filter((d) => d.kind === "field");
+    const rows = all.map((d) => '<div class="gf-row" style="grid-template-columns:minmax(0,1fr) auto"><div>'.concat(esc(d.label), ' <span class="gf-sub">').concat(esc(TABLES[d.form_key]), ".").concat(esc(d.column_name || "cf_" + d.field_key), "</span>").concat(d.column_error ? '<div class="gf-sub" style="color:var(--red)">'.concat(esc(d.column_error), "</div>") : "", '</div><span class="gf-chip ').concat(esc(d.column_status), '">').concat(esc(d.column_status), "</span></div>")).join("");
+    return '<div class="gf-h">Database</div><div class="gf-sub" style="margin-bottom:8px">Each custom field is stored in its own column of the form\u2019s table (<b>interchange</b> for the inward form, <b>depot_surveys</b> for the survey, <b>trips</b> for dispatch). Columns are only ever added, never changed or removed, so archiving a field keeps its data.</div>\n      <button class="action-btn" id="gfVerifyBtn" onclick="GargoForms.verify()">Verify and repair all columns</button><div id="gfVerifyOut" class="gf-sub" style="margin-top:8px;min-height:18px"></div>'.concat(rows || '<div class="gf-sub" style="padding:8px 0">No custom fields yet.</div>');
+  }
+  function render() {
+    const body = $("modalBody");
+    if (!body) return;
+    let inner = backendBanner() + tabsHtml();
+    if (FORMS.indexOf(D.tab) > -1) inner += builtinTable(D.tab) + customTable(D.tab);
+    else if (D.tab === "rules") inner += rulesHtml();
+    else inner += dbHtml();
+    body.innerHTML = inner;
+  }
+  G.open = async function(tab) {
+    if (!isAdmin()) {
+      toast("Administrator access required", "error");
+      return;
+    }
+    D.tab = tab || "survey";
+    D.adding = false;
+    D.editing = null;
+    openModal("Form Designer", '<div class="empty-state"><div class="empty-state-label">Loading\u2026</div></div>');
+    await G.load(true);
+    render();
+  };
+  G.tab = (t) => {
+    D.tab = t;
+    D.adding = false;
+    D.editing = null;
+    render();
+  };
+  G.recheck = async () => {
+    await G.load(true);
+    render();
+    if (G.backend.ok) toast("Form settings reachable", "success");
+  };
+  G.startAdd = () => {
+    D.adding = true;
+    D.editing = null;
+    render();
+    const e = $("gfEditor");
+    if (e) e.scrollIntoView({ block: "center" });
+  };
+  G.edit = (id) => {
+    D.editing = id;
+    D.adding = false;
+    render();
+    const e = $("gfEditor");
+    if (e) e.scrollIntoView({ block: "center" });
+  };
+  G.cancelEdit = () => {
+    D.adding = false;
+    D.editing = null;
+    render();
+  };
+  G.typeChanged = () => {
+    const t = $("gfe_type"), w = $("gfe_opts_wrap");
+    if (t && w) w.style.display = t.value === "select" ? "block" : "none";
+  };
+  function need() {
+    if (!isAdmin()) {
+      toast("Administrator access required", "error");
+      return false;
+    }
+    if (G.backend.ok === false) {
+      toast("The form settings table is not reachable (see the banner)", "warning", 5e3);
+      return false;
+    }
+    return true;
+  }
+  G.saveEditor = async function(form) {
+    if (!need()) return;
+    const err = $("gfe_err"), go = $("gfe_go"), val = (id) => $(id) ? $(id).value.trim() : "";
+    const label = val("gfe_label"), type = D.editing ? G.defs.find((d) => d.id === D.editing).field_type : val("gfe_type");
+    const opts = val("gfe_opts").split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!label) {
+      err.textContent = "Give the field a label.";
+      return;
+    }
+    if (type === "select" && opts.length < 2) {
+      err.textContent = "A dropdown needs at least two choices.";
+      return;
+    }
+    go.disabled = true;
+    err.textContent = "";
+    try {
+      if (D.editing) {
+        const row = G.defs.find((d) => d.id === D.editing);
+        const patch = { label, required: $("gfe_req").checked, placeholder: val("gfe_ph") || null, help_text: val("gfe_help") || null, options: type === "select" ? opts : [], updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+        const { data, error } = await supabase.from("form_fields").update(patch).eq("id", row.id).select("*").single();
+        if (error) throw error;
+        Object.assign(row, data);
+        addAudit(state.profile.username, "Form field edited", "".concat(form, ": ").concat(label));
+        toast("Field updated", "success");
+      } else {
+        let key = slug(label), n = 2;
+        const taken = new Set(G.defs.filter((d) => d.form_key === form && d.kind === "field").map((d) => d.field_key));
+        const base = key;
+        while (taken.has(key)) key = (base + "_" + n++).slice(0, 40);
+        const sort = custom(form).reduce((m, d) => Math.max(m, d.sort_order || 0), 100) + 10;
+        const { data, error } = await supabase.from("form_fields").insert({ form_key: form, kind: "field", field_key: key, label, field_type: type, required: $("gfe_req").checked, placeholder: val("gfe_ph") || null, help_text: val("gfe_help") || null, options: type === "select" ? opts : [], sort_order: sort, column_name: "cf_" + key, column_status: "pending" }).select("*").single();
+        if (error) throw error;
+        G.defs.push(data);
+        const r = await ensureColumn(data);
+        addAudit(state.profile.username, "Form field added", "".concat(form, ": ").concat(label, " (cf_").concat(key, ")"));
+        if (r.ok) toast("Field added. Database column cf_".concat(key, " ").concat(r.created ? "created" : "already existed", "."), "success", 5e3);
+        else toast("Field saved, but the database column could not be created: ".concat(r.message), "error", 9e3);
+      }
+      D.adding = false;
+      D.editing = null;
+      afterSchemaChange();
+      render();
+    } catch (e) {
+      go.disabled = false;
+      err.textContent = e && e.message || "Could not save";
+    }
+  };
+  G.retry = async function(id) {
+    if (!need()) return;
+    const row = G.defs.find((d) => d.id === id);
+    if (!row) return;
+    const r = await ensureColumn(row);
+    toast(r.ok ? "Database column ready" : "Still failing: ".concat(r.message), r.ok ? "success" : "error", 6e3);
+    afterSchemaChange();
+    render();
+  };
+  G.toggleActive = async function(id) {
+    if (!need()) return;
+    const row = G.defs.find((d) => d.id === id);
+    if (!row) return;
+    const { data, error } = await supabase.from("form_fields").update({ active: !row.active, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id).select("*").single();
+    if (error) return toast(error.message, "error");
+    Object.assign(row, data);
+    afterSchemaChange();
+    render();
+  };
+  G.move = async function(id, dir) {
+    if (!need()) return;
+    const row = G.defs.find((d) => d.id === id);
+    if (!row) return;
+    const list = custom(row.form_key), i = list.findIndex((d) => d.id === id), j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    const a = list[i], b = list[j];
+    let sa = a.sort_order, sb = b.sort_order;
+    if (sa === sb) sb = sa + dir;
+    const up = await supabase.from("form_fields").upsert([__spreadProps(__spreadValues({}, a), { sort_order: sb }), __spreadProps(__spreadValues({}, b), { sort_order: sa })], { onConflict: "id" }).select("*");
+    if (up.error) return toast(up.error.message, "error");
+    (up.data || []).forEach((r) => {
+      const t = G.defs.find((d) => d.id === r.id);
+      if (t) Object.assign(t, r);
+    });
+    afterSchemaChange();
+    render();
+  };
+  async function saveOverride(form, id, patch) {
+    if (!need()) return false;
+    let row = overrideOf(form, id);
+    const bi = (BUILTIN[form] || []).find((x) => x[0] === id), seedReq = !!(bi && bi[2] && bi[2].cfg && bi[2].def);
+    const rec = __spreadValues({ form_key: form, kind: "override", field_key: id, label: row ? row.label : null, required: row ? row.required : seedReq, hidden: row ? row.hidden : false, active: true, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, patch);
+    const { data, error } = await supabase.from("form_fields").upsert(rec, { onConflict: "form_key,kind,field_key" }).select("*").single();
+    if (error) {
+      toast(error.message, "error");
+      return false;
+    }
+    if (row) Object.assign(row, data);
+    else G.defs.push(data);
+    persist();
+    return true;
+  }
+  G.setLabel = async (form, id, v) => {
+    const b = BUILTIN[form].find((x) => x[0] === id);
+    v = String(v || "").trim();
+    if (await saveOverride(form, id, { label: !v || v === b[1] ? null : v })) toast("Saved", "success", 1200);
+  };
+  G.setFlag = async (form, id, flag, on) => {
+    if (await saveOverride(form, id, { [flag]: !!on })) {
+      toast("Saved", "success", 1200);
+    }
+    render();
+  };
+  G.setRule = async function(key, value) {
+    if (!need()) return;
+    const rec = { form_key: key.startsWith("survey") ? "survey" : "inward", kind: "rule", field_key: key, options: { value }, active: true, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+    const { data, error } = await supabase.from("form_fields").upsert(rec, { onConflict: "form_key,kind,field_key" }).select("*").single();
+    if (error) return toast(error.message, "error");
+    const row = ruleRow(key);
+    if (row) Object.assign(row, data);
+    else G.defs.push(data);
+    persist();
+    toast("Saved", "success", 1200);
+  };
+  G.verify = async function() {
+    if (!need()) return;
+    const out = $("gfVerifyOut"), btn = $("gfVerifyBtn");
+    if (btn) btn.disabled = true;
+    if (out) out.textContent = "Checking\u2026";
+    let fixed = 0, bad = 0;
+    try {
+      const { data, error } = await supabase.rpc("gargo_custom_columns");
+      if (error) throw error;
+      const have = new Set((data || []).map((c) => c.table + "." + c.column));
+      for (const row of G.defs.filter((d) => d.kind === "field")) {
+        const here = have.has(TABLES[row.form_key] + "." + (row.column_name || "cf_" + row.field_key));
+        if (here && row.column_status === "ready" && row.form_key !== "inward") continue;
+        const r = await ensureColumn(row);
+        if (r.ok) fixed++;
+        else bad++;
+      }
+    } catch (e) {
+      if (out) out.textContent = "Could not check: " + (e && e.message || e);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    persist();
+    afterSchemaChange();
+    render();
+    const o2 = $("gfVerifyOut");
+    if (o2) o2.textContent = bad ? "".concat(bad, " field(s) still failing. See the messages below.") : fixed ? "".concat(fixed, " column(s) created or repaired. Everything is in place.") : "Everything is in place.";
+  };
+  function settingsBlock() {
+    if (!isAdmin()) return;
+    const grid = document.querySelector("#sec-settings .settings-grid");
+    if (!grid) return;
+    let blk = $("gfSettingsBlock");
+    if (!blk) {
+      blk = document.createElement("div");
+      blk.id = "gfSettingsBlock";
+      blk.className = "report-block";
+      blk.style.gridColumn = "1/-1";
+      grid.insertBefore(blk, grid.firstChild);
+    }
+    const n = G.defs.filter((d) => d.kind === "field").length, bad = G.defs.filter((d) => d.kind === "field" && d.column_status !== "ready").length;
+    blk.innerHTML = '<h3>Form Designer</h3>\n      <div class="detail-row"><span>Customise</span><b>Inward, Survey and Dispatch forms (fields, currency, rules)</b></div>\n      <div class="detail-row"><span>Custom fields</span><b>'.concat(n).concat(bad ? ' <span class="gf-chip error">'.concat(bad, " need attention</span>") : "", '</b></div>\n      <div class="detail-row"><span>Database</span><b>').concat(G.backend.ok === false ? '<span class="gf-chip pending">not reachable</span>' : "new fields create their own columns automatically", '</b></div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="action-btn" onclick="GargoForms.open(\'inward\')">Edit Inward form</button><button class="action-btn" onclick="GargoForms.open(\'survey\')">Edit Survey form</button><button class="action-btn" onclick="GargoForms.open(\'dispatch\')">Edit Dispatch form</button><button class="action-btn ghost" onclick="GargoForms.open(\'rules\')">Rules &amp; labour rates</button><button class="action-btn ghost" onclick="GargoForms.open(\'db\')">Database</button></div>');
+  }
+  const _rs = window.renderSettings;
+  if (typeof _rs === "function") {
+    window.renderSettings = function() {
+      const r = _rs.apply(this, arguments);
+      settingsBlock();
+      G.load().then(settingsBlock);
+      return r;
+    };
+    if (typeof sectionRenderers !== "undefined") sectionRenderers.settings = window.renderSettings;
+  }
+  const _os = window.openSurveyModal;
+  if (typeof _os === "function") {
+    window.openSurveyModal = async function() {
+      await G.load();
+      const r = await _os.apply(this, arguments);
+      G.decorate("survey");
+      return r;
+    };
+  }
+  const _rd = window.renderDispatch;
+  if (typeof _rd === "function") {
+    window.renderDispatch = function() {
+      const r = _rd.apply(this, arguments);
+      try {
+        G.decorate("dispatch");
+      } catch (e) {
+      }
+      G.load().then(() => {
+        try {
+          G.decorate("dispatch");
+        } catch (e) {
+        }
+      });
+      return r;
+    };
+    if (typeof sectionRenderers !== "undefined") sectionRenderers.dispatch = window.renderDispatch;
+  }
+  const _ri = window.renderInward;
+  if (typeof _ri === "function") {
+    window.renderInward = function() {
+      const r = _ri.apply(this, arguments);
+      try {
+        G.decorate("inward");
+      } catch (e) {
+      }
+      G.load().then(() => {
+        try {
+          G.decorate("inward");
+        } catch (e) {
+        }
+      });
+      return r;
+    };
+    if (typeof sectionRenderers !== "undefined") sectionRenderers.inward = window.renderInward;
+  }
+  function detailBlock(rows, title) {
+    if (!rows.length) return "";
+    return '<div data-gfdetail style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div class="gf-custom-head">'.concat(esc(title), "</div>") + rows.map((x) => '<div class="detail-row"><span>'.concat(esc(x.label), "</span><b>").concat(esc(x.value), "</b></div>")).join("") + "</div>";
+  }
+  function decorateDetail(kind, key) {
+    const body = $("modalBody"), ttl = $("modalTitle");
+    if (!body || !ttl || body.querySelector("[data-gfdetail]")) return;
+    if (kind === "trip") {
+      if (!/^Trip — /.test(ttl.textContent)) return;
+      const t = (state.db.trips || []).find((x) => x.id === key);
+      if (!t) return;
+      body.insertAdjacentHTML("beforeend", detailBlock(G.valuesFromCustom("dispatch", t.custom), "Additional dispatch details"));
+    } else {
+      if (!/^Container — /.test(ttl.textContent)) return;
+      const k = String(key || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const rows = (state.db.interchange || []).filter((i) => String(i.container || "").toUpperCase().replace(/[^A-Z0-9]/g, "") === k).sort((a, b) => new Date(b.date) - new Date(a.date));
+      let h = "";
+      rows.forEach((i) => {
+        const v = G.valuesFromCustom("inward", i.custom);
+        if (v.length) h += detailBlock(v, "Additional gate-in details \xB7 ".concat(i.type).concat(i.eirNumber ? " \xB7 " + i.eirNumber : ""));
+      });
+      if (h) body.insertAdjacentHTML("beforeend", h);
+    }
+  }
+  [["showTripDetail", "trip"], ["showContainerDetail", "container"]].forEach(([n, kind]) => {
+    const fn = window[n];
+    if (typeof fn !== "function" || fn._gfd) return;
+    const w = function(a) {
+      const r = fn.apply(this, arguments), after = () => {
+        try {
+          decorateDetail(kind, a);
+        } catch (e) {
+        }
+      };
+      if (r && typeof r.then === "function") r.then(after);
+      else after();
+      return r;
+    };
+    w._gfd = true;
+    window[n] = w;
+  });
+  const _bs = window.bootShell;
+  if (typeof _bs === "function") window.bootShell = function() {
+    const r = _bs.apply(this, arguments);
+    G.load();
+    return r;
+  };
+})();

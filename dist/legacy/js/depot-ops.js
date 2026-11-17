@@ -19,6 +19,14 @@ var __spreadValues = (a, b) => {
 };
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 const OUTWARD_TYPES = ["Repatriation to Port", "Shippers/Export", "Sale units"];
+const OUTWARD_LABELS = { "Repatriation to Port": "Repat", "Shippers/Export": "Shipper", "Sale units": "Sale Unit" };
+function outwardTypeLabel(v) {
+  return OUTWARD_LABELS[v] || v || "";
+}
+function outwardTypeOptionsHtml(selected) {
+  return OUTWARD_TYPES.map((w) => '<option value="'.concat(w, '"').concat(w === selected ? " selected" : "", ">").concat(OUTWARD_LABELS[w], "</option>")).join("");
+}
+const GATE_IN_STATUSES = ["Available", "Food Grade", "Damage"];
 const ZONE_LOOKUP_INTERVAL_MS = 6e4;
 let _lastZoneVal = null;
 let _lastZoneFetch = 0;
@@ -46,11 +54,15 @@ let _wialonLastZoneFetch = {};
 let _inwardImages = [];
 function renderInward() {
   populateInwardSelects();
-  renderInwardAwaitingGateIn();
+  renderInwardAwaitingGateIn({ cached: true });
   renderInwardRecent();
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
-  clearInwardForm(true);
+  const typed = ["iw_container", "iw_truck", "iw_driver", "iw_driver_id", "iw_trailer", "iw_consignee"].some((id) => {
+    const el = document.getElementById(id);
+    return el && el.value;
+  }) || Array.from(document.querySelectorAll('#inwardTabSingle [id^="gf_inward_"]')).some((el) => el.value);
+  if (!typed && !_inwardBooking) clearInwardForm(true);
 }
 function populateInwardSelects() {
   if (typeof fillIncomingDatalists === "function") fillIncomingDatalists();
@@ -66,7 +78,18 @@ function renderInwardRecent() {
   const el = document.getElementById("inwardRecentList");
   const meta = document.getElementById("inwardRecentMeta");
   if (!el) return;
-  const items = state.db.interchange.filter((i) => i.type === "Gate-In" || i.type === "Depot-In").sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
+  const top = [];
+  for (const i of state.db.interchange) {
+    if (i.type !== "Gate-In" && i.type !== "Depot-In") continue;
+    const t = +new Date(i.date) || 0;
+    if (top.length < 8 || t > top[top.length - 1][0]) {
+      let k = top.length;
+      while (k > 0 && top[k - 1][0] < t) k--;
+      top.splice(k, 0, [t, i]);
+      if (top.length > 8) top.pop();
+    }
+  }
+  const items = top.map((x) => x[1]);
   const _idx = icOutIndex();
   if (meta) meta.textContent = "".concat(items.length, " shown");
   el.innerHTML = items.map((ic) => '<div class="dispatch-queue-item" onclick="showSection(\'interchange\', document.querySelector(\'[data-section=&quot;interchange&quot;]\'))">\n      <div class="dqi-ref">'.concat(esc(ic.container), '</div>\n      <div class="dqi-route">\n        <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(ic.type), " \xB7 ").concat(esc(lineName(ic.line)), '</div>\n        <div style="font-size:10px;color:var(--text-3)">').concat(ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || "\u2014"), " \xB7 ").concat(ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || "\u2014"), "</div>\n      </div>\n      ").concat(icAwaitingSurvey(ic) ? '<span class="sbadge s-pending">Awaiting survey</span>' : sbadge(ic.status), "\n      ").concat((() => {
@@ -78,21 +101,30 @@ function renderInwardStillInStorage() {
   const wrap = document.getElementById("inwardStillInStorageList");
   const meta = document.getElementById("inwardStillInStorageMeta");
   if (!wrap) return;
+  const LIMIT = 50;
   const _idx = icOutIndex();
-  const items = state.db.interchange.filter((i) => icInYard(i, _idx)).sort((a, b) => new Date(a.date) - new Date(b.date));
-  if (meta) meta.textContent = items.length ? "".concat(items.length, " without a recorded exit") : "";
+  const items = state.db.interchange.filter((i) => icInYard(i, _idx)).map((i) => [+new Date(i.date) || 0, i]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  if (meta) {
+    meta.textContent = items.length ? "".concat(items.length, " without a recorded exit").concat(items.length > LIMIT ? " \xB7 showing oldest ".concat(LIMIT) : "") : "";
+  }
   if (!items.length) {
     wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Everything logged has a recorded exit</div></div>';
     return;
   }
-  wrap.innerHTML = items.map((ic) => '<div class="dispatch-queue-item">\n      <div class="dqi-ref">'.concat(esc(ic.container), '</div>\n      <div class="dqi-route">\n        <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(ic.ctype || "\u2014"), " \xB7 ").concat(esc(lineName(ic.line)), '</div>\n        <div style="font-size:10px;color:var(--text-3)">In since ').concat(fmtDate(ic.date)).concat(ic.notes === "Bulk import" ? " \xB7 migrated record" : "", '</div>\n      </div>\n      <div style="display:flex;gap:6px;flex-shrink:0">\n        ').concat(!ic.surveyStatus ? '<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="sendToSurvey(\''.concat(ic.id, "')\">Send to Survey \u2192</button>") : "", '\n        <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut(\'').concat(ic.id, "')\">Quick Dispatch \u2192</button>\n      </div>\n    </div>")).join("");
+  const cards = items.slice(0, LIMIT).map((ic) => '<div class="dispatch-queue-item">\n      <div class="dqi-ref">'.concat(esc(ic.container), '</div>\n      <div class="dqi-route">\n        <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(ic.ctype || "\u2014"), " \xB7 ").concat(esc(lineName(ic.line)), '</div>\n        <div style="font-size:10px;color:var(--text-3)">In since ').concat(fmtDate(ic.date)).concat(ic.notes === "Bulk import" ? " \xB7 migrated record" : "", '</div>\n      </div>\n      <div style="display:flex;gap:6px;flex-shrink:0">\n        ').concat(!ic.surveyStatus ? '<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="sendToSurvey(\''.concat(ic.id, "')\">Send to Survey \u2192</button>") : "", '\n        <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut(\'').concat(ic.id, "')\">Quick Dispatch \u2192</button>\n      </div>\n    </div>")).join("");
+  const more = items.length > LIMIT ? '<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">'.concat(items.length - LIMIT, " more not shown \u2014 use the Reports tab (Status: Still In Storage) to search and export the full list.</div>") : "";
+  wrap.innerHTML = cards + more;
 }
 async function renderInwardAwaitingSurvey() {
   const wrap = document.getElementById("inwardAwaitingSurveyList");
   const meta = document.getElementById("inwardAwaitingSurveyMeta");
   if (!wrap) return;
-  const items = state.db.interchange.filter((i) => i.surveyStatus === "awaiting_survey").sort((a, b) => new Date(a.date) - new Date(b.date));
-  if (meta) meta.textContent = items.length ? "".concat(items.length, " waiting") : "";
+  const LIMIT = 100;
+  const all = state.db.interchange.filter((i) => i.surveyStatus === "awaiting_survey").sort((a, b) => new Date(a.date) - new Date(b.date));
+  const items = all.slice(0, LIMIT);
+  if (meta) {
+    meta.textContent = all.length ? "".concat(all.length, " waiting").concat(all.length > LIMIT ? " \xB7 showing oldest ".concat(LIMIT) : "") : "";
+  }
   if (!items.length) {
     wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Nothing awaiting survey</div></div>';
     return;
@@ -106,10 +138,12 @@ async function renderInwardAwaitingSurvey() {
     }
   } catch (e) {
   }
-  wrap.innerHTML = items.map((ic) => {
+  const cards = items.map((ic) => {
     const hasGuarantee = (docsByIc[ic.id] || []).some((d) => d.doc_type === "guarantee_form") || (docsByBooking[ic.bookingId] || []).some((d) => d.doc_type === "guarantee_form");
     return '<div class="dispatch-queue-item">\n      <div class="dqi-ref">'.concat(esc(ic.container), '</div>\n      <div class="dqi-route">\n        <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(ic.type), " \xB7 ").concat(esc(lineName(ic.line)), '</div>\n        <div style="font-size:10px;color:var(--text-3)">').concat(ic.truck ? esc(truckName(ic.truck)) : esc(ic.truckRegText || "\u2014"), " \xB7 ").concat(ic.driver ? esc(driverName(ic.driver)) : esc(ic.driverNameText || "\u2014"), '</div>\n      </div>\n      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">\n        ').concat(hasGuarantee ? '<span class="sbadge s-approved">Guarantee form \u2713</span>' : '<span class="sbadge s-pending">No guarantee form</span>', '\n        <div class="dqi-time" style="margin:0">').concat(timeAgo(ic.date), '</div>\n      </div>\n      <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="startSurveyForInterchange(\'').concat(ic.id, "')\">Start Survey \u2192</button>\n    </div>");
   }).join("");
+  const more = all.length > LIMIT ? '<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">'.concat(all.length - LIMIT, " more waiting \u2014 they appear here as the oldest ones are surveyed.</div>") : "";
+  wrap.innerHTML = cards + more;
 }
 function markInwardSurveyed(id) {
   const ic = state.db.interchange.find((i) => i.id === id);
@@ -177,6 +211,14 @@ async function _createInwardEntryInner() {
     toast("Driver's ID / driving licence number required", "error");
     return;
   }
+  if (window.GargoForms) {
+    const formErr = GargoForms.validate("inward");
+    if (formErr) {
+      toast(formErr, "error");
+      return;
+    }
+  }
+  const custom = window.GargoForms ? GargoForms.collect("inward") : {};
   const type = "Gate-In";
   const dateVal = (/* @__PURE__ */ new Date()).toISOString();
   const dupIc = findDuplicateInterchange(cont, type, dateVal);
@@ -201,7 +243,7 @@ async function _createInwardEntryInner() {
     type,
     ctype,
     line: lineId,
-    condition: "Good",
+    condition: GATE_IN_STATUSES.includes(val("iw_status")) ? val("iw_status") : "Available",
     truck: truck ? truck.id : "",
     driver: driver ? driver.id : "",
     truckRegText: truck ? "" : sanitize(truckVal),
@@ -215,7 +257,7 @@ async function _createInwardEntryInner() {
     guaranteeNo: sanitize(bk.bl_number || ""),
     vessel: sanitize(bk.vessel || ""),
     voyage: sanitize(bk.voyage || ""),
-    deliveringParty: sanitize(bk.company || bk.full_name || ""),
+    deliveringParty: sanitize(val("iw_consignee") || bk.company || ""),
     isoCode: "",
     grossWeight: "",
     manufactureDate: "",
@@ -237,6 +279,7 @@ async function _createInwardEntryInner() {
     surveyedAt: null,
     surveyedBy: null,
     bookingId: booking ? booking.id : null,
+    custom,
     _dirty: true
   };
   const savedIc = await persistNewInterchange(icRecord);
@@ -265,11 +308,11 @@ async function _createInwardEntryInner() {
   addAudit(state.profile.username, "Gate-In Recorded", "".concat(cont, " \u2014 awaiting survey"));
   refreshContainerHistory();
   clearInwardForm();
-  renderInterchange("all");
+  if (state.currentSection === "interchange") renderInterchange(_icFilter);
   renderInwardRecent();
   renderInwardAwaitingSurvey();
   renderInwardStillInStorage();
-  renderInwardAwaitingGateIn();
+  if (booking) renderInwardAwaitingGateIn();
   if (booking && typeof renderPublicBookings === "function" && state.currentSection === "publicbookings") renderPublicBookings();
   if (!booking) {
     try {
@@ -337,10 +380,13 @@ function finalizeDepotIn(ic) {
   return true;
 }
 function clearInwardForm(skipRepopulate) {
-  ["iw_container", "iw_truck", "iw_driver", "iw_driver_id", "iw_trailer"].forEach((id) => {
+  ["iw_container", "iw_truck", "iw_driver", "iw_driver_id", "iw_trailer", "iw_consignee"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+  const iwSt = document.getElementById("iw_status");
+  if (iwSt) iwSt.value = "Available";
+  if (window.GargoForms) GargoForms.clearForm("inward");
   _inwardBooking = null;
   const bn = document.getElementById("inwardBookingBanner");
   if (bn) {
@@ -429,7 +475,7 @@ function downloadInwardReportCSV() {
     ic.driverIdNumber,
     IW_STATUS_LABEL[status]
   ]);
-  const blob = new Blob(["\uFEFF" + [head].concat(rows).map((r) => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + ghCsvPreamble("\r\n") + [head].concat(rows).map((r) => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "inward-report-".concat((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), ".csv");
@@ -472,32 +518,62 @@ async function createDepotBookingFromInterchange(ic) {
   }
   return data.id;
 }
-async function renderInwardAwaitingGateIn() {
+const GATEIN_PAGE = 50, GATEIN_TTL = 3e4;
+let _gateInCache = null;
+let _gateInInFlight = null;
+function _gateInCards(list, docs) {
+  return list.map((b) => {
+    const hasG = ((docs || {})[b.id] || []).some((d) => d.doc_type === "guarantee_form");
+    return '<div class="dispatch-queue-item" style="align-items:center;gap:10px">\n    <div class="dqi-ref">'.concat(esc(b.container || "No container no."), '</div>\n    <div class="dqi-route" style="flex:1;min-width:0">\n      <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(b.company || b.full_name || "\u2014"), '</div>\n      <div style="font-size:10px;color:var(--text-3)">').concat(esc(b.reference || b.id.slice(0, 8))).concat(b.bulk_ref ? " \xB7 " + esc(b.bulk_ref) : "").concat(b.cargo_type ? " \xB7 " + esc(b.cargo_type) : "").concat(b.pickup_date ? " \xB7 expected " + fmtDate(b.pickup_date) : "", '</div>\n      <div style="margin-top:3px">').concat(docs === null ? "" : hasG ? '<span class="sbadge s-approved">Guarantee form \u2713</span>' : '<span class="sbadge s-pending">No guarantee form</span>', '</div>\n    </div>\n    <div style="display:flex;flex-direction:column;gap:5px">\n      <button class="modal-btn primary" onclick="startInwardFromBooking(\'').concat(b.id, '\')">Confirmed In \u2192</button>\n      <button class="modal-btn ghost" onclick="cancelPublicBooking(\'').concat(b.id, "','cancelled')\">Cancel</button>\n    </div>\n  </div>");
+  }).join("");
+}
+function _paintAwaitingGateIn(c) {
   const wrap = document.getElementById("inwardAwaitingGateInList");
   const meta = document.getElementById("inwardAwaitingGateInMeta");
-  if (!wrap) return;
-  try {
-    const { data, error } = await supabase.from("public_bookings").select("*").eq("status", "confirmed").order("confirmed_at", { ascending: true, nullsFirst: false });
-    if (error) throw error;
-    const list = data || [];
-    if (meta) meta.textContent = list.length ? "".concat(list.length, " expected") : "";
-    if (!list.length) {
-      wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No confirmed bookings are waiting to arrive</div></div>';
-      return;
-    }
-    let docs = {};
-    try {
-      if (window.bookingDocs) docs = await window.bookingDocs.documentsForBookings(list.map((b) => b.id));
-    } catch (e) {
-    }
-    wrap.innerHTML = list.map((b) => {
-      const hasG = (docs[b.id] || []).some((d) => d.doc_type === "guarantee_form");
-      return '<div class="dispatch-queue-item" style="align-items:center;gap:10px">\n        <div class="dqi-ref">'.concat(esc(b.container || "No container no."), '</div>\n        <div class="dqi-route" style="flex:1;min-width:0">\n          <div style="font-size:12px;font-weight:600;color:var(--text)">').concat(esc(b.company || b.full_name || "\u2014"), '</div>\n          <div style="font-size:10px;color:var(--text-3)">').concat(esc(b.reference || b.id.slice(0, 8))).concat(b.bulk_ref ? " \xB7 " + esc(b.bulk_ref) : "").concat(b.cargo_type ? " \xB7 " + esc(b.cargo_type) : "").concat(b.pickup_date ? " \xB7 expected " + fmtDate(b.pickup_date) : "", '</div>\n          <div style="margin-top:3px">').concat(hasG ? '<span class="sbadge s-approved">Guarantee form \u2713</span>' : '<span class="sbadge s-pending">No guarantee form</span>', '</div>\n        </div>\n        <div style="display:flex;flex-direction:column;gap:5px">\n          <button class="modal-btn primary" onclick="startInwardFromBooking(\'').concat(b.id, '\')">Confirmed In \u2192</button>\n          <button class="modal-btn ghost" onclick="cancelPublicBooking(\'').concat(b.id, "','cancelled')\">Cancel</button>\n        </div>\n      </div>");
-    }).join("");
-  } catch (e) {
-    console.warn("Awaiting gate-in load failed:", e);
-    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Could not load bookings \u2014 check your connection</div></div>';
+  if (!wrap || !c) return;
+  if (meta) meta.textContent = c.total ? "".concat(c.total, " expected").concat(c.total > c.list.length ? " \xB7 showing oldest ".concat(c.list.length) : "") : "";
+  if (!c.list.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No confirmed bookings are waiting to arrive</div></div>';
+    return;
   }
+  const more = c.total > c.list.length ? '<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">'.concat(c.total - c.list.length, " more expected -- they appear here as the earlier ones are received.</div>") : "";
+  wrap.innerHTML = _gateInCards(c.list, c.docs) + more;
+}
+async function renderInwardAwaitingGateIn(opts) {
+  const wrap = document.getElementById("inwardAwaitingGateInList");
+  if (!wrap) return;
+  const cachedOk = !!(opts && opts.cached);
+  if (cachedOk && _gateInCache) {
+    _paintAwaitingGateIn(_gateInCache);
+    if (Date.now() - _gateInCache.at < GATEIN_TTL) return;
+  }
+  if (_gateInInFlight) {
+    if (cachedOk) return;
+    return _gateInInFlight.then(() => renderInwardAwaitingGateIn());
+  }
+  _gateInInFlight = (async () => {
+    try {
+      const { data, error, count } = await supabase.from("public_bookings").select("*", { count: "exact" }).eq("status", "confirmed").order("confirmed_at", { ascending: true, nullsFirst: false }).range(0, GATEIN_PAGE - 1);
+      if (error) throw error;
+      const list = data || [];
+      const entry = { at: Date.now(), list, total: typeof count === "number" ? count : list.length, docs: null };
+      _gateInCache = entry;
+      _paintAwaitingGateIn(entry);
+      if (list.length && window.bookingDocs) {
+        try {
+          entry.docs = await window.bookingDocs.documentsForBookings(list.map((b) => b.id));
+          if (_gateInCache === entry) _paintAwaitingGateIn(entry);
+        } catch (e) {
+        }
+      }
+    } catch (e) {
+      console.warn("Awaiting gate-in load failed:", e);
+      if (!_gateInCache) wrap.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-label">Could not load bookings -- check your connection</div></div>';
+    } finally {
+      _gateInInFlight = null;
+    }
+  })();
+  return _gateInInFlight;
 }
 function ctypeFromBookingText(txt) {
   const s = String(txt || "").toLowerCase();
@@ -546,7 +622,7 @@ async function startInwardFromBooking(bookingId) {
   const ct = ctypeFromBookingText(b.cargo_type);
   if (ct) populateSizeTypeSelects("iw_size", "iw_type", ct);
   if (b.shipping_line_id && (state.db.shippingLines || []).some((l) => l.id === b.shipping_line_id)) setv("iw_line", b.shipping_line_id);
-  setv("iw_delivering", b.company || b.full_name || "");
+  setv("iw_consignee", b.company || "");
   setv("iw_guarantee_no", b.bl_number || "");
   setv("iw_vessel", b.vessel || "");
   setv("iw_voyage", b.voyage || "");
@@ -575,29 +651,27 @@ async function startInwardFromBooking(bookingId) {
 function previewInwardImg(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
-  const room = 6 - _inwardImages.length;
+  const room = GX_MAX_PHOTOS - _inwardImages.length;
   if (room <= 0) {
-    toast("Maximum 6 photos \u2014 remove one to add another", "error");
+    toast("Maximum ".concat(GX_MAX_PHOTOS, " photos \u2014 remove one to add another"), "error");
     e.target.value = "";
     return;
   }
   files.slice(0, room).forEach((file) => {
-    if (!file.type.startsWith("image/")) {
-      toast("".concat(file.name, " skipped \u2014 not an image"), "error");
+    const problem = gxPhotoProblem(file);
+    if (problem) {
+      toast("".concat(file.name, " skipped \u2014 ").concat(problem), "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast("".concat(file.name, " skipped \u2014 max 2MB"), "error");
-      return;
-    }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = (ev) => {
+      if (_inwardImages.length >= GX_MAX_PHOTOS) return;
       _inwardImages.push(ev.target.result);
       renderInwardImgPreview();
     };
     reader.readAsDataURL(file);
   });
-  if (files.length > room) toast("Only ".concat(room, " more photo").concat(room === 1 ? "" : "s", " could be added (max 6)"), "warning");
+  if (files.length > room) toast("Only ".concat(room, " more photo").concat(room === 1 ? "" : "s", " could be added (max ").concat(GX_MAX_PHOTOS, ")"), "warning");
   e.target.value = "";
 }
 function renderInwardImgPreview() {
@@ -736,7 +810,7 @@ async function processBulkInward() {
     "depot-out": "Depot-Out"
   };
   const defaultType = direction === "out" ? "Gate-Out" : "Gate-In";
-  const VALID_COND = ["Good", "Damaged", "Dirty", "Needs Repair"];
+  const VALID_COND = ["Good", "Damaged", "Dirty", "Needs Repair", "Available", "Food Grade", "Damage", "Repat", "Sale", "Shipper"];
   let serverConflicts = {};
   try {
     const keys = [...new Set(rows.map((r) => normContainerKey(pickField(r, ["container", "containerno", "containernumber", "containernrno"]))).filter(Boolean))];
@@ -933,7 +1007,7 @@ function _tripToDepotReportRecord(t) {
   return {
     id: t.id,
     container: t.container,
-    type: outward ? t.outwardType || "Dispatch (Depot \u2192 Port)" : "Inward (Port \u2192 Depot)",
+    type: outward ? outwardTypeLabel(t.outwardType) || "Dispatch (Depot \u2192 Port)" : "Inward (Port \u2192 Depot)",
     line: t.shippingLine || "",
     condition: "",
     truck: t.truckId || "",
@@ -959,7 +1033,8 @@ function _depotReportInwardEntries() {
 }
 function _depotReportOutwardEntries() {
   const fromInterchange = state.db.interchange.filter((ic) => OUTWARD_IC_TYPES.includes(ic.type)).map((ic) => __spreadProps(__spreadValues({}, ic), { _reportSource: "interchange" }));
-  const fromTrips = state.db.trips.filter((t) => isOutwardWorkType(t.workType)).map(_tripToDepotReportRecord);
+  const outIds = gxOutIcIds();
+  const fromTrips = state.db.trips.filter((t) => isOutwardWorkType(t.workType) && !outIds.has(gxOutwardIcId(t.id))).map(_tripToDepotReportRecord);
   return [...fromInterchange, ...fromTrips].filter(_depotReportLineMatch).filter((rec) => _depotReportInRange(rec.date)).sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 function populateDepotReportLineFilter() {
@@ -1131,7 +1206,7 @@ function downloadDepotReportCSV() {
     ic.status,
     _icSourceTag(ic)
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
+  const csv = ghCsvPreamble("\n") + [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1239,7 +1314,7 @@ async function renderDepOpsStorageList() {
     wrap.innerHTML = '<table style="width:100%;border-collapse:collapse">\n      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">\n        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px">Interchange</th><th style="padding:6px 8px"></th>\n      </tr></thead><tbody>'.concat(bookings.map((b, i) => {
       const zoneName = b.storage_zone_id && zoneMap[b.storage_zone_id] || "Unknown zone";
       const survey = surveys[i];
-      const icCell = !survey ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>' : survey.interchange_generated_at ? '<span class="sbadge s-approved" title="Generated '.concat(fmtDate(survey.interchange_generated_at), '">\u2713 Generated</span>').concat(survey.interchange_id ? ' <button class="tbl-btn" onclick="downloadInterchangeSlip(\''.concat(survey.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(survey.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : '<button class="modal-btn primary" onclick="generateInterchangeFromSurvey(\''.concat(b.id, "','").concat(survey.id, "')\">Generate \u2192</button>");
+      const icCell = !survey ? '<span style="color:var(--text-3);font-size:10.5px">No survey on file</span>' : survey.interchange_generated_at ? '<span class="sbadge s-approved" title="Generated '.concat(fmtDate(survey.interchange_generated_at), '">\u2713 Generated</span>').concat(survey.interchange_id ? ' <button class="tbl-btn" onclick="GargoDocs.eir(\''.concat(survey.interchange_id, '\',\'preview\')" title="Preview">\u{1F441}</button><button class="tbl-btn" onclick="downloadInterchangeSlip(\'').concat(survey.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(survey.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : '<button class="modal-btn primary" onclick="generateInterchangeFromSurvey(\''.concat(b.id, "','").concat(survey.id, "')\">Generate \u2192</button>");
       return '<tr style="border-top:1px solid var(--border)">\n          <td style="padding:6px 8px" class="mono">'.concat(sanitize(b.container) || "\u2014", '</td>\n          <td style="padding:6px 8px">').concat(sanitize(zoneName), '</td>\n          <td style="padding:6px 8px">').concat(sanitize(b.full_name)).concat(b.company ? " \xB7 " + sanitize(b.company) : "", '</td>\n          <td style="padding:6px 8px">').concat(icCell, '</td>\n          <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="depOpsDispatchContainer(\'').concat(b.id, "')\">Dispatch \u2192</button></td>\n        </tr>");
     }).join(""), "</tbody></table>");
   } catch (e) {
@@ -1345,10 +1420,14 @@ async function openSurveyModal(bookingId) {
   const typeOptions = CONTAINER_TYPE_OPTIONS.map((t) => "<option ".concat(curType === t ? "selected" : "", ">").concat(t, "</option>")).join("");
   const cargoOpts = ["", "Empty", "Laden / Full", "Part Load", "Damaged Cargo"].map((o) => '<option value="'.concat(o, '" ').concat(x.cargoStatus === o ? "selected" : "", ">").concat(o || "\u2014", "</option>")).join("");
   const pick = (a, b) => sanitize(a || b || "");
+  const _nk = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const _notConsignee = [x.driver ? driverName(x.driver) : "", x.driverNameText, booking.driver_name, booking.full_name].map(_nk).filter(Boolean);
+  const svConsignee = [x.deliveringParty, booking.company].map((v) => String(v || "").trim()).find((v) => v && _notConsignee.indexOf(_nk(v)) < 0) || "";
+  const svRemarks = /^Booking\s[^\u00b7]*\u00b7/.test(String(x.notes || "")) ? "" : String(x.notes || "");
   _surveyImages = x.photos && x.photos.length ? x.photos.slice() : [];
   _surveyGuaranteeFile = null;
   window._repairItems.sv = [];
-  openModal("Survey \u2014 ".concat(sanitize(x.container || booking.container) || "Container"), "\n    ".concat(ic ? '<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Gate-In recorded '.concat(fmtDate(ic.gateInAt || ic.date), ". Saving this survey completes the <b>Depot-In</b> and issues the <b>interchange (EIR)</b>; the gate-in time is kept.</span></div>") : "", '\n    <div class="form-row-2">\n      <div class="fg"><label>Container No.</label><input id="sv_container" value="').concat(pick(x.container, booking.container), '" oninput="markContainerValidity(this)"></div>\n      <div class="fg"><label>Type / Size</label><select id="sv_ctype">').concat(typeOptions, '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Date IN</label><input id="sv_datein" type="datetime-local" value="').concat(_svLocalInput(x.gateInAt || x.date || booking.gated_in_at), '"></div>\n      <div class="fg"><label>Shipping Line</label><select id="sv_line"><option value="">\u2014</option>').concat(lineOptions, '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Consignee / C&amp;F</label><input id="sv_consignee" value="').concat(pick(x.deliveringParty, booking.company || booking.full_name), '"></div>\n      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="').concat(pick(x.blNumber, booking.bl_number), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Ex Vessel</label><input id="sv_vessel" value="').concat(pick(x.vessel, booking.vessel), '"></div>\n      <div class="fg"><label>Voyage</label><input id="sv_voyage" value="').concat(pick(x.voyage, booking.voyage), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="').concat(pick(x.transporter, booking.transporter), '"></div>\n      <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" value="').concat(pick(x.isoCode), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Max Gross Weight \u2014 MGW (kg)</label><input id="sv_mgwt" type="number" min="0" value="').concat(x.grossWeight || "", '"></div>\n      <div class="fg"><label>Tare Weight \u2014 TW (kg)</label><input id="sv_tare" type="number" min="0"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="sv_gross" type="number" min="0" step="1" placeholder="e.g. 30480" value="').concat(x.grossWeight || "", '"></div>\n      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="').concat(pick(x.manufactureDate), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label><select id="sv_cargo">').concat(cargoOpts, '</select></div>\n      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="').concat(sanitize(x.truck ? truckName(x.truck).split(" \xB7 ")[0] : x.truckRegText || booking.truck_reg || ""), '"></div>\n      <div class="fg"><label>Trailer Number</label><input id="sv_trailer" value="').concat(pick(x.trailerNo), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Driver Name</label><input id="sv_driver" list="iwDriverList" value="').concat(sanitize(x.driver ? driverName(x.driver) : x.driverNameText || booking.driver_name || ""), '"></div>\n      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="').concat(pick(x.driverIdNumber, booking.driver_id_number), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Surveyed By</label><input id="sv_clerk" value="').concat(sanitize(state.profile && state.profile.name || ""), '"></div>\n      <div class="fg"><label>Seal Number</label><input id="sv_seal"></div>\n    </div>\n\n    <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">\n      <option value="food_grade">Food Grade</option>\n      <option value="under_repair">Under Repair</option>\n      <option value="damaged">Damaged</option>\n      <option value="heavily_damaged">Heavily Damaged \u2014 requires joint survey</option>\n    </select></div>\n    <div id="sv_heavily_damaged_note" style="display:none;margin-bottom:10px" class="ops-notice">\n      This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding. It stays a Gate-In until then.\n    </div>\n\n    ').concat(tariffPickerHtml("sv"), '\n\n    <div class="fg"><label>Survey Photos <span class="label-optional">(up to 6)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>\n    <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>\n    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">').concat(sanitize(x.notes || ""), '</textarea></div>\n    <button class="submit-btn" onclick="saveSurvey(\'').concat(bookingId, "')\">").concat(ic ? "Save Survey &amp; Complete Depot-In" : "Save Survey", " \u2192</button>\n  "));
+  openModal("Survey \u2014 ".concat(sanitize(x.container || booking.container) || "Container"), "\n    ".concat(ic ? '<div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Gate-In recorded '.concat(fmtDate(ic.gateInAt || ic.date), ". Saving this survey completes the <b>Depot-In</b> and issues the <b>interchange (EIR)</b>; the gate-in time is kept.</span></div>") : "", '\n    <div class="form-row-2">\n      <div class="fg"><label>Container No.</label><input id="sv_container" value="').concat(pick(x.container, booking.container), '" oninput="markContainerValidity(this)"></div>\n      <div class="fg"><label>Type / Size</label><select id="sv_ctype">').concat(typeOptions, '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Date IN</label><input id="sv_datein" type="datetime-local" value="').concat(_svLocalInput(x.gateInAt || x.date || booking.gated_in_at), '"></div>\n      <div class="fg"><label>Shipping Line</label><select id="sv_line"><option value="">\u2014</option>').concat(lineOptions, '</select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Consignee / C&amp;F</label><input id="sv_consignee" value="').concat(sanitize(svConsignee), '"></div>\n      <div class="fg"><label>Guarantee / B/L Number</label><input id="sv_bl" value="').concat(pick(x.blNumber, booking.bl_number), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Ex Vessel</label><input id="sv_vessel" value="').concat(pick(x.vessel, booking.vessel), '"></div>\n      <div class="fg"><label>Voyage</label><input id="sv_voyage" value="').concat(pick(x.voyage, booking.voyage), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Transporter</label><input id="sv_transporter" value="').concat(pick(x.transporter, booking.transporter), '"></div>\n      <div class="fg"><label>ISO Code</label><input id="sv_iso" placeholder="e.g. 22G1" maxlength="6" style="text-transform:uppercase" value="').concat(pick(x.isoCode), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Max Gross Weight \u2014 MGW (kg)</label><input id="sv_mgwt" type="number" min="0"></div>\n      <div class="fg"><label>Tare Weight \u2014 TW (kg)</label><input id="sv_tare" type="number" min="0"></div>\n    </div>\n    <div class="fg"><label>CSC Approval <span class="label-optional">(optional)</span></label><input id="sv_csc" placeholder="e.g. USA/AB-077/10-10" maxlength="40" style="text-transform:uppercase" value="').concat(pick(x.cscApproval), '"></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="sv_gross" type="number" min="0" step="1" placeholder="e.g. 30480" value="').concat(x.grossWeight || "", '"></div>\n      <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="').concat(pick(x.manufactureDate), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label><select id="sv_cargo">').concat(cargoOpts, '</select></div>\n      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="').concat(sanitize(x.truck ? truckName(x.truck).split(" \xB7 ")[0] : x.truckRegText || booking.truck_reg || ""), '"></div>\n      <div class="fg"><label>Trailer Number</label><input id="sv_trailer" value="').concat(pick(x.trailerNo), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Driver Name</label><input id="sv_driver" list="iwDriverList" value="').concat(sanitize(x.driver ? driverName(x.driver) : x.driverNameText || booking.driver_name || ""), '"></div>\n      <div class="fg"><label>Driver ID Number</label><input id="sv_driver_id" value="').concat(pick(x.driverIdNumber, booking.driver_id_number), '"></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Surveyed By</label><input id="sv_clerk" value="').concat(sanitize(state.profile && state.profile.name || ""), '"></div>\n      <div class="fg"><label>Seal Number</label><input id="sv_seal"></div>\n    </div>\n\n    <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">\n      <option value="food_grade">Food Grade</option>\n      <option value="under_repair">Under Repair</option>\n      <option value="damaged">Damaged</option>\n      <option value="heavily_damaged">Heavily Damaged \u2014 requires joint survey</option>\n    </select></div>\n    <div id="sv_heavily_damaged_note" style="display:none;margin-bottom:10px" class="ops-notice">\n      This container will be sent to <b>Escalations</b> and cannot be allocated to storage until a second surveyor records a joint finding. It stays a Gate-In until then.\n    </div>\n\n    ').concat(tariffPickerHtml("sv"), '\n\n    <div class="fg"><label>Survey Photos <span class="label-optional">(up to 10)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>\n    <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>\n    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">').concat(sanitize(svRemarks), '</textarea></div>\n    <button class="submit-btn" onclick="saveSurvey(\'').concat(bookingId, "')\">").concat(ic ? "Save Survey &amp; Complete Depot-In" : "Save Survey", " \u2192</button>\n  "));
   const svContEl = document.getElementById("sv_container");
   if (svContEl) markContainerValidity(svContEl);
   renderRepairItemsList("sv");
@@ -1373,29 +1452,27 @@ function onSurveyConditionChange() {
 }
 function onSurveyImagesSelected(e) {
   const files = Array.from(e.target.files || []);
-  const room = 6 - _surveyImages.length;
+  const room = GX_MAX_SURVEY_PHOTOS - _surveyImages.length;
   if (room <= 0) {
-    toast("Maximum 6 photos \u2014 remove one to add another", "error");
+    toast("Maximum ".concat(GX_MAX_SURVEY_PHOTOS, " photos \u2014 remove one to add another"), "error");
     e.target.value = "";
     return;
   }
   files.slice(0, room).forEach((file) => {
-    if (!file.type.startsWith("image/")) {
-      toast("".concat(file.name, " skipped \u2014 not an image"), "error");
+    const problem = gxPhotoProblem(file);
+    if (problem) {
+      toast("".concat(file.name, " skipped \u2014 ").concat(problem), "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast("".concat(file.name, " skipped \u2014 max 2MB per photo"), "error");
-      return;
-    }
-    const reader = new FileReader();
+    const reader = gxImageReader();
     reader.onload = () => {
+      if (_surveyImages.length >= GX_MAX_SURVEY_PHOTOS) return;
       _surveyImages.push(reader.result);
       _renderSurveyPhotos();
     };
     reader.readAsDataURL(file);
   });
-  if (files.length > room) toast("Only ".concat(room, " more photo").concat(room === 1 ? "" : "s", " could be added (max 6)"), "warning");
+  if (files.length > room) toast("Only ".concat(room, " more photo").concat(room === 1 ? "" : "s", " could be added (max ").concat(GX_MAX_SURVEY_PHOTOS, ")"), "warning");
   e.target.value = "";
 }
 function onSurveyGuaranteePicked(e) {
@@ -1461,6 +1538,13 @@ async function saveSurvey(bookingId) {
   if (need(cg("survey.requireManufactureDate") && !val("sv_dom"), "Date of manufacture is required")) return;
   if (need(cg("survey.requireCargoStatus") && !val("sv_cargo"), "Cargo status is required")) return;
   if (need(_surveyImages.length < (Number(cg("survey.minPhotos")) || 0), "At least ".concat(cg("survey.minPhotos"), " survey photo").concat(Number(cg("survey.minPhotos")) === 1 ? "" : "s", " required"))) return;
+  if (window.GargoForms) {
+    const formErr = GargoForms.validate("survey");
+    if (formErr) {
+      toast(formErr, "error");
+      return;
+    }
+  }
   const repairItems = repairItemsFor("sv");
   const sourceIc = state.db.interchange.find((i) => i.bookingId === bookingId);
   if (container) {
@@ -1490,6 +1574,14 @@ async function saveSurvey(bookingId) {
     const willEscalate = val("sv_condition") === "heavily_damaged";
     let eirForSurvey = sourceIc ? sourceIc.eirNumber || "" : "";
     if (sourceIc && !eirForSurvey && !willEscalate) eirForSurvey = await nextEirNumber("Depot-In", val("sv_line") || sourceIc.line || "");
+    if (window.GargoPhotos) {
+      try {
+        _surveyImages = await GargoPhotos.migrateList(_surveyImages, { container, category: "survey" });
+      } catch (e) {
+        console.warn("photo upload", e);
+      }
+    }
+    if (_surveyImages.some((u) => /^data:/.test(u))) toast("Some photos could not be uploaded (offline?) and were kept on this device", "warning", 6e3);
     const survey = await window.bookingDocs.recordSurvey({
       bookingId,
       sourceInterchangeId: sourceIc ? sourceIc.id : null,
@@ -1504,6 +1596,7 @@ async function saveSurvey(bookingId) {
       isoCode: val("sv_iso").toUpperCase(),
       mgwt: val("sv_mgwt") ? parseFloat(val("sv_mgwt")) : null,
       tareWeight: val("sv_tare") ? parseFloat(val("sv_tare")) : null,
+      cscApproval: val("sv_csc").toUpperCase(),
       vessel: val("sv_vessel"),
       voyage: val("sv_voyage"),
       transporter: val("sv_transporter"),
@@ -1517,9 +1610,17 @@ async function saveSurvey(bookingId) {
       conditionStatus: val("sv_condition") || "food_grade",
       remarks: val("sv_remarks"),
       photos: _surveyImages,
-      tariffItems: repairItems
+      tariffItems: repairItems,
+      dateIn: dateInRaw ? new Date(dateInRaw).toISOString() : null,
+      manufactureDate: dom || null,
+      cargoStatus: val("sv_cargo") || null,
+      gross,
+      custom: window.GargoForms ? GargoForms.collect("survey") : null
+      // Form Designer fields (incl. Currency)
     });
     const heavy = val("sv_condition") === "heavily_damaged";
+    if (window.GargoPhotos && survey) GargoPhotos.linkSurveyPhotos({ container, surveyId: survey.id, interchangeId: sourceIc ? sourceIc.id : null, urls: _surveyImages }).catch(() => {
+    });
     const extra = {
       dateIn: dateInRaw ? new Date(dateInRaw).toISOString() : null,
       dateInInput: dateInRaw,
@@ -1697,7 +1798,9 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       driverIdNumber: survey.driver_id_number || "",
       isoCode: survey.iso_code || "",
       trailerNo: survey.trailer_number || "",
-      grossWeight: survey.mgwt || "",
+      grossWeight: survey.gross_weight != null ? survey.gross_weight : survey.mgwt || "",
+      manufactureDate: survey.manufacture_date || "",
+      cargoStatus: survey.cargo_status || "",
       repairs: survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : survey.tariff_code ? [{ category: survey.tariff_category, code: survey.tariff_code, side: survey.tariff_side, item: survey.tariff_item, hours: survey.tariff_hours, material: survey.tariff_material }] : [],
       repairTotal: repairItemsTotal(survey.tariff_items && survey.tariff_items.length ? survey.tariff_items : survey.tariff_code ? [{ hours: survey.tariff_hours, material: survey.tariff_material }] : []),
       notes: sanitize(survey.remarks || ""),
@@ -1705,7 +1808,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
       storageZone,
       storageBlock,
       storageSlot,
-      date: (/* @__PURE__ */ new Date()).toISOString(),
+      date: survey.date_in || (/* @__PURE__ */ new Date()).toISOString(),
       status: "pending",
       img: survey.photos && survey.photos[0] || "",
       surveyId: survey.id,
@@ -1892,7 +1995,7 @@ async function renderDepOpsSurveyRegister() {
       wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No surveys recorded yet</div></div>';
       return;
     }
-    wrap.innerHTML = '<div style="overflow-x:auto"><table class="tbl" id="surveyRegisterTable" style="width:100%;border-collapse:collapse">\n      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">\n        <th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Type</th>\n        <th style="padding:6px 8px">Consignee</th><th style="padding:6px 8px">Transporter</th><th style="padding:6px 8px">Truck</th>\n        <th style="padding:6px 8px">Clerk</th><th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Interchange</th><th style="padding:6px 8px">Inspection Report</th><th style="padding:6px 8px">Photos</th>\n      </tr></thead><tbody>'.concat(_surveyRegisterData.map((s) => '<tr style="border-top:1px solid var(--border)">\n        <td style="padding:6px 8px">'.concat(fmtDate(s.surveyed_at), '</td>\n        <td style="padding:6px 8px" class="mono">').concat(sanitize(s.container || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.container_type || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.consignee || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.transporter || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.truck_reg || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.clerk_name || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sbadge(s.condition_status === "heavily_damaged" ? "rejected" : s.condition_status === "food_grade" ? "approved" : "pending"), " ").concat(sanitize(conditionStatusLabel(s.condition_status)), '</td>\n        <td style="padding:6px 8px">').concat(s.interchange_generated_at ? "\u2713 Generated".concat(s.interchange_id ? ' <button class="tbl-btn" onclick="downloadInterchangeSlip(\''.concat(s.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(s.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : "\u2014", '</td>\n        <td style="padding:6px 8px"><button class="tbl-btn" onclick="downloadInspectionReport(\'').concat(s.id, '\')">\u2B07 Report</button><button class="tbl-btn" onclick="printInspectionReport(\'').concat(s.id, '\')" title="Print">\u{1F5A8}</button></td>\n        <td style="padding:6px 8px">').concat(Array.isArray(s.photos) && s.photos.length ? '<button class="tbl-btn" onclick="viewSurveyPhotos(\''.concat(s.id, "')\">\u{1F4F7} ").concat(s.photos.length, "</button>") : '<span style="color:var(--text-3);font-size:10.5px">\u2014</span>', "</td>\n      </tr>")).join(""), "</tbody></table></div>");
+    wrap.innerHTML = '<div style="overflow-x:auto"><table class="tbl" id="surveyRegisterTable" style="width:100%;border-collapse:collapse">\n      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">\n        <th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Type</th>\n        <th style="padding:6px 8px">Consignee</th><th style="padding:6px 8px">Transporter</th><th style="padding:6px 8px">Truck</th>\n        <th style="padding:6px 8px">Clerk</th><th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Interchange</th><th style="padding:6px 8px">Inspection Report</th><th style="padding:6px 8px">Photos</th>\n      </tr></thead><tbody>'.concat(_surveyRegisterData.map((s) => '<tr style="border-top:1px solid var(--border)">\n        <td style="padding:6px 8px">'.concat(fmtDate(s.surveyed_at), '</td>\n        <td style="padding:6px 8px" class="mono">').concat(sanitize(s.container || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.container_type || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.consignee || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.transporter || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.truck_reg || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sanitize(s.clerk_name || "\u2014"), '</td>\n        <td style="padding:6px 8px">').concat(sbadge(s.condition_status === "heavily_damaged" ? "rejected" : s.condition_status === "food_grade" ? "approved" : "pending"), " ").concat(sanitize(conditionStatusLabel(s.condition_status)), '</td>\n        <td style="padding:6px 8px">').concat(s.interchange_generated_at ? "\u2713 Generated".concat(s.interchange_id ? ' <button class="tbl-btn" onclick="GargoDocs.eir(\''.concat(s.interchange_id, '\',\'preview\')" title="Preview">\u{1F441}</button><button class="tbl-btn" onclick="downloadInterchangeSlip(\'').concat(s.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(s.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : "\u2014", '</td>\n        <td style="padding:6px 8px"><button class="tbl-btn" onclick="GargoDocs.inspection(\'').concat(s.id, '\',\'preview\')" title="Preview">\u{1F441}</button><button class="tbl-btn" onclick="downloadInspectionReport(\'').concat(s.id, '\')">\u2B07 Report</button><button class="tbl-btn" onclick="printInspectionReport(\'').concat(s.id, '\')" title="Print">\u{1F5A8}</button></td>\n        <td style="padding:6px 8px">').concat(Array.isArray(s.photos) && s.photos.length ? '<button class="tbl-btn" onclick="viewSurveyPhotos(\''.concat(s.id, "')\">\u{1F4F7} ").concat(s.photos.length, "</button>") : '<span style="color:var(--text-3);font-size:10.5px">\u2014</span>', "</td>\n      </tr>")).join(""), "</tbody></table></div>");
   } catch (e) {
     wrap.innerHTML = '<div class="empty-state">Error: '.concat(sanitize(e.message || ""), "</div>");
   }
@@ -1950,7 +2053,7 @@ function downloadSurveyRegisterCSV() {
     s.interchange_generated_at ? "Yes" : "No",
     Array.isArray(s.photos) ? s.photos.length : 0
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
+  const csv = ghCsvPreamble("\n") + [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1987,7 +2090,7 @@ async function renderDepOpsMasterList() {
     wrap.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">\n      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">\n        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px">Status</th>\n        <th style="padding:6px 8px">Condition</th><th style="padding:6px 8px">Location</th><th style="padding:6px 8px">Interchange</th>\n      </tr></thead><tbody>'.concat(entries.map((e) => {
       const b = e.booking, s = e.survey, slot = e.slot;
       const loc = slot ? "".concat(slot.depot_blocks ? sanitize(slot.depot_blocks.block_code) : "", " \xB7 Slot ").concat(slot.slot_number) : b.storage_zone_id ? "Zone assigned" : "\u2014";
-      return '<tr style="border-top:1px solid var(--border)">\n          <td style="padding:6px 8px" class="mono">'.concat(sanitize(b.container || "\u2014"), '</td>\n          <td style="padding:6px 8px">').concat(sanitize(b.full_name)).concat(b.company ? " \xB7 " + sanitize(b.company) : "", '</td>\n          <td style="padding:6px 8px">').concat(sbadge(b.storage_status === "escalated" ? "rejected" : b.storage_status === "surveyed" || b.storage_status === "allocated" ? "approved" : "pending"), " ").concat(MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status || "\u2014"), '</td>\n          <td style="padding:6px 8px">').concat(s ? sanitize(conditionStatusLabel(s.condition_status)) : "\u2014", '</td>\n          <td style="padding:6px 8px">').concat(loc, '</td>\n          <td style="padding:6px 8px">').concat(s && s.interchange_generated_at ? "\u2713".concat(s.interchange_id ? ' <button class="tbl-btn" onclick="downloadInterchangeSlip(\''.concat(s.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(s.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : "\u2014", "</td>\n        </tr>");
+      return '<tr style="border-top:1px solid var(--border)">\n          <td style="padding:6px 8px" class="mono">'.concat(sanitize(b.container || "\u2014"), '</td>\n          <td style="padding:6px 8px">').concat(sanitize(b.full_name)).concat(b.company ? " \xB7 " + sanitize(b.company) : "", '</td>\n          <td style="padding:6px 8px">').concat(sbadge(b.storage_status === "escalated" ? "rejected" : b.storage_status === "surveyed" || b.storage_status === "allocated" ? "approved" : "pending"), " ").concat(MASTER_STATUS_LABELS[b.storage_status] || sanitize(b.storage_status || "\u2014"), '</td>\n          <td style="padding:6px 8px">').concat(s ? sanitize(conditionStatusLabel(s.condition_status)) : "\u2014", '</td>\n          <td style="padding:6px 8px">').concat(loc, '</td>\n          <td style="padding:6px 8px">').concat(s && s.interchange_generated_at ? "\u2713".concat(s.interchange_id ? ' <button class="tbl-btn" onclick="GargoDocs.eir(\''.concat(s.interchange_id, '\',\'preview\')" title="Preview">\u{1F441}</button><button class="tbl-btn" onclick="downloadInterchangeSlip(\'').concat(s.interchange_id, '\')">\u2B07</button><button class="tbl-btn" onclick="printInterchangeSlip(\'').concat(s.interchange_id, '\')" title="Print">\u{1F5A8}</button>') : "") : "\u2014", "</td>\n        </tr>");
     }).join(""), "</tbody></table></div>");
   } catch (e) {
     wrap.innerHTML = '<div class="empty-state">Error: '.concat(sanitize(e.message || ""), "</div>");
@@ -2024,9 +2127,10 @@ async function renderDepOpsReports() {
   const status = ((_c = document.getElementById("depopsRptStatus")) == null ? void 0 : _c.value) || "";
   const from = ((_d = document.getElementById("depopsRptFrom")) == null ? void 0 : _d.value) || "";
   const to = ((_e = document.getElementById("depopsRptTo")) == null ? void 0 : _e.value) || "";
+  const outIds = gxOutIcIds();
   let rows = [
     ...(state.db.interchange || []).map((i) => __spreadProps(__spreadValues({}, i), { _reportSource: "interchange" })),
-    ...(state.db.trips || []).map(_tripToInterchangeReportRow)
+    ...(state.db.trips || []).filter((t) => !(isOutwardWorkType(t.workType) && outIds.has(gxOutwardIcId(t.id)))).map(_tripToInterchangeReportRow)
   ];
   if (lineId === "__unmapped__") rows = rows.filter((i) => !i.line);
   else if (lineId) rows = rows.filter((i) => i.line === lineId);
@@ -2043,7 +2147,7 @@ async function renderDepOpsReports() {
   if (meta) meta.textContent = "".concat(rows.length, " record").concat(rows.length === 1 ? "" : "s") + (unmappedCount ? " \xB7 ".concat(unmappedCount, ' total with no shipping line \u2014 <a href="#" onclick="openUnmappedVesselsModal();return false" style="color:var(--gold)">resolve them \u2192</a>') : "");
   if (exportBtn) exportBtn.disabled = !rows.length;
   if (body) {
-    body.innerHTML = rows.length ? rows.map((ic) => '<tr>\n      <td class="mono">'.concat(fmtDate(ic.date), '</td>\n      <td class="mono" style="color:var(--gold)">').concat(sanitize(ic.container || "\u2014"), "</td>\n      <td>").concat(sanitize(ic.type || "\u2014"), "</td>\n      <td>").concat(sanitize(ic.ctype || "\u2014"), "</td>\n      <td>").concat(ic.line ? sanitize(lineName(ic.line)) : '<span style="color:var(--danger,#c0392b)">\u26A0 No Line</span>', "</td>\n      <td>").concat(sanitize(ic.condition || "\u2014"), "</td>\n      <td>").concat(ic.truck ? sanitize(truckName(ic.truck)) : "\u2014", "</td>\n      <td>").concat(ic.driver ? sanitize(driverName(ic.driver)) : "\u2014", "</td>\n      <td>").concat(sbadge(ic.status), '</td>\n      <td class="mono">').concat(ic.repairTotal ? fmtKsh(ic.repairTotal) : "\u2014", "</td>\n    </tr>")).join("") : '<tr><td colspan="10" class="empty-td">No interchange records match these filters</td></tr>';
+    body.innerHTML = rows.length ? rows.map((ic) => '<tr>\n      <td class="mono">'.concat(fmtDate(ic.date), '</td>\n      <td class="mono" style="color:var(--gold)">').concat(sanitize(ic.container || "\u2014"), "</td>\n      <td>").concat(sanitize(ic.type || "\u2014"), "</td>\n      <td>").concat(sanitize(ic.ctype || "\u2014"), "</td>\n      <td>").concat(ic.line ? sanitize(lineName(ic.line)) : '<span style="color:var(--danger,#c0392b)">\u26A0 No Line</span>', "</td>\n      <td>").concat(sanitize(ic.condition || "\u2014"), "</td>\n      <td>").concat(ic.truck ? sanitize(truckName(ic.truck)) : "\u2014", "</td>\n      <td>").concat(ic.driver ? sanitize(driverName(ic.driver)) : "\u2014", "</td>\n      <td>").concat(sbadge(ic.status), '</td>\n      <td class="mono">').concat(ic.repairTotal ? GargoMoney.fmt(ic.repairTotal, GargoMoney.itemsCur(ic.repairs)) : "\u2014", "</td>\n    </tr>")).join("") : '<tr><td colspan="10" class="empty-td">No interchange records match these filters</td></tr>';
   }
   const byLine = {};
   rows.forEach((ic) => {
@@ -2053,7 +2157,7 @@ async function renderDepOpsReports() {
   const repairTotal = rows.reduce((s, ic) => s + (ic.repairTotal || 0), 0);
   const summary = document.getElementById("depopsRptSummary");
   if (summary) {
-    summary.innerHTML = '<div class="two-col-grid">\n      <div class="report-block">\n        <h3>Summary</h3>\n        '.concat(reportRow("Total Records", rows.length), "\n        ").concat(reportRow("Pending", rows.filter((i) => i.status === "pending").length), "\n        ").concat(reportRow("Approved", rows.filter((i) => i.status === "approved").length), "\n        ").concat(reportRow("Reconciled", rows.filter((i) => i.status === "reconciled").length), "\n        ").concat(reportRow("Repair Costs Total", fmtKsh(repairTotal)), '\n      </div>\n      <div class="report-block">\n        <h3>By Shipping Line</h3>\n        ').concat(Object.entries(byLine).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => reportRow(k, v)).join("") || '<div style="color:var(--text-3);font-size:12px">No data for these filters</div>', "\n      </div>\n    </div>");
+    summary.innerHTML = '<div class="two-col-grid">\n      <div class="report-block">\n        <h3>Summary</h3>\n        '.concat(reportRow("Total Records", rows.length), "\n        ").concat(reportRow("Pending", rows.filter((i) => i.status === "pending").length), "\n        ").concat(reportRow("Approved", rows.filter((i) => i.status === "approved").length), "\n        ").concat(reportRow("Reconciled", rows.filter((i) => i.status === "reconciled").length), "\n        ").concat(reportRow("Repair Costs Total", GargoMoney.fmtMixed(rows.map((ic) => ({ amount: ic.repairTotal || 0, cur: GargoMoney.itemsCur(ic.repairs) })))), '\n      </div>\n      <div class="report-block">\n        <h3>By Shipping Line</h3>\n        ').concat(Object.entries(byLine).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => reportRow(k, v)).join("") || '<div style="color:var(--text-3);font-size:12px">No data for these filters</div>', "\n      </div>\n    </div>");
   }
 }
 function downloadDepOpsReportCSV() {
@@ -2074,7 +2178,7 @@ function downloadDepOpsReportCSV() {
     ic.status,
     ic.repairTotal || 0
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
+  const csv = ghCsvPreamble("\n") + [headers, ...rows].map((r) => r.map((v) => '"'.concat(String(v == null ? "" : v).replace(/"/g, '""'), '"')).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2293,8 +2397,8 @@ async function renderDepOpsEligible() {
 function depOpsEligibleCard(b, zoneMap) {
   const zoneName = b.storage_zone_id && zoneMap[b.storage_zone_id] || "Unknown zone";
   const portOptions = window.bookingDocs.PORT_LOCATIONS.map((p) => '<option value="'.concat(sanitize(p), '">').concat(sanitize(p), "</option>")).join("");
-  const outwardTypeOptions = OUTWARD_TYPES.map((w) => '<option value="'.concat(sanitize(w), '">').concat(sanitize(w), "</option>")).join("");
-  return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">\n    <div><strong>'.concat(sanitize(b.container) || "No container on file", '</strong> <span style="font-size:11px;color:var(--text-3)">\xB7 ').concat(sanitize(b.full_name)).concat(b.company ? " \xB7 " + sanitize(b.company) : "", '</span></div>\n    <div style="font-size:10.5px;color:var(--text-3);margin-top:2px">Booking ').concat(b.id.slice(0, 8), " \xB7 Currently in ").concat(sanitize(zoneName), '</div>\n    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">\n      <input type="number" id="depopsRelTeu-').concat(b.id, '" min="1" value="1" title="TEU to release from ').concat(sanitize(zoneName), ' once this container departs" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">\n      <select id="depopsDest-').concat(b.id, '" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">').concat(portOptions, '</select>\n      <select id="depopsOutwardType-').concat(b.id, '" title="Outward type" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px"><option value="">Outward type\u2026</option>').concat(outwardTypeOptions, '</select>\n      <button class="modal-btn primary" onclick="depOpsCreateOutwardFromBooking(\'').concat(b.id, "')\">Create Outward Trip \u2192</button>\n    </div>\n  </div>");
+  const outwardTypeOptions = outwardTypeOptionsHtml();
+  return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">\n    <div><strong>'.concat(sanitize(b.container) || "No container on file", '</strong> <span style="font-size:11px;color:var(--text-3)">\xB7 ').concat(sanitize(b.full_name)).concat(b.company ? " \xB7 " + sanitize(b.company) : "", '</span></div>\n    <div style="font-size:10.5px;color:var(--text-3);margin-top:2px">Booking ').concat(b.id.slice(0, 8), " \xB7 Currently in ").concat(sanitize(zoneName), '</div>\n    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">\n      <select id="depopsOutwardType-').concat(b.id, '" title="Status (Repat / Shipper / Sale Unit)" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px"><option value="">Status\u2026</option>').concat(outwardTypeOptions, '</select>\n      <input type="number" id="depopsRelTeu-').concat(b.id, '" min="1" value="1" title="TEU to release from ').concat(sanitize(zoneName), ' once this container departs" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">\n      <select id="depopsDest-').concat(b.id, '" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">').concat(portOptions, '</select>\n      <button class="modal-btn primary" onclick="depOpsCreateOutwardFromBooking(\'').concat(b.id, "')\">Create Outward Trip \u2192</button>\n    </div>\n  </div>");
 }
 async function depOpsCreateOutwardFromBooking(bookingId) {
   const teuEl = document.getElementById("depopsRelTeu-" + bookingId);
@@ -2308,7 +2412,7 @@ async function depOpsCreateOutwardFromBooking(bookingId) {
     return;
   }
   if (!OUTWARD_TYPES.includes(outwardType)) {
-    toast("Select an outward type \u2014 Repatriation to Port, Shippers/Export, or Sale units", "error");
+    toast("Select a status \u2014 Repat, Shipper or Sale Unit", "error");
     return;
   }
   const { data: booking, error } = await supabase.from("public_bookings").select("*").eq("id", bookingId).single();
@@ -2389,7 +2493,7 @@ async function depOpsCreateManualOutward() {
     return;
   }
   if (!OUTWARD_TYPES.includes(outwardType)) {
-    toast("Select an outward type \u2014 Repatriation to Port, Shippers/Export, or Sale units", "error");
+    toast("Select a status \u2014 Repat, Shipper or Sale Unit", "error");
     return;
   }
   const dupTrip = findLiveTripByContainer(container);
@@ -2439,14 +2543,15 @@ async function renderDepOpsOutwardTrips() {
       const zoneOptions = zones.map((z) => '<option value="'.concat(z.id, '">').concat(sanitize(z.zone_name), "</option>")).join("");
       const portOptions = window.bookingDocs.PORT_LOCATIONS.map((p) => '<option value="'.concat(sanitize(p), '">').concat(sanitize(p), "</option>")).join("");
       const lineOptions = state.db.shippingLines.filter((l) => l.active).map((l) => '<option value="'.concat(l.id, '">').concat(sanitize(l.code), " \u2014 ").concat(sanitize(l.name), "</option>")).join("");
-      const outwardTypeOptions = OUTWARD_TYPES.map((w) => '<option value="'.concat(sanitize(w), '">').concat(sanitize(w), "</option>")).join("");
-      formWrap.innerHTML = '<div class="panel" style="margin-bottom:14px">\n        <div class="panel-head"><span class="panel-title">Add Outward Container Manually</span></div>\n        <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end">\n          <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>\n          <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select\u2026</option>'.concat(zoneOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>\n          <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">').concat(portOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>Shipping Line</label><select id="depopsManualLine"><option value="">Select\u2026</option>').concat(lineOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>Outward Type</label><select id="depopsManualOutwardType"><option value="">Select\u2026</option>').concat(outwardTypeOptions, '</select></div>\n          <button class="modal-btn primary" onclick="depOpsCreateManualOutward()">Create \u2192</button>\n        </div>\n      </div>');
+      const outwardTypeOptions = outwardTypeOptionsHtml();
+      formWrap.innerHTML = '<div class="panel" style="margin-bottom:14px">\n        <div class="panel-head"><span class="panel-title">Add Outward Container Manually</span></div>\n        <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end">\n          <div class="fg" style="margin:0"><label>Status</label><select id="depopsManualOutwardType"><option value="">Select\u2026</option>'.concat(outwardTypeOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234566" oninput="markContainerValidity(this)"></div>\n          <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select\u2026</option>').concat(zoneOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>\n          <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">').concat(portOptions, '</select></div>\n          <div class="fg" style="margin:0"><label>Shipping Line</label><select id="depopsManualLine"><option value="">Select\u2026</option>').concat(lineOptions, '</select></div>\n          <button class="modal-btn primary" onclick="depOpsCreateManualOutward()">Create \u2192</button>\n        </div>\n      </div>');
       formWrap.dataset.loaded = "1";
     } catch (e) {
     }
   }
   if (!wrap) return;
-  const trips = state.db.trips.filter((t) => t.workType === "Depot \u2192 Port");
+  const allOut = state.db.trips.filter((t) => t.workType === "Depot \u2192 Port");
+  const trips = allOut.map((t) => [+new Date(t.startTime) || 0, t]).sort((a, b) => b[0] - a[0]).map((x) => x[1]).slice(0, gxPageLimit("outTrips", "all", 25, renderDepOpsOutwardTrips));
   if (!trips.length) {
     wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No outward/repatriation trips yet</div></div>';
     return;
@@ -2454,7 +2559,7 @@ async function renderDepOpsOutwardTrips() {
   wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading\u2026</div></div>';
   try {
     const docsByTrip = await window.bookingDocs.documentsForTrips(trips.map((t) => t.id));
-    wrap.innerHTML = trips.map((t) => depOpsOutwardTripCard(t, docsByTrip[t.id] || [])).join("");
+    wrap.innerHTML = trips.map((t) => depOpsOutwardTripCard(t, docsByTrip[t.id] || [])).join("") + gxPageFooter("outTrips", trips.length, allOut.length);
   } catch (e) {
     wrap.innerHTML = '<div class="empty-state">Error: '.concat(sanitize(e.message || ""), "</div>");
   }
@@ -2463,7 +2568,7 @@ function depOpsOutwardTripCard(t, docs) {
   const doc = docs.find((d) => d.doc_type === "release_order");
   const docBlock = doc ? docStatusBadge(doc.status) : '<button class="modal-btn primary" onclick="depOpsUploadReleaseOrder(\''.concat(t.id, "','").concat(sanitize(t.container), "')\">Upload Release Order</button>");
   const storageBlock = t.storageZoneId ? t.storageReleased ? '<span class="sbadge s-approved">storage released</span>' : '<span class="sbadge s-pending">'.concat(t.storageTeu || "?", " TEU pending release</span>") : "";
-  const outwardTypeBlock = t.outwardType ? '<span style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--gold-border);color:var(--gold);background:var(--gold-dim)">'.concat(sanitize(t.outwardType), "</span>") : "";
+  const outwardTypeBlock = t.outwardType ? '<span style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--gold-border);color:var(--gold);background:var(--gold-dim)">'.concat(sanitize(outwardTypeLabel(t.outwardType)), "</span>") : "";
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">\n    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">\n      <div>\n        <strong class="mono" style="color:var(--gold)">'.concat(sanitize(t.container), '</strong>\n        <div style="font-size:11px;color:var(--text-3)">').concat(sanitize(t.origin), " \u2192 ").concat(sanitize(t.dest), '</div>\n        <div style="font-size:10px;color:var(--text-3)">').concat(sanitize(t.ref), '</div>\n      </div>\n      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">\n        ').concat(sbadge(t.status), "\n        ").concat(outwardTypeBlock, "\n        ").concat(storageBlock, '\n      </div>\n    </div>\n    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n      ').concat(docBlock, '\n      <button class="modal-btn ghost" onclick="showTripDetail(\'').concat(t.id, "')\">View / Manage Trip</button>\n    </div>\n  </div>");
 }
 function depOpsUploadReleaseOrder(tripId, container) {

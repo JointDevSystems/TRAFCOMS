@@ -457,6 +457,11 @@ function recalcInvoiceFromTrips() {
 }
 function saveInvoice() {
   var _a, _b, _c;
+  if (window.GargoRates && !GargoRates.isLoaded() && _ciLastLineItems.length === 0 && document.querySelectorAll(".ci-trip-cb:checked").length) {
+    toast("The rate card has not loaded yet. Check your connection and try again.", "warning", 5e3);
+    GargoRates.load(true);
+    return;
+  }
   const client = document.getElementById("ci_client").value.trim();
   const sub = Math.max(0, parseFloat(document.getElementById("ci_sub").value) || 0);
   if (!client || !sub) {
@@ -497,6 +502,11 @@ function saveInvoice() {
 function autoGenerateInvoices() {
   if (!canFinance()) {
     toast("Finance rights required", "error");
+    return;
+  }
+  if (window.GargoRates && !GargoRates.isLoaded()) {
+    toast("The rate card has not loaded yet. Check your connection and try again.", "warning", 5e3);
+    GargoRates.load(true);
     return;
   }
   const tripsWithoutInvoice = state.db.trips.filter((t) => t.status === "completed" && !state.db.invoices.some((i) => i.trips.includes(t.id)));
@@ -573,8 +583,8 @@ function invoiceConfig() {
   return {
     companyName: c.companyName || "Gargo Haven Depot Limited",
     companyLocation: c.companyLocation || "Refinery Road, Changamwe, Mombasa",
-    poBox: c.poBox || "P.O. Box 3291 GPO Msa",
-    companyTel: c.companyTel || "+254 116 307 751",
+    poBox: c.poBox || "P.O Box 3291-80100",
+    companyTel: c.companyTel || "+254116307751 / +254108613789",
     companyVatReg: c.companyVatReg || "PO52380957H",
     bankName: c.bankName || "Family Bank",
     bankAccount: c.bankAccount || "",

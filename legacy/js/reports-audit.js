@@ -60,7 +60,7 @@ function renderWorkAnalysis(period, btn) {
   const outwardMax = Math.max(...Object.values(outwardTypeCounts), 1);
   const outwardChart = document.getElementById("waOutwardChart");
   if (outwardChart) {
-    outwardChart.innerHTML = Object.entries(outwardTypeCounts).sort((a, b) => b[1] - a[1]).map(([wt, cnt]) => '<div class="wt-bar-item"><div class="wt-bar-label" title="'.concat(sanitize(wt), '">').concat(sanitize(wt), '</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:').concat(Math.round(cnt / outwardMax * 100), '%"></div></div><div class="wt-bar-count">').concat(cnt, "</div></div>")).join("") || '<div style="padding:12px;color:var(--text-3)">No outward trips for this period</div>';
+    outwardChart.innerHTML = Object.entries(outwardTypeCounts).sort((a, b) => b[1] - a[1]).map(([wt, cnt]) => '<div class="wt-bar-item"><div class="wt-bar-label" title="'.concat(sanitize(outwardTypeLabel(wt)), '">').concat(sanitize(outwardTypeLabel(wt)), '</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:').concat(Math.round(cnt / outwardMax * 100), '%"></div></div><div class="wt-bar-count">').concat(cnt, "</div></div>")).join("") || '<div style="padding:12px;color:var(--text-3)">No outward trips for this period</div>';
   }
 }
 function renderReport(tab, btn) {
@@ -121,65 +121,18 @@ async function renderReportDepOps(out) {
 function reportRow(label, val) {
   return '<div class="report-row"><span class="label">'.concat(label, '</span><span class="val">').concat(val, "</span></div>");
 }
-const trc = { tripRows: [], auditRows: [], period: "hourly", auditPeriod: "today" };
-function trcSwitchTab(tab, btn) {
-  document.querySelectorAll("#sec-tripreports > .sec-toolbar .filter-row .filter-btn").forEach((b) => b.classList.remove("active"));
-  if (btn) btn.classList.add("active");
-  const tripsTab = document.getElementById("trcTab-trips");
-  const auditTab = document.getElementById("trcTab-audit");
-  if (tripsTab) tripsTab.style.display = tab === "trips" ? "" : "none";
-  if (auditTab) auditTab.style.display = tab === "audit" ? "" : "none";
-}
+const trc = { auditRows: [], auditPeriod: "today" };
 function trcInit() {
   if (!isAdmin()) {
     toast("Admin rights required", "error");
     return;
   }
   trcPopulateFilterOptions();
-  if (!document.getElementById("trcFrom").value) {
-    trcSetPeriod("all", document.querySelector("#trcTab-trips .trc-period-row .filter-btn"));
-  }
   if (!document.getElementById("trcAuditFrom").value) {
     trcSetAuditPeriod("today", document.querySelector("#trcTab-audit .trc-period-row .filter-btn"));
   }
 }
 function trcPopulateFilterOptions() {
-  const truckSel = document.getElementById("trcTruck");
-  if (truckSel && truckSel.options.length <= 1) {
-    [...state.db.trucks].sort((a, b) => a.reg.localeCompare(b.reg)).forEach((t) => {
-      const o = document.createElement("option");
-      o.value = t.id;
-      o.textContent = t.reg;
-      truckSel.appendChild(o);
-    });
-  }
-  const driverSel = document.getElementById("trcDriver");
-  if (driverSel && driverSel.options.length <= 1) {
-    [...state.db.drivers].sort((a, b) => a.name.localeCompare(b.name)).forEach((d) => {
-      const o = document.createElement("option");
-      o.value = d.id;
-      o.textContent = d.name;
-      driverSel.appendChild(o);
-    });
-  }
-  const statusSel = document.getElementById("trcStatus");
-  if (statusSel && statusSel.options.length <= 1) {
-    TRIP_ALL_STATUSES.forEach((s) => {
-      const o = document.createElement("option");
-      o.value = s;
-      o.textContent = s.replace("_", " ");
-      statusSel.appendChild(o);
-    });
-  }
-  const workTypeSel = document.getElementById("trcWorkType");
-  if (workTypeSel && workTypeSel.options.length <= 1) {
-    [...new Set(state.db.trips.map((t) => t.workType))].sort().forEach((w) => {
-      const o = document.createElement("option");
-      o.value = w;
-      o.textContent = w;
-      workTypeSel.appendChild(o);
-    });
-  }
   const auditUserSel = document.getElementById("trcAuditUser");
   if (auditUserSel && auditUserSel.options.length <= 1) {
     [...state.db.profiles].sort((a, b) => a.username.localeCompare(b.username)).forEach((p) => {
@@ -195,30 +148,6 @@ function trcPad(n) {
 }
 function trcLocalInputValue(d) {
   return "".concat(d.getFullYear(), "-").concat(trcPad(d.getMonth() + 1), "-").concat(trcPad(d.getDate()), "T").concat(trcPad(d.getHours()), ":").concat(trcPad(d.getMinutes()));
-}
-function trcSetPeriod(period, btn) {
-  if (btn) {
-    document.querySelectorAll("#trcTab-trips .trc-period-row .filter-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-  }
-  trc.period = period;
-  if (period === "custom") return;
-  const now = /* @__PURE__ */ new Date();
-  let from;
-  if (period === "all") from = new Date(2e3, 0, 1);
-  else if (period === "hourly") from = new Date(now.getTime() - 36e5);
-  else if (period === "daily") {
-    from = new Date(now);
-    from.setHours(0, 0, 0, 0);
-  } else if (period === "weekly") {
-    from = new Date(now);
-    const day = (from.getDay() + 6) % 7;
-    from.setDate(from.getDate() - day);
-    from.setHours(0, 0, 0, 0);
-  } else if (period === "monthly") from = new Date(now.getFullYear(), now.getMonth(), 1);
-  else from = new Date(now.getTime() - 36e5);
-  document.getElementById("trcFrom").value = trcLocalInputValue(from);
-  document.getElementById("trcTo").value = trcLocalInputValue(now);
 }
 function trcSetAuditPeriod(period, btn) {
   if (btn) {
@@ -241,115 +170,6 @@ function trcSetAuditPeriod(period, btn) {
   else from = new Date(2e3, 0, 1);
   document.getElementById("trcAuditFrom").value = trcLocalInputValue(from);
   document.getElementById("trcAuditTo").value = trcLocalInputValue(now);
-}
-async function trcRunTripReport() {
-  if (!isAdmin()) {
-    toast("Admin rights required", "error");
-    return;
-  }
-  const fromVal = document.getElementById("trcFrom").value;
-  const toVal = document.getElementById("trcTo").value;
-  const truckId = document.getElementById("trcTruck").value;
-  const driverId = document.getElementById("trcDriver").value;
-  const status = document.getElementById("trcStatus").value;
-  const workType = document.getElementById("trcWorkType").value;
-  const outwardTypeEl = document.getElementById("trcOutwardType");
-  const outwardType = outwardTypeEl ? outwardTypeEl.value : "";
-  const btn = document.querySelector("#trcTab-trips .action-btn:not(.ghost)");
-  const origLabel = btn ? btn.textContent : "";
-  if (btn) {
-    btn.textContent = "Running\u2026";
-    btn.disabled = true;
-  }
-  try {
-    const buildQuery = () => {
-      let q = supabase.from("trips").select("*");
-      if (fromVal) q = q.gte("start_time", new Date(fromVal).toISOString());
-      if (toVal) q = q.lte("start_time", new Date(toVal).toISOString());
-      if (truckId) q = q.eq("truck_id", truckId);
-      if (driverId) q = q.eq("driver_id", driverId);
-      if (status) q = q.eq("status", status);
-      if (workType) q = q.eq("work_type", workType);
-      if (outwardType) q = q.eq("outward_type", outwardType);
-      return q.order("start_time", { ascending: false });
-    };
-    const { data, error } = await fetchAllPaginated((from, to) => buildQuery().range(from, to));
-    if (error) throw error;
-    const rows = (data || []).map(tripFromRow);
-    trc.tripRows = rows;
-    trcRenderTripSummary(rows);
-    trcRenderTripTable(rows);
-    const csvBtn = document.getElementById("trcExportTripsBtn");
-    const jsonBtn = document.getElementById("trcExportTripsJsonBtn");
-    if (csvBtn) csvBtn.disabled = rows.length === 0;
-    if (jsonBtn) jsonBtn.disabled = rows.length === 0;
-    toast("".concat(rows.length, " trip record(s) retrieved"), "success");
-    addAudit(state.profile.username, "Trip Report Queried", "".concat(rows.length, " trips \xB7 ").concat(trc.period).concat(fromVal ? " \xB7 ".concat(fromVal.replace("T", " "), " \u2192 ").concat(toVal ? toVal.replace("T", " ") : "now") : ""));
-  } catch (e) {
-    console.error("Trip report query failed:", e.message);
-    toast("Query failed \u2014 check your connection", "error");
-  } finally {
-    if (btn) {
-      btn.textContent = origLabel;
-      btn.disabled = false;
-    }
-  }
-}
-function trcRenderTripSummary(rows) {
-  const el = document.getElementById("trcTripSummary");
-  if (!el) return;
-  if (!rows.length) {
-    el.className = "";
-    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4C4}</div><div class="empty-state-label">No trips match this query</div><div class="empty-state-sub">Adjust the date range or filters and run again</div></div>';
-    return;
-  }
-  const totalDist = rows.reduce((s, t) => s + (Number(t.distance) || 0), 0);
-  const completed = rows.filter((t) => t.status === "completed").length;
-  const active = rows.filter((t) => t.status === "active").length;
-  const delayed = rows.filter((t) => t.status === "delayed" || t.status === "breakdown").length;
-  el.className = "kpi-row";
-  el.innerHTML = "".concat(kpiCard("Total Trips", fmt(rows.length), "", "kpi-gold"), " ").concat(kpiCard("Completed", fmt(completed), "", "kpi-green"), " ").concat(kpiCard("Active", fmt(active), "", "kpi-blue"), " ").concat(kpiCard("Delayed / Breakdown", fmt(delayed), "", "kpi-red"), " ").concat(kpiCard("Total Distance", fmt(totalDist) + " km", "", "kpi-orange"));
-}
-function trcRenderTripTable(rows) {
-  const meta = document.getElementById("trcTripMeta");
-  if (meta) meta.textContent = "".concat(rows.length, " record(s)").concat(rows.length === 5e3 ? " (capped at 5000 \u2014 narrow your range)" : "");
-  const body = document.getElementById("trcTripBody");
-  if (!body) return;
-  body.innerHTML = rows.map((t) => "<tr onclick=\"showTripDetail('".concat(t.id, '\')">\n    <td class="mono" style="color:var(--gold)">').concat(t.container, "</td>\n    <td>").concat(truckName(t.truckId), "</td>\n    <td>").concat(driverName(t.driverId), "</td>\n    <td>").concat(t.workType, "</td>\n    <td>").concat(t.outwardType || "\u2014", '</td>\n    <td style="font-size:11px">').concat(t.origin, " \u2192 ").concat(t.dest, "</td>\n    <td>").concat(sbadge(t.status), "</td>\n    <td>").concat(t.priority ? sbadge(t.priority.toLowerCase()) : "\u2014", '</td>\n    <td class="mono">').concat(t.distance, ' km</td>\n    <td class="mono" style="font-size:10.5px">').concat(fmtTime(t.startTime), " \xB7 ").concat(fmtDate(t.startTime), '</td>\n    <td class="mono" style="font-size:10.5px">').concat(fmtTime(t.eta), "</td>\n  </tr>")).join("") || "";
-}
-function trcExportTripsCSV() {
-  if (!trc.tripRows.length) return;
-  const headers = ["ID", "Container", "Type", "Truck", "Driver", "Work Type", "Outward Type", "Origin", "Destination", "Shipping Line", "Status", "Priority", "Distance (km)", "Start Time", "ETA", "Reference"];
-  const lines = [headers.join(",")];
-  trc.tripRows.forEach((t) => {
-    lines.push([
-      t.id,
-      t.container,
-      t.ctype,
-      truckName(t.truckId),
-      driverName(t.driverId),
-      t.workType,
-      t.outwardType || "",
-      t.origin,
-      t.dest,
-      lineName(t.shippingLine),
-      t.status,
-      t.priority,
-      t.distance,
-      t.startTime,
-      t.eta,
-      t.ref
-    ].map(csvEscape).join(","));
-  });
-  downloadTextFile("gargo-trip-report-".concat(Date.now(), ".csv"), lines.join("\n"), "text/csv");
-  addAudit(state.profile.username, "Trip Report Exported", "".concat(trc.tripRows.length, " trips (CSV)"));
-  toast("Trip report exported", "success");
-}
-function trcExportTripsJSON() {
-  if (!trc.tripRows.length) return;
-  downloadTextFile("gargo-trip-report-".concat(Date.now(), ".json"), JSON.stringify(trc.tripRows, null, 2), "application/json");
-  addAudit(state.profile.username, "Trip Report Exported", "".concat(trc.tripRows.length, " trips (JSON)"));
-  toast("Trip report exported", "success");
 }
 async function trcRunAuditQuery() {
   if (!isAdmin()) {
@@ -412,12 +232,14 @@ function trcRenderAuditTable(rows) {
   if (meta) meta.textContent = "".concat(rows.length, " record(s)").concat(rows.length === 2e3 ? " (capped at 2000 \u2014 narrow your range)" : "");
   const body = document.getElementById("trcAuditBody");
   if (!body) return;
-  body.innerHTML = rows.map((a) => '<tr>\n    <td class="mono" style="font-size:10.5px;white-space:nowrap">'.concat(fmtTime(a.time), " \xB7 ").concat(fmtDate(a.time), "</td>\n    <td>").concat(a.user, '</td>\n    <td style="font-weight:600;color:var(--text)">').concat(a.action, '</td>\n    <td style="color:var(--text-2)">').concat(a.detail || "", "</td>\n  </tr>")).join("");
+  const shown = rows.slice(0, gxPageLimit("trcAudit", rows, 100, () => trcRenderAuditTable(rows)));
+  body.innerHTML = shown.map((a) => '<tr>\n    <td class="mono" style="font-size:10.5px;white-space:nowrap">'.concat(fmtTime(a.time), " \xB7 ").concat(fmtDate(a.time), "</td>\n    <td>").concat(a.user, '</td>\n    <td style="font-weight:600;color:var(--text)">').concat(a.action, '</td>\n    <td style="color:var(--text-2)">').concat(a.detail || "", "</td>\n  </tr>")).join("");
+  body.innerHTML += gxPageFooter("trcAudit", shown.length, rows.length, 4);
 }
 function trcExportAuditCSV() {
   if (!trc.auditRows.length) return;
   const headers = ["Time", "User", "Action", "Detail"];
-  const lines = [headers.join(",")];
+  const lines = ghCsvPreamble("\n").split("\n").concat([headers.join(",")]);
   trc.auditRows.forEach((a) => lines.push([a.time, a.user, a.action, a.detail].map(csvEscape).join(",")));
   downloadTextFile("gargo-audit-log-".concat(Date.now(), ".csv"), lines.join("\n"), "text/csv");
   addAudit(state.profile.username, "Audit Log Exported", "".concat(trc.auditRows.length, " entries (CSV)"));

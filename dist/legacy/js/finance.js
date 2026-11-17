@@ -98,7 +98,7 @@
     return '"' + t.replace(/"/g, '""') + '"';
   };
   function downloadCSV(name, header, rows) {
-    const text = "\uFEFF" + [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+    const text = "\uFEFF" + [...ghCsvRows(), header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
     a.download = name;
