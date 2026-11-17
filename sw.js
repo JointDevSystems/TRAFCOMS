@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '2.2.6';
+const CACHE_VERSION = '4.2.1';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -19,6 +19,7 @@ const SHELL_FILES = [
   './tablet.css',
   './cameras.css',
   './kpi-polish.css',
+  './styles/gate-desk.css',
   './js/tablet.js',
   './js/blackbox.js',
   './js/branding.js',
@@ -74,6 +75,7 @@ const SHELL_FILES = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './styles/gate-desk.css',
 ];
 
 // Pre-cached so the app can start offline on the very first visit's second launch.
