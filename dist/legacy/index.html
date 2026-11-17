@@ -47,6 +47,7 @@
     <link rel="stylesheet" href="css/tablet.css" />
     <link rel="stylesheet" href="css/cameras.css" />
     <link rel="stylesheet" href="css/kpi-polish.css" />
+    <link rel="stylesheet" href="gate-desk.css" />
 <style>
 .yard-slot{width:100%;aspect-ratio:1/1;border-radius:3px;background:#2a2a35;border:1px solid rgba(255,255,255,0.06)}
 .yard-slot-empty{background:#2a2a35}
@@ -108,13 +109,13 @@
                         <div class="login-form-sub">Authorized personnel only</div>
                     </div>
                     <div class="login-field">
-                        <label>Username</label>
-                        <input type="text" id="loginUser" placeholder="Enter username" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                        <label>Username or email</label>
+                        <input type="text" id="loginUser" placeholder="Enter username or email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" enterkeyhint="next" onkeydown="if(event.key==='Enter')doLogin()" />
                     </div>
                     <div class="login-field">
                         <label>Password</label>
                         <div class="pw-wrap">
-                            <input type="password" id="loginPass" placeholder="Enter password" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                            <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" onkeydown="if(event.key==='Enter')doLogin()" />
                             <button class="pw-eye" type="button" onclick="togglePwVis('loginPass',this)" tabindex="-1" aria-label="Show password">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>

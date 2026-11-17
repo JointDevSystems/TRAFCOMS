@@ -40,11 +40,11 @@ function showLoginScreen() {
   }, 100);
 }
 window.doLogin = async function() {
-  const email = document.getElementById("loginUser").value.trim();
+  const typed = document.getElementById("loginUser").value.trim();
   const password = document.getElementById("loginPass").value;
   const errEl = document.getElementById("loginError");
-  if (!email || !password) {
-    errEl.textContent = "Email and password required.";
+  if (!typed || !password) {
+    errEl.textContent = "Username (or email) and password required.";
     return;
   }
   errEl.textContent = "";
@@ -54,12 +54,35 @@ window.doLogin = async function() {
     btn.innerHTML = "<span>Signing in\u2026</span>";
   }
   try {
+    let email = typed;
+    if (navigator.onLine !== false) {
+      try {
+        const { data: found, error: lookupErr } = await supabase.rpc("login_email_for", { p_identifier: typed });
+        if (!lookupErr && typeof found === "string" && found) email = found;
+      } catch (e) {
+      }
+    }
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     });
     if (error || !data.user) {
-      errEl.textContent = "Invalid email or password.";
+      const code = error && (error.code || "");
+      const msg = String(error && error.message || "");
+      if (code === "invalid_credentials" || /invalid login credentials/i.test(msg)) {
+        errEl.textContent = "Wrong username/email or password. Check capital letters and spaces.";
+      } else if (error && (error.name === "AuthRetryableFetchError" || error.status === 0 || navigator.onLine === false || /fetch|network|load failed/i.test(msg))) {
+        errEl.textContent = "Cannot reach the server. Check the internet connection and try again.";
+      } else if (code === "over_request_rate_limit" || error && error.status === 429) {
+        errEl.textContent = "Too many attempts. Wait a minute and try again.";
+      } else if (/email not confirmed/i.test(msg)) {
+        errEl.textContent = "This account is not confirmed yet. Contact the administrator.";
+      } else if (/banned/i.test(msg)) {
+        errEl.textContent = "Account is deactivated.";
+      } else {
+        errEl.textContent = "Sign-in failed: " + (msg || "unknown error");
+      }
+      console.warn("Sign-in error:", error);
       return;
     }
     const { data: profile, error: profileErr } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
