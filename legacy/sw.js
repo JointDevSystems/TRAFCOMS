@@ -124,6 +124,7 @@ const SHELL_FILES = [
   "./css/tablet.css",
   "./css/cameras.css",
   "./css/kpi-polish.css",
+  "./css/gate-desk.css",
   "./vendor/supabase.js",
   "./js/polyfills.js",
   "./js/access-control.js",
