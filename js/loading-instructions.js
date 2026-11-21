@@ -560,6 +560,7 @@
     }
   };
   LI.get = id => S.rows.find(x => x.id === id) || S.gate.find(x => x.id === id) || S.desk.find(x => x.id === id) || null;
+  LI.bySerial = ser => { const k = String(ser || '').trim().toUpperCase(); if (!k) return null; return [S.rows, S.gate, S.desk].reduce((f, a) => f || (a || []).find(x => String(x.serial_no || '').trim().toUpperCase() === k), null) || null; };
   LI.forContainer = async function (cont) {
     const key = cleanNo(cont); if (!key || !canView() || !sb()) return [];
     try { const { data } = await sb().from(TABLE).select('*').ilike('container_text', '%' + key + '%').neq('status', 'cancelled').order('issue_date', { ascending: false }).limit(10); return data || []; } catch (e) { return []; }
