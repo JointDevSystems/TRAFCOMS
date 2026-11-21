@@ -60,11 +60,22 @@
     }
   };
   function css() {
-    if ($("gsCss")) return;
-    const s = document.createElement("style");
-    s.id = "gsCss";
-    s.textContent = ".gs-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}.gs-bar input{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:8px 11px;font-size:12.5px;min-width:0}.gs-bar input.gs-q{flex:1 1 220px;max-width:340px}.gs-bar label{font-size:11px;color:var(--text-3)}.gs-dir{display:inline-block;padding:2px 9px;border-radius:999px;font:600 10px var(--font-mono,monospace);letter-spacing:.8px;text-transform:uppercase;border:1px solid var(--border)}.gs-dir.in{color:var(--blue);background:var(--blue-dim);border-color:var(--blue)}.gs-dir.out{color:var(--gold);background:var(--gold-dim);border-color:var(--gold)}.gs-mono{font-family:var(--font-mono,monospace);font-weight:600;color:var(--text)}.gs-dim{color:var(--text-3)}.gs-queue{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:0 0 12px;padding:10px 14px;border:1px solid var(--amber);border-radius:10px;background:var(--amber-dim);color:var(--amber);font-size:12.5px}.gs-more{display:flex;justify-content:center;padding:14px 0}";
-    document.head.appendChild(s);
+  }
+  const EXT = ["transporter", "commodity"];
+  const noExt = (rec) => {
+    const c = Object.assign({}, rec);
+    EXT.forEach((k) => delete c[k]);
+    return c;
+  };
+  const extMissing = (e) => !!e && /transporter|commodity/i.test(String(e.message || e)) && /column|schema cache/i.test(String(e.message || e));
+  async function write(rec, editId) {
+    const run = (r) => editId ? sb().from(TABLE).update(r).eq("id", editId) : sb().from(TABLE).insert(r);
+    let res = await run(rec);
+    if (res.error && extMissing(res.error)) {
+      res = await run(noExt(rec));
+      if (!res.error) res.stripped = true;
+    } else if (!res.error) S.ext = true;
+    return res;
   }
   const qRead = () => {
     try {
@@ -93,7 +104,7 @@
           rec.received_by = rec.released_by;
           rec.released_by = null;
         }
-        const { error } = await sb().from(TABLE).insert(rec);
+        const { error } = await write(rec);
         if (!error || error.code === "23505") sent++;
         else keep.push(rec);
       }
@@ -121,7 +132,7 @@
     const t2 = S.q.replace(/[,()%*\\]/g, " ").trim();
     if (t2) {
       const p = "%" + t2 + "%";
-      q = q.or(["vehicle_no", "trailer_no", "driver_name", "driver_id_number", "container_no", "gate_pass_no", "released_by", "received_by"].map((c) => c + ".ilike." + p).join(","));
+      q = q.or(["vehicle_no", "trailer_no", "driver_name", "driver_id_number", "container_no", "gate_pass_no", "released_by", "received_by"].concat(S.ext ? EXT : []).map((c) => c + ".ilike." + p).join(","));
     }
     return q;
   }
@@ -138,6 +149,7 @@
       if (list.error) throw list.error;
       S.rows = list.data || [];
       S.total = list.count || S.rows.length;
+      if (S.rows.length && "transporter" in S.rows[0]) S.ext = true;
       S.today = { in: cin.count || 0, out: cout.count || 0 };
       S.stale = 0;
       cWrite();
@@ -170,6 +182,10 @@
     [addIn, addOut].forEach((b) => {
       if (b) b.style.display = "";
     });
+    try {
+      if (typeof loadIncomingDrivers === "function" && !IncomingDrivers.loaded) loadIncomingDrivers();
+    } catch (e) {
+    }
     await flush();
     await load();
     G.paint();
@@ -186,7 +202,8 @@
     const banner = waiting ? '<div class="gs-queue"><span>' + waiting + " " + (waiting === 1 ? "entry is" : "entries are") + ' saved on this device and will be sent when the connection returns.</span><button type="button" class="tbl-btn" onclick="GateSec.sync()">Send now</button></div>' : "";
     const old = S.stale ? '<div class="gs-queue"><span>No connection. Showing the register as it was ' + esc(fmtWhen(new Date(S.stale).toISOString())) + ". It refreshes by itself when the signal returns.</span></div>" : "";
     const fix = canFix();
-    const body = S.rows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Direction</th><th>Vehicle</th><th>Trailer</th><th>Driver</th><th>ID No.</th><th>Container</th><th>Gate pass</th><th>Officer</th>' + (fix ? "<th></th>" : "") + "</tr></thead><tbody>" + S.rows.map((r) => "<tr><td>" + esc(fmtWhen(r.movement_at)) + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + (r.direction === "in" ? "In" : "Out") + '</span></td><td class="gs-mono">' + esc(r.vehicle_no) + '</td><td class="gs-mono">' + (esc(r.trailer_no) || '<span class="gs-dim">\u2014</span>') + "</td><td>" + esc(r.driver_name) + '</td><td class="gs-mono">' + esc(r.driver_id_number) + '</td><td class="gs-mono">' + (esc(r.container_no) || '<span class="gs-dim">\u2014</span>') + "</td><td>" + (esc(r.gate_pass_no) || '<span class="gs-dim">\u2014</span>') + '</td><td><span class="gs-dim" style="font-size:10.5px">' + (r.direction === "out" ? "Releasing" : "Receiving") + "</span><br>" + esc(officerOf(r)) + "</td>" + (fix ? '<td style="white-space:nowrap"><button type="button" class="tbl-btn" onclick="GateSec.edit(\'' + esc(r.id) + '\')">Edit</button> <button type="button" class="tbl-btn" onclick="GateSec.remove(\'' + esc(r.id) + "')\">Delete</button></td>" : "") + "</tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateSec.more()">Show more</button></div>' : "") : '<div class="empty-state"><div class="empty-state-icon">\u{1F6A7}</div><div class="empty-state-label">No gate entries match</div></div>';
+    const dash = '<span class="gs-dim">\u2014</span>';
+    const body = S.rows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Movement</th><th>Vehicle</th><th>Driver</th><th>Transporter</th><th>Commodity</th><th>Container</th><th>Gate pass</th><th>Officer</th>' + (fix ? "<th></th>" : "") + "</tr></thead><tbody>" + S.rows.map((r) => '<tr><td style="white-space:nowrap">' + esc(fmtWhen(r.movement_at)) + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + (r.direction === "in" ? "In" : "Out") + '</span></td><td><span class="gs-mono">' + esc(r.vehicle_no) + "</span>" + (r.trailer_no ? '<span class="gs-sub">Trailer ' + esc(r.trailer_no) + "</span>" : "") + "</td><td>" + esc(r.driver_name) + '<span class="gs-sub">ID ' + esc(r.driver_id_number) + "</span></td><td>" + (esc(r.transporter) || dash) + "</td><td>" + (r.commodity ? '<span class="gs-tag">' + esc(r.commodity) + "</span>" : dash) + '</td><td class="gs-mono">' + (esc(r.container_no) || dash) + "</td><td>" + (esc(r.gate_pass_no) || dash) + "</td><td>" + esc(officerOf(r)) + '<span class="gs-sub">' + (r.direction === "out" ? "Releasing" : "Receiving") + "</span></td>" + (fix ? '<td style="white-space:nowrap"><button type="button" class="tbl-btn" onclick="GateSec.edit(\'' + esc(r.id) + '\')">Edit</button> <button type="button" class="tbl-btn" onclick="GateSec.remove(\'' + esc(r.id) + "')\">Delete</button></td>" : "") + "</tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateSec.more()">Show more</button></div>' : "") : '<div class="empty-state"><div class="empty-state-icon">\u{1F6A7}</div><div class="empty-state-label">No gate entries match</div></div>';
     host.innerHTML = banner + old + body;
   };
   G.filter = function(d, btn) {
@@ -220,12 +237,66 @@
     if (!n && qRead().length) toast("Still offline. Entries are safe on this device.", "warning");
     G.render();
   };
+  const COMMODITIES = ["Sale Unit", "Repat", "Export"];
+  const nkey = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  function pool() {
+    const out = [], seen = {};
+    const add = (name, id, tr, grp) => {
+      name = String(name || "").trim();
+      const k = nkey(name);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      out.push({ name, id: id || "", tr: tr || "", grp });
+    };
+    try {
+      (state.db.drivers || []).forEach((d) => add(d.name, d.idNo, "", "Gargo drivers"));
+    } catch (e) {
+    }
+    try {
+      if (typeof IncomingDrivers !== "undefined") IncomingDrivers.list.forEach((d) => add(d.name, d.id_no, d.transporter, "Previous drivers"));
+    } catch (e) {
+    }
+    S.rows.forEach((r) => add(r.driver_name, r.driver_id_number, r.transporter, "Previous drivers"));
+    const by = (a, b) => a.name.localeCompare(b.name);
+    return out.filter((d) => d.grp === "Gargo drivers").sort(by).concat(out.filter((d) => d.grp !== "Gargo drivers").sort(by));
+  }
+  function transporters(P) {
+    const seen = {}, out = [];
+    const add = (t2) => {
+      t2 = String(t2 || "").trim();
+      const k = nkey(t2);
+      if (k && !seen[k]) {
+        seen[k] = 1;
+        out.push(t2);
+      }
+    };
+    P.forEach((d) => add(d.tr));
+    S.rows.forEach((r) => add(r.transporter));
+    try {
+      if (typeof IncomingDrivers !== "undefined") IncomingDrivers.list.forEach((d) => add(d.transporter));
+    } catch (e) {
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }
   function form(rec, newDir, pre) {
-    const r = rec || pre || {}, dir = r.direction || newDir || "in";
-    const f = (id, label, v, extra) => '<div class="fg"><label>' + label + '</label><input id="gs_' + id + '" value="' + esc(v) + '" ' + (extra || "") + "/></div>";
+    const r = rec || pre || {}, dir = r.direction || newDir || "in", P = pool();
+    G._pool = P;
+    const f = (id, label, v, extra) => '<div class="fg"><label for="gs_' + id + '">' + label + '</label><input id="gs_' + id + '" value="' + esc(v) + '" ' + (extra || "") + "/></div>";
+    const di = r.driver_name ? P.findIndex((d) => nkey(d.name) === nkey(r.driver_name)) : -1;
+    const drvManual = !P.length || r.driver_name && di < 0;
+    const grp = (g) => {
+      const o = P.map((d, i) => [d, i]).filter((x) => x[0].grp === g).map((x) => '<option value="' + x[1] + '"' + (x[1] === di ? " selected" : "") + ">" + esc(x[0].name) + (x[0].id ? " (" + esc(x[0].id) + ")" : "") + "</option>").join("");
+      return o ? '<optgroup label="' + g + '">' + o + "</optgroup>" : "";
+    };
+    const drvSel = P.length ? '<select id="gs_drvsel" onchange="GateSec.drvPick()"><option value="">Select a driver\u2026</option>' + grp("Gargo drivers") + grp("Previous drivers") + '<option value="__manual"' + (drvManual ? " selected" : "") + ">Not listed: type the name\u2026</option></select>" : "";
+    const driver = '<div class="fg"><label for="gs_drvsel">Driver\'s name</label>' + drvSel + '<input id="gs_drv" class="gs-manual' + (drvManual ? "" : " gs-hidden") + '" value="' + esc(r.driver_name) + '" placeholder="Type the driver\'s full name" autocomplete="off"/></div>';
+    const cv = String(r.commodity || "").trim(), cm = COMMODITIES.find((c) => nkey(c) === nkey(cv)), other = !!cv && !cm;
+    const comSel = '<select id="gs_com" onchange="GateSec.comPick()"><option value="">Select commodity\u2026</option>' + COMMODITIES.map((c) => '<option value="' + c + '"' + (c === cm ? " selected" : "") + ">" + c + "</option>").join("") + '<option value="__other"' + (other ? " selected" : "") + ">Other: type it in\u2026</option></select>";
+    const tl = transporters(P).map((t2) => '<option value="' + esc(t2) + '"></option>').join("");
+    const officer = esc(officerOf(r) || r.released_by || r.received_by || state.profile && state.profile.name || "");
     openModal(
       rec ? "Edit gate entry" : dir === "out" ? "Vehicle going out" : "Vehicle coming in",
-      '<div class="fg"><label>Movement</label><select id="gs_dir" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select></div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="form-row-2">' + f("drv", "Driver's name", r.driver_name, 'autocomplete="off"') + f("idn", "ID number", r.driver_id_number, 'autocomplete="off"') + '</div><div class="form-row-2"><div class="fg"><label>Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div><div class="fg" id="gs_cwrap"><label>Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div></div><div class="form-row-2">' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '<div class="fg"><label id="gs_rellbl">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + esc(officerOf(r) || r.released_by || r.received_by || state.profile && state.profile.name || "") + '" autocomplete="off"/></div></div><div id="gs_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:6px"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + " \u2192</button>"
+      '<div class="gs-form"><select id="gs_dir" class="gs-hidden" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select><div class="gs-seg" role="group" aria-label="Movement"><button type="button" data-d="in" onclick="GateSec.setDir(\'in\')">\u2B07 Vehicle in</button><button type="button" data-d="out" onclick="GateSec.setDir(\'out\')">\u2B06 Vehicle out</button></div><div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="fg gs-outonly"><label for="gs_tr">Transporter</label><input id="gs_tr" list="gs_trl" value="' + esc(r.transporter) + '" placeholder="Pick a transporter or type a new one" autocomplete="off"/><datalist id="gs_trl">' + tl + '</datalist></div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f("idn", "ID number", r.driver_id_number || (di > -1 ? P[di].id : ""), 'autocomplete="off"') + '</div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? "" : " gs-hidden") + '" value="' + (other ? esc(cv) : "") + '" placeholder="Type the commodity" autocomplete="off"/></div></div><div class="gs-group"><div class="gs-group-h">Gate record</div><div class="form-row-2"><div class="fg"><label for="gs_when">Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div>' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '</div><div class="fg"><label id="gs_rellbl" for="gs_rel">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + officer + '" autocomplete="off"/></div></div><div id="gs_err" class="gs-err" role="alert"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + "</button></div>"
     );
     G.dirChanged();
     setTimeout(() => {
@@ -233,6 +304,13 @@
       if (v && !rec) v.focus();
     }, 80);
   }
+  G.setDir = function(d) {
+    const s = $("gs_dir");
+    if (s) {
+      s.value = d === "out" ? "out" : "in";
+      G.dirChanged();
+    }
+  };
   G.dirChanged = function() {
     const d = val("gs_dir") === "out" ? "out" : "in", l = $("gs_rellbl");
     if (l) l.textContent = officerLabel(d);
@@ -243,7 +321,36 @@
       const lb = c.querySelector("label");
       if (lb) lb.textContent = d === "out" ? "Container number" : "Container number (if any)";
     }
+    Array.prototype.forEach.call(document.querySelectorAll("#modalOverlay .gs-outonly"), (el) => el.classList.toggle("gs-hidden", d !== "out"));
+    Array.prototype.forEach.call(document.querySelectorAll("#modalOverlay .gs-seg button"), (b) => b.classList.toggle("on", b.getAttribute("data-d") === d));
   };
+  G.drvPick = function() {
+    const sel = $("gs_drvsel"), man = $("gs_drv");
+    if (!sel || !man) return;
+    if (sel.value === "__manual") {
+      man.classList.remove("gs-hidden");
+      man.value = "";
+      man.focus();
+      return;
+    }
+    man.classList.add("gs-hidden");
+    const d = (G._pool || [])[Number(sel.value)];
+    if (!d) {
+      man.value = "";
+      return;
+    }
+    man.value = d.name;
+    if (d.id && $("gs_idn")) $("gs_idn").value = d.id;
+    if (d.tr && $("gs_tr") && !val("gs_tr")) $("gs_tr").value = d.tr;
+  };
+  G.comPick = function() {
+    const sel = $("gs_com"), x = $("gs_comx");
+    if (!sel || !x) return;
+    const o = sel.value === "__other";
+    x.classList.toggle("gs-hidden", !o);
+    if (o) x.focus();
+  };
+  const comVal = () => $("gs_com") && $("gs_com").value === "__other" ? val("gs_comx") : val("gs_com");
   G.add = function(dir, pre) {
     if (!can()) return toast("You do not have access to Gate Processes", "error");
     form(null, dir === "out" ? "out" : "in", pre || null);
@@ -265,14 +372,21 @@
       movement_at: val("gs_when") ? new Date(val("gs_when")).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
       container_no: val("gs_con") || null,
       gate_pass_no: val("gs_gp") || null,
+      transporter: dir === "out" ? val("gs_tr") || null : null,
+      commodity: dir === "out" ? comVal() || null : null,
       released_by: dir === "out" ? val("gs_rel") : null,
       received_by: dir === "in" ? val("gs_rel") : null
     };
+    if (dir === "in" && !editId) {
+      delete rec.transporter;
+      delete rec.commodity;
+    }
     const miss = [];
     if (!rec.vehicle_no) miss.push("vehicle number");
     if (!rec.driver_name) miss.push("driver's name");
     if (!rec.driver_id_number) miss.push("ID number");
     if (dir === "out" && !rec.container_no) miss.push("container number");
+    if (dir === "out" && !rec.commodity) miss.push("commodity");
     if (!officerOf(rec)) miss.push(dir === "out" ? "releasing officer" : "receiving officer");
     if (miss.length) {
       err.textContent = "Please fill in: " + miss.join(", ") + ".";
@@ -285,17 +399,20 @@
     err.textContent = "";
     go.disabled = true;
     try {
+      let stripped = false;
       if (editId) {
-        const { error } = await sb().from(TABLE).update(rec).eq("id", editId);
-        if (error) throw error;
+        const res = await write(rec, editId);
+        if (res.error) throw res.error;
+        stripped = !!res.stripped;
         closeModal();
         toast("Entry updated", "success");
       } else {
         rec.id = uid();
         rec.created_by = state.currentUser && state.currentUser.id;
         try {
-          const { error } = await sb().from(TABLE).insert(rec);
-          if (error && error.code !== "23505") throw error;
+          const res = await write(rec);
+          if (res.error && res.error.code !== "23505") throw res.error;
+          stripped = !!res.stripped;
           closeModal();
           toast("Gate entry saved: " + rec.vehicle_no + (dir === "in" ? " in" : " out"), "success");
         } catch (e) {
@@ -307,6 +424,7 @@
           toast("No connection. Entry saved on this device and will be sent automatically.", "warning", 5e3);
         }
       }
+      if (stripped && dir === "out") toast("Saved, but transporter and commodity were not stored. Run gate-log-upgrade.sql in Supabase first.", "warning", 8e3);
       await G.reload();
       if (window.GateDesk && GateDesk.refresh) GateDesk.refresh();
     } catch (e) {

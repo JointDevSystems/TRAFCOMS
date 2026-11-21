@@ -961,7 +961,7 @@
     const r = LI.get(id);
     if (!r) return;
     closeModal();
-    if (window.GateSec) GateSec.add("out", { vehicle_no: r.truck_no, container_no: (conts(r)[0] || {}).no || "", gate_pass_no: r.serial_no });
+    if (window.GateSec) GateSec.add("out", { vehicle_no: r.truck_no, container_no: (conts(r)[0] || {}).no || "", gate_pass_no: r.serial_no, commodity: r.commodity || "", transporter: r.transporter || "" });
   };
   LI.completeDialog = function(id) {
     const r = LI.get(id);
