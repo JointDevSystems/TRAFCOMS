@@ -92,7 +92,7 @@
     host.innerHTML = '<div class="gd-head"><div><div class="gd-clock" id="gdClock">--:--</div><div class="gd-date"><span id="gdDate"></span><span class="gd-net" id="gdNet">Online</span></div></div>' +
       '<div class="gd-big"><button type="button" class="gd-bigbtn in" onclick="GateSec.add(\'in\')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v13M6 12l6 6 6-6M5 21h14"/></svg> Vehicle in</button><button type="button" class="gd-bigbtn out" onclick="GateSec.add(\'out\')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V7M6 12l6-6 6 6M5 3h14"/></svg> Vehicle out</button></div></div>' +
       '<div class="gd-kpis" id="gdKpis"></div>' +
-      '<div class="gd-searchwrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input class="gd-search" id="gdQ" type="search" placeholder="Type a truck plate or slip number to find its loading instruction" autocomplete="off" autocapitalize="characters" inputmode="text" oninput="GateDesk.search()"/></div>' +
+      '<div class="gd-searchwrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input class="gd-search" id="gdQ" type="search" placeholder="Type a truck plate, driver ID or slip number to find its loading instruction" autocomplete="off" autocapitalize="characters" inputmode="text" oninput="GateDesk.search()"/></div>' +
       '<div class="gd-chips" id="gdChips"></div><div id="gdList"></div>';
     const tick = () => { const n = new Date(); const c = $('gdClock'); if (!c) return clearInterval(tick.t); c.textContent = n.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }); $('gdDate').textContent = n.toLocaleDateString('en-KE', { weekday: 'long', day: '2-digit', month: 'long' }); const nt = $('gdNet'); if (nt) { nt.textContent = navigator.onLine ? 'Online' : 'Offline'; nt.className = 'gd-net' + (navigator.onLine ? '' : ' off'); } };
     tick(); tick.t = setInterval(tick, 5000);
@@ -118,7 +118,7 @@
     let vis = rows.filter(r => S.f === 'all' ? true : S.f === 'todo' ? (state_(r) === 'todo' && r.status === 'issued') : S.f === 'ok' ? r.verify_result === 'verified' : r.verify_result === 'rejected');
     if (q) {
       /* a search looks through everything shown, whatever the chip says */
-      vis = rows.filter(r => clean(r.truck_no).indexOf(q) > -1 || clean(r.serial_no).indexOf(q) > -1 || clean(r.container_text).indexOf(q) > -1 || String(r.shipper || '').toLowerCase().indexOf(qt) > -1);
+      vis = rows.filter(r => clean(r.truck_no).indexOf(q) > -1 || clean(r.serial_no).indexOf(q) > -1 || clean(r.container_text).indexOf(q) > -1 || clean(r.driver_id_number).indexOf(q) > -1 || String(r.shipper || '').toLowerCase().indexOf(qt) > -1 || String(r.driver_name || '').toLowerCase().indexOf(qt) > -1 || String(r.shipping_line || '').toLowerCase().indexOf(qt) > -1 || String(r.transporter || '').toLowerCase().indexOf(qt) > -1);
     }
     const warn = S.err ? '<div class="gd-warn">' + (S.err === 'offline' ? 'No connection. The list may be out of date, and Verify needs a connection.' : 'Could not refresh: ' + esc(S.err)) + '</div>' : '';
     if (!vis.length) {
@@ -134,7 +134,7 @@
       const checked = r.verified_at ? (st === 'rej' ? 'Rejected' : 'Verified') + ' by <b>' + esc(r.verified_by_name || '') + '</b> ' + esc(when(r.verified_at)) : '';
       return '<div class="gd-card ' + st + (exact ? ' hit' : '') + '"><div class="gd-top"><span class="gd-serial">' + esc(r.serial_no) + '</span><span class="gd-state ' + st + '">' + label + '</span></div>' +
         '<div class="gd-plate">' + esc(r.truck_no) + '</div><div class="gd-shipper">' + esc(r.shipper) + '</div>' +
-        '<dl class="gd-facts">' + fact('Boxes', esc(boxes)) + fact('Containers', cs.length ? cs.map(c => esc(c.no)).join(', ') : '<span class="gs-dim">Not yet entered</span>') + fact('Release order', esc(r.release_order_no)) + fact('Commodity', esc(r.commodity)) + fact('Loading', loaded) + fact('Gate check', checked) + '</dl>' +
+        '<dl class="gd-facts">' + fact('Shipping line', esc(r.shipping_line)) + fact('Transporter', esc(r.transporter)) + fact('Driver', esc(r.driver_name) + (r.driver_id_number ? ' · ID ' + esc(r.driver_id_number) : '')) + fact('Boxes', esc(boxes)) + fact('Containers', cs.length ? cs.map(c => esc(c.no)).join(', ') : '<span class="gs-dim">Not yet entered</span>') + fact('Release order', esc(r.release_order_no)) + fact('Commodity', esc(r.commodity)) + fact('Loading', loaded) + fact('Gate check', checked) + '</dl>' +
         (st === 'rej' && r.verify_note ? '<div class="gd-note">' + esc(r.verify_note) + '</div>' : '') +
         '<div class="gd-acts">' + (st === 'ok' ? '<button type="button" class="submit-btn" onclick="GargoLI.recordOut(\'' + esc(r.id) + '\')">Record vehicle out</button>' : '<button type="button" class="submit-btn" onclick="GargoLI.verifyDialog(\'' + esc(r.id) + '\')">' + (st === 'rej' ? 'Review' : '✔ Verify') + '</button>') +
         '<button type="button" class="action-btn ghost" onclick="GargoLI.docById(\'' + esc(r.id) + '\',\'preview\')">👁 View slip</button></div></div>';
