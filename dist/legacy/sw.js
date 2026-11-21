@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "4.2.2";
+const CACHE_VERSION = "4.2.4";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";

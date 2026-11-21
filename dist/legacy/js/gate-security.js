@@ -203,7 +203,7 @@
     const old = S.stale ? '<div class="gs-queue"><span>No connection. Showing the register as it was ' + esc(fmtWhen(new Date(S.stale).toISOString())) + ". It refreshes by itself when the signal returns.</span></div>" : "";
     const fix = canFix();
     const dash = '<span class="gs-dim">\u2014</span>';
-    const body = S.rows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Movement</th><th>Vehicle</th><th>Driver</th><th>Transporter</th><th>Commodity</th><th>Container</th><th>Gate pass</th><th>Officer</th>' + (fix ? "<th></th>" : "") + "</tr></thead><tbody>" + S.rows.map((r) => '<tr><td style="white-space:nowrap">' + esc(fmtWhen(r.movement_at)) + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + (r.direction === "in" ? "In" : "Out") + '</span></td><td><span class="gs-mono">' + esc(r.vehicle_no) + "</span>" + (r.trailer_no ? '<span class="gs-sub">Trailer ' + esc(r.trailer_no) + "</span>" : "") + "</td><td>" + esc(r.driver_name) + '<span class="gs-sub">ID ' + esc(r.driver_id_number) + "</span></td><td>" + (esc(r.transporter) || dash) + "</td><td>" + (r.commodity ? '<span class="gs-tag">' + esc(r.commodity) + "</span>" : dash) + '</td><td class="gs-mono">' + (esc(r.container_no) || dash) + "</td><td>" + (esc(r.gate_pass_no) || dash) + "</td><td>" + esc(officerOf(r)) + '<span class="gs-sub">' + (r.direction === "out" ? "Releasing" : "Receiving") + "</span></td>" + (fix ? '<td style="white-space:nowrap"><button type="button" class="tbl-btn" onclick="GateSec.edit(\'' + esc(r.id) + '\')">Edit</button> <button type="button" class="tbl-btn" onclick="GateSec.remove(\'' + esc(r.id) + "')\">Delete</button></td>" : "") + "</tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateSec.more()">Show more</button></div>' : "") : '<div class="empty-state"><div class="empty-state-icon">\u{1F6A7}</div><div class="empty-state-label">No gate entries match</div></div>';
+    const body = S.rows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Movement</th><th>Vehicle</th><th>Driver</th><th>Transporter</th><th>Commodity</th><th>Container</th><th>Gate pass</th><th>Officer</th><th></th></tr></thead><tbody>' + S.rows.map((r) => '<tr><td style="white-space:nowrap">' + esc(fmtWhen(r.movement_at)) + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + (r.direction === "in" ? "In" : "Out") + '</span></td><td><span class="gs-mono">' + esc(r.vehicle_no) + "</span>" + (r.trailer_no ? '<span class="gs-sub">Trailer ' + esc(r.trailer_no) + "</span>" : "") + "</td><td>" + esc(r.driver_name) + '<span class="gs-sub">ID ' + esc(r.driver_id_number) + "</span></td><td>" + (esc(r.transporter) || dash) + "</td><td>" + (r.commodity ? '<span class="gs-tag">' + esc(r.commodity) + "</span>" : dash) + '</td><td class="gs-mono">' + (esc(r.container_no) || dash) + "</td><td>" + (esc(r.gate_pass_no) || dash) + "</td><td>" + esc(officerOf(r)) + '<span class="gs-sub">' + (r.direction === "out" ? "Releasing" : "Receiving") + '</span></td><td style="white-space:nowrap">' + (r.direction === "out" ? '<button type="button" class="tbl-btn" onclick="GateSec.slip(\'' + esc(r.id) + '\',\'preview\')">\u{1F441} Slip</button> <button type="button" class="tbl-btn" onclick="GateSec.slip(\'' + esc(r.id) + "','print')\">Print</button> " : "") + (fix ? '<button type="button" class="tbl-btn" onclick="GateSec.edit(\'' + esc(r.id) + '\')">Edit</button> <button type="button" class="tbl-btn" onclick="GateSec.remove(\'' + esc(r.id) + "')\">Delete</button>" : "") + "</td></tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateSec.more()">Show more</button></div>' : "") : '<div class="empty-state"><div class="empty-state-icon">\u{1F6A7}</div><div class="empty-state-label">No gate entries match</div></div>';
     host.innerHTML = banner + old + body;
   };
   G.filter = function(d, btn) {
@@ -427,12 +427,144 @@
       if (stripped && dir === "out") toast("Saved, but transporter and commodity were not stored. Run gate-log-upgrade.sql in Supabase first.", "warning", 8e3);
       await G.reload();
       if (window.GateDesk && GateDesk.refresh) GateDesk.refresh();
+      if (dir === "out" && !editId) G.offerSlip(rec);
     } catch (e) {
       console.warn("Gate entry failed:", e);
       err.textContent = /row-level security|permission/i.test(String(e && e.message)) ? "You are not allowed to save gate entries. Ask an administrator to tick Gate Processes for your account." : "Could not save: " + (e && e.message || "error");
     } finally {
       if ($("gs_go")) $("gs_go").disabled = false;
     }
+  };
+  G.buildSlip = function(r, opts) {
+    opts = opts || {};
+    const jp = window.jspdf && window.jspdf.jsPDF;
+    if (!jp) return null;
+    const doc = new jp({ orientation: "portrait", unit: "mm", format: "a5" });
+    const M = 10, W = 128, R = M + W;
+    const ink = () => {
+      doc.setTextColor(20, 20, 20);
+      doc.setDrawColor(60, 60, 60);
+    };
+    const li = window.GargoLI && GargoLI.bySerial && r.gate_pass_no ? GargoLI.bySerial(r.gate_pass_no) : null;
+    let y = typeof window.ghPdfLetterhead === "function" ? window.ghPdfLetterhead(doc, M, 8, W) : 24;
+    doc.setDrawColor(201, 162, 39);
+    doc.setLineWidth(0.6);
+    doc.line(M, y + 1.5, R, y + 1.5);
+    ink();
+    y += 8;
+    const tw = 84, tx = M + W / 2 - tw / 2;
+    doc.setLineWidth(0.5);
+    doc.roundedRect(tx, y, tw, 10, 1.5, 1.5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("VEHICLE EXIT SLIP", tx + tw / 2, y + 7, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text("Gate pass: vehicle leaving the depot", M + W / 2, y + 15, { align: "center" });
+    ink();
+    doc.setLineWidth(0.25);
+    y += 25;
+    const label = (t2, x, yy) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.text(t2, x, yy);
+      return x + doc.getTextWidth(t2) + 2;
+    };
+    const line = (t2, v, x, yy, w, big) => {
+      const vx = label(t2, x, yy);
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(120);
+      doc.line(vx, yy + 1.2, x + w, yy + 1.2);
+      ink();
+      if (v) {
+        doc.setFont("helvetica", big ? "bold" : "normal");
+        let fs = big ? 14 : 10.5;
+        doc.setFontSize(fs);
+        while (fs > 6.5 && doc.getTextWidth(String(v)) > x + w - vx - 2) {
+          fs -= 0.5;
+          doc.setFontSize(fs);
+        }
+        doc.text(String(v), vx + 1.5, yy - 0.3);
+      }
+    };
+    const half = (W - 6) / 2, x2 = M + half + 6;
+    const when = r.movement_at ? fmtWhen(r.movement_at) : "";
+    line("GATE PASS NO.:", r.gate_pass_no, M, y, half);
+    line("TIME OUT:", when, x2, y, half);
+    y += 11;
+    line("VEHICLE NO.:", r.vehicle_no, M, y, half, true);
+    line("TRAILER NO.:", r.trailer_no, x2, y, half);
+    y += 11;
+    line("DRIVER'S NAME:", r.driver_name, M, y, W);
+    y += 11;
+    line("ID NUMBER:", r.driver_id_number, M, y, half);
+    line("TRANSPORTER:", r.transporter, x2, y, half);
+    y += 11;
+    line("CONTAINER NO.:", r.container_no, M, y, half);
+    line("COMMODITY:", r.commodity, x2, y, half);
+    y += 11;
+    if (li) {
+      line("SHIPPER'S NAME:", li.shipper, M, y, W);
+      y += 11;
+      line("RELEASE ORDER NO.:", li.release_order_no, M, y, W);
+      y += 11;
+    }
+    y += 2;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(60);
+    doc.text(doc.splitTextToSize("The vehicle and cargo described above were checked at the gate and released from Gargo Haven Depot Limited. The driver confirms the details are correct.", W), M, y);
+    ink();
+    y += 18;
+    line("RELEASING OFFICER:", r.released_by, M, y, W);
+    y += 13;
+    line("OFFICER SIGN:", "", M, y, half);
+    line("DRIVER'S SIGN:", "", x2, y, half);
+    y += 11;
+    if (li && li.verify_result === "verified") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(20, 130, 60);
+      doc.text("Loading instruction " + String(li.serial_no || "") + " verified at gate" + (li.verified_by_name ? " by " + li.verified_by_name : ""), M, y);
+      ink();
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    const n = /* @__PURE__ */ new Date();
+    doc.text("Vehicle exit slip" + (r.id ? " " + String(r.id).slice(0, 8).toUpperCase() : "") + (opts.printedBy ? " \xB7 printed by " + opts.printedBy : "") + " \xB7 " + n.toLocaleDateString("en-KE") + " " + n.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" }), M, 203);
+    return { doc, filename: "Vehicle-Exit-Slip-" + String(r.gate_pass_no || r.vehicle_no || "out").replace(/[^\w-]+/g, "_") + ".pdf" };
+  };
+  G.slip = async function(ref, mode) {
+    const r = ref && typeof ref === "object" ? ref : S.rows.find((x) => x.id === ref);
+    if (!r) return toast("Entry not found on this screen. Refresh and try again.", "error");
+    let by = "";
+    if (mode !== "preview" && typeof window.ghAskPrinter === "function") {
+      by = await ghAskPrinter({ title: "Vehicle exit slip: who is printing?", detail: String(r.vehicle_no || "") + (r.gate_pass_no ? " \xB7 " + r.gate_pass_no : "") });
+      if (by === null) return;
+      try {
+        addAudit(state.profile && state.profile.username || "system", "Vehicle Exit Slip Printed", r.vehicle_no + (r.gate_pass_no ? " \xB7 " + r.gate_pass_no : "") + " \xB7 by " + by);
+      } catch (e) {
+      }
+    }
+    const out = G.buildSlip(r, { printedBy: by });
+    if (!out) return toast("The PDF library is not loaded yet. Try again in a moment.", "error");
+    if (mode === "print") ghPrintPdf(out.doc);
+    else if (mode === "download") {
+      if (window.GargoDocs && GargoDocs.rawSave) GargoDocs.rawSave(out);
+      else out.doc.save(out.filename);
+    } else if (window.GargoDocs && GargoDocs.view) GargoDocs.view(out, "Vehicle exit slip \xB7 " + r.vehicle_no);
+    else out.doc.save(out.filename);
+  };
+  G.offerSlip = function(rec) {
+    if (!rec) return;
+    G._last = rec;
+    const b = (mode, label, ghost) => '<button type="button" class="modal-btn' + (ghost ? " ghost" : "") + '" onclick="GateSec.slip(GateSec._last,\'' + mode + "')\">" + label + "</button>";
+    openModal(
+      "Vehicle exit slip",
+      '<div style="font-size:13px;line-height:1.6;color:var(--text-2)"><div style="margin-bottom:12px"><b class="gs-mono" style="color:var(--gold);font-size:16px">' + esc(rec.vehicle_no) + "</b> has been recorded going out." + (rec.gate_pass_no ? " Gate pass <b>" + esc(rec.gate_pass_no) + "</b>." : "") + ' The slip is ready.</div><div style="display:flex;gap:8px;flex-wrap:wrap">' + b("preview", "\u{1F441} Preview") + b("print", "\u{1F5A8} Print", true) + b("download", "\u2B07 Download", true) + '<button type="button" class="modal-btn ghost" onclick="closeModal()">Done</button></div></div>'
+    );
   };
   G.remove = async function(id) {
     if (!canFix()) return toast("Only an administrator can delete a gate entry", "error");

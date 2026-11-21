@@ -419,44 +419,42 @@ function eirNumberIsMissing(v) {
   return !v || /^(n\/?a|none|null|-+|—+)$/i.test(String(v).trim());
 }
 
-/* INWARD EIR numbers for these lines are "<number><suffix>" (e.g. 268ACLR). `start` is the next number to issue.
-   The counter never goes below `start`, and continues after the highest number already on file for that suffix.
-   Lines are matched on shipping-line code or name. Everything else (other lines, all outward EIRs) keeps the old PREFIX001 style. */
-const EIR_INWARD_SCHEME = [
-  { keys: ['ace', 'aceliner', 'aceline'],              suffix: 'ACLR', start: 268 },
-  { keys: ['altan'],                                   suffix: 'ALSL', start: 10 },
-  { keys: ['asl'],                                     suffix: 'ASL',  start: 140 },
-  { keys: ['aps'],                                     suffix: 'APS',  start: 78 },
-  { keys: ['baltic', 'bltc'],                          suffix: 'BLTC', start: 262 },
-  { keys: ['bilateral', 'blt'],                        suffix: 'BLT',  start: 20 },
-  { keys: ['bluewave', 'bws'],                         suffix: 'BWS',  start: 218 },
-  { keys: ['cosco', 'cosl'],                           suffix: 'COSL', start: 4497 },
-  { keys: ['capitalone', 'capital', 'col'],            suffix: 'COL',  start: 137 },
-  { keys: ['dolphin', 'dolphine', 'dosl'],             suffix: 'DOSL', start: 51 },
-];
-const _eirIssued = {};   // highest number handed out this session, per suffix (stops two quick saves taking the same number)
+/* INWARD EIR numbers for these lines are "<number><suffix>" (e.g. 268ACLR). Matched on the shipping-line CODE.
+   The numbers are handed out by the database function next_inward_eir_number (table eir_inward_scheme), which is safe when
+   several people issue at once. The list below is only the offline fallback: it continues from the highest number on this device,
+   never below `start`. Other lines and all outward EIRs keep the old PREFIX001 style. */
+const EIR_INWARD_SCHEME = {
+  ACL: { suffix: 'ACLR', start: 268 },  ALSL: { suffix: 'ALSL', start: 10 },  ASL: { suffix: 'ASL', start: 140 },
+  APS: { suffix: 'APS', start: 78 },    BLTC: { suffix: 'BLTC', start: 262 }, BLT: { suffix: 'BLT', start: 20 },
+  BWS: { suffix: 'BWS', start: 218 },    COSL: { suffix: 'COSL', start: 4497 }, COL: { suffix: 'COL', start: 137 },
+  DOSL: { suffix: 'DOSL', start: 51 },
+  PIL: { suffix: 'PIL', start: 5538 },   OFS: { suffix: 'OFS', start: 227 },   OLE: { suffix: 'OLE', start: 58 },
+  OSL: { suffix: 'OSL', start: 21 },     NML: { suffix: 'NML', start: 2 },     KVY: { suffix: 'KVY', start: 8 },
+  GDRC: { suffix: 'GDRC', start: 41 },   GHD: { suffix: 'GHD', start: 188 },   ECL: { suffix: 'ECL', start: 4 },
+};
+const _eirIssued = {};   // highest number handed out this session per suffix (offline fallback only)
 
 function eirInwardScheme(lineId) {
   const l = (state.db.shippingLines || []).find(x => x.id === lineId); if (!l) return null;
-  const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const code = norm(l.code), name = norm(l.name), first = norm(String(l.name || '').split(/[^A-Za-z0-9]+/)[0]);
-  return EIR_INWARD_SCHEME.find(r => r.keys.some(k => code === k || name === k || first === k || (k.length >= 4 && (name.indexOf(k) === 0 || code.indexOf(k) === 0)))) || null;
+  return EIR_INWARD_SCHEME[String(l.code || '').trim().toUpperCase()] || null;
 }
 
-async function nextSchemeEirNumber(sc) {
+async function nextSchemeEirNumber(sc, lineId) {
   const re = new RegExp('^(\\d+)' + sc.suffix + '$');
-  let max = Math.max(sc.start - 1, _eirIssued[sc.suffix] || 0);
-  (state.db.interchange || []).forEach(i => { const m = re.exec(String(i.eirNumber || '').trim().toUpperCase()); if (m) max = Math.max(max, parseInt(m[1], 10)); });
-  try {
-    const { data } = await supabase.from('interchange').select('eir_number').like('eir_number', '%' + sc.suffix).order('created_at', { ascending: false }).limit(300);
-    (data || []).forEach(r => { const m = re.exec(String(r.eir_number || '').trim().toUpperCase()); if (m) max = Math.max(max, parseInt(m[1], 10)); });
-  } catch (e) { /* offline / RLS: the local maximum is the best we have */ }
-  _eirIssued[sc.suffix] = max + 1;
-  return (max + 1) + sc.suffix;
+  try {                                                    // normal path: the database issues the number
+    const { data, error } = await supabase.rpc('next_inward_eir_number', { p_line_id: lineId });
+    if (!error && typeof data === 'string' && re.test(data)) { _eirIssued[sc.suffix] = parseInt(re.exec(data)[1], 10); return data; }
+  } catch (e) { /* offline or function missing: fall through */ }
+  const used = new Set();
+  (state.db.interchange || []).forEach(i => { const m = re.exec(String(i.eirNumber || '').trim().toUpperCase()); if (m) used.add(parseInt(m[1], 10)); });
+  let n = Math.max(sc.start, (_eirIssued[sc.suffix] || 0) + 1);
+  while (used.has(n)) n++;
+  _eirIssued[sc.suffix] = n;
+  return n + sc.suffix;
 }
 
 async function nextEirNumber(movementType, lineId) {
-  if (isInwardMovement(movementType)) { const sc = eirInwardScheme(lineId); if (sc) return nextSchemeEirNumber(sc); }
+  if (isInwardMovement(movementType)) { const sc = eirInwardScheme(lineId); if (sc) return nextSchemeEirNumber(sc, lineId); }
   const prefix = eirPrefixForLine(lineId);
   const re = new RegExp('^' + prefix + '(\\d+)$');
   const fmtNo = n => prefix + String(n).padStart(3, '0');

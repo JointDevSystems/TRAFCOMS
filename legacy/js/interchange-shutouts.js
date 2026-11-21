@@ -480,7 +480,49 @@ function eirPrefixForLine(lineId) {
 function eirNumberIsMissing(v) {
   return !v || /^(n\/?a|none|null|-+|—+)$/i.test(String(v).trim());
 }
+const EIR_INWARD_SCHEME = [
+  { keys: ["ace", "aceliner", "aceline"], suffix: "ACLR", start: 268 },
+  { keys: ["altan"], suffix: "ALSL", start: 10 },
+  { keys: ["asl"], suffix: "ASL", start: 140 },
+  { keys: ["aps"], suffix: "APS", start: 78 },
+  { keys: ["baltic", "bltc"], suffix: "BLTC", start: 262 },
+  { keys: ["bilateral", "blt"], suffix: "BLT", start: 20 },
+  { keys: ["bluewave", "bws"], suffix: "BWS", start: 218 },
+  { keys: ["cosco", "cosl"], suffix: "COSL", start: 4497 },
+  { keys: ["capitalone", "capital", "col"], suffix: "COL", start: 137 },
+  { keys: ["dolphin", "dolphine", "dosl"], suffix: "DOSL", start: 51 }
+];
+const _eirIssued = {};
+function eirInwardScheme(lineId) {
+  const l = (state.db.shippingLines || []).find((x) => x.id === lineId);
+  if (!l) return null;
+  const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const code = norm(l.code), name = norm(l.name), first = norm(String(l.name || "").split(/[^A-Za-z0-9]+/)[0]);
+  return EIR_INWARD_SCHEME.find((r) => r.keys.some((k) => code === k || name === k || first === k || k.length >= 4 && (name.indexOf(k) === 0 || code.indexOf(k) === 0))) || null;
+}
+async function nextSchemeEirNumber(sc) {
+  const re = new RegExp("^(\\d+)" + sc.suffix + "$");
+  let max = Math.max(sc.start - 1, _eirIssued[sc.suffix] || 0);
+  (state.db.interchange || []).forEach((i) => {
+    const m = re.exec(String(i.eirNumber || "").trim().toUpperCase());
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  try {
+    const { data } = await supabase.from("interchange").select("eir_number").like("eir_number", "%" + sc.suffix).order("created_at", { ascending: false }).limit(300);
+    (data || []).forEach((r) => {
+      const m = re.exec(String(r.eir_number || "").trim().toUpperCase());
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+  } catch (e) {
+  }
+  _eirIssued[sc.suffix] = max + 1;
+  return max + 1 + sc.suffix;
+}
 async function nextEirNumber(movementType, lineId) {
+  if (isInwardMovement(movementType)) {
+    const sc = eirInwardScheme(lineId);
+    if (sc) return nextSchemeEirNumber(sc);
+  }
   const prefix = eirPrefixForLine(lineId);
   const re = new RegExp("^" + prefix + "(\\d+)$");
   const fmtNo = (n) => prefix + String(n).padStart(3, "0");
