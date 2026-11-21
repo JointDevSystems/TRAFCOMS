@@ -189,7 +189,7 @@
     const t = S.q.replace(/[,()%*\\]/g, " ").trim();
     if (t) {
       const p = "%" + t + "%";
-      q = q.or(["serial_no", "shipper", "truck_no", "release_order_no", "commodity", "container_text", "clerk_name"].map((c) => c + ".ilike." + p).join(","));
+      q = q.or(["serial_no", "shipper", "truck_no", "release_order_no", "commodity", "container_text", "clerk_name", "driver_name", "driver_id_number", "transporter", "shipping_line"].map((c) => c + ".ilike." + p).join(","));
     }
     return q;
   }
@@ -325,7 +325,7 @@
     const ticks = TYPES.map((t) => '<label class="li-tick"><input type="checkbox" class="li-type" value="' + t + '"' + (types.indexOf(t) > -1 ? " checked" : "") + "/>" + t + "</label>").join("");
     const boxes = BOXES.map((b) => '<label class="li-tick"><input type="radio" name="li_box" value="' + b[0] + '"' + (box === b[0] ? " checked" : "") + ' onchange="GargoLI.boxChanged()"/>' + b[1] + "</label>").join("");
     const slot = (n) => '<div class="li-slot" id="li_slotwrap' + n + '"><div class="fg"><label>Container number ' + n + '</label><input id="li_c' + n + '" value="' + esc((cs[n - 1] || {}).no || "") + '" data-ic="' + esc((cs[n - 1] || {}).ic_id || "") + '" data-ct="' + esc((cs[n - 1] || {}).ctype || "") + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><button type="button" class="action-btn ghost" onclick="GargoLI.pick(' + n + ')">Pick from yard</button></div>';
-    return '<div class="form-card-head">' + (r.id ? "Edit loading instruction" : "New loading instruction") + '</div><div class="form-card-body"><div class="li-part">PART 1 \xB7 DOCUMENTATION CLERK</div><div class="form-row-2">' + f("serial", "Serial number *", r.serial_no, 'inputmode="numeric" autocomplete="off"') + '<div class="fg"><label>Date *</label><input id="li_date" type="date" value="' + esc(r.issue_date || today()) + '"/></div></div><div class="form-row-2">' + f("shipper", "Shipper's name *", r.shipper, 'autocomplete="off" list="liShippers"') + f("truck", "Truck number *", r.truck_no, 'autocapitalize="characters" autocomplete="off" list="liTrucks"') + '</div><datalist id="liShippers">' + shipperOptions() + '</datalist><datalist id="liTrucks">' + truckOptions() + '</datalist><div class="form-row-2">' + f("ro", "Release order no.", r.release_order_no, 'autocomplete="off"') + f("commodity", "Commodity", r.commodity, 'autocomplete="off"') + '</div><div class="fg"><label>Number of containers to be loaded * <span class="label-optional">(tick one)</span></label><div class="li-ticks">' + boxes + '</div></div><div class="fg"><label>Container type <span class="label-optional">(tick relevant boxes)</span></label><div class="li-ticks">' + ticks + '</div></div><div class="fg"><label>Name of clerk *</label><input id="li_clerk" value="' + esc(r.clerk_name || state.profile && state.profile.name || "") + '" autocomplete="off"/></div><div class="li-part">PART 2 \xB7 RELEASING CLERK</div>' + slot(1) + '<div style="height:8px"></div>' + slot(2) + '<div class="li-hint">Pick from the containers in the yard right now, or type a number for a container that is not on the system. Picking fills the size and type for you.</div><div class="form-row-2" style="margin-top:10px">' + f("relclerk", "Releasing clerk", r.release_clerk, 'autocomplete="off"') + f("manager", "Depot manager in charge", r.manager_name, 'autocomplete="off"') + '</div><div class="fg"><label>Status</label><select id="li_status"><option value="issued"' + (r.status !== "loaded" && r.status !== "cancelled" ? " selected" : "") + '>Issued, awaiting loading</option><option value="loaded"' + (r.status === "loaded" ? " selected" : "") + '>Loaded and released</option><option value="cancelled"' + (r.status === "cancelled" ? " selected" : "") + '>Cancelled</option></select></div><div id="li_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div><div class="li-acts"><button type="button" class="submit-btn" id="li_go" style="flex:1;min-width:150px" onclick="GargoLI.save(false)">' + (r.id ? "Save changes" : "Save") + '</button><button type="button" class="action-btn" onclick="GargoLI.save(\'preview\')">Save &amp; preview</button><button type="button" class="action-btn ghost" onclick="GargoLI.save(true)">Save &amp; print</button><button type="button" class="action-btn ghost" onclick="GargoLI.previewForm()">\u{1F441} Preview this form</button><button type="button" class="action-btn ghost" onclick="GargoLI.blank()">Print blank form</button>' + (r.id ? '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Cancel edit</button>' : '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Clear</button>') + "</div></div>";
+    return '<div class="form-card-head">' + (r.id ? "Edit loading instruction" : "New loading instruction") + '</div><div class="form-card-body"><div class="li-part">PART 1 \xB7 DOCUMENTATION CLERK</div><div class="form-row-2">' + f("serial", "Serial number *", r.serial_no, 'inputmode="numeric" autocomplete="off"') + '<div class="fg"><label>Date *</label><input id="li_date" type="date" value="' + esc(r.issue_date || today()) + '"/></div></div><div class="form-row-2">' + f("shipper", "Shipper's name *", r.shipper, 'autocomplete="off" list="liShippers"') + f("truck", "Truck number *", r.truck_no, 'autocapitalize="characters" autocomplete="off" list="liTrucks"') + '</div><datalist id="liShippers">' + shipperOptions() + '</datalist><datalist id="liTrucks">' + truckOptions() + '</datalist><div class="form-row-2">' + f("line", "Shipping line", r.shipping_line, 'autocomplete="off" list="liLines"') + f("transporter", "Transporter", r.transporter, 'autocomplete="off"') + '</div><datalist id="liLines">' + lineOptions() + '</datalist><div class="form-row-2">' + f("driver", "Driver name", r.driver_name, 'autocomplete="off"') + f("driverid", "Driver ID number", r.driver_id_number, 'autocomplete="off" inputmode="numeric"') + '</div><div class="form-row-2">' + f("ro", "Release order no.", r.release_order_no, 'autocomplete="off"') + f("commodity", "Commodity", r.commodity, 'autocomplete="off"') + '</div><div class="fg"><label>Number of containers to be loaded * <span class="label-optional">(tick one)</span></label><div class="li-ticks">' + boxes + '</div></div><div class="fg"><label>Container type <span class="label-optional">(tick relevant boxes)</span></label><div class="li-ticks">' + ticks + '</div></div><div class="fg"><label>Name of clerk *</label><input id="li_clerk" value="' + esc(r.clerk_name || state.profile && state.profile.name || "") + '" autocomplete="off"/></div><div class="li-part">PART 2 \xB7 RELEASING CLERK</div>' + slot(1) + '<div style="height:8px"></div>' + slot(2) + '<div class="li-hint">Pick from the containers in the yard right now, or type a number for a container that is not on the system. Picking fills the size and type for you.</div><div class="form-row-2" style="margin-top:10px">' + f("relclerk", "Releasing clerk", r.release_clerk, 'autocomplete="off"') + f("manager", "Depot manager in charge", r.manager_name, 'autocomplete="off"') + '</div><div class="fg"><label>Status</label><select id="li_status"><option value="issued"' + (r.status !== "loaded" && r.status !== "cancelled" ? " selected" : "") + '>Issued, awaiting loading</option><option value="loaded"' + (r.status === "loaded" ? " selected" : "") + '>Loaded and released</option><option value="cancelled"' + (r.status === "cancelled" ? " selected" : "") + '>Cancelled</option></select></div><div id="li_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div><div class="li-acts"><button type="button" class="submit-btn" id="li_go" style="flex:1;min-width:150px" onclick="GargoLI.save(false)">' + (r.id ? "Save changes" : "Save") + '</button><button type="button" class="action-btn" onclick="GargoLI.save(\'preview\')">Save &amp; preview</button><button type="button" class="action-btn ghost" onclick="GargoLI.save(true)">Save &amp; print</button><button type="button" class="action-btn ghost" onclick="GargoLI.previewForm()">\u{1F441} Preview this form</button><button type="button" class="action-btn ghost" onclick="GargoLI.blank()">Print blank form</button>' + (r.id ? '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Cancel edit</button>' : '<button type="button" class="action-btn ghost" onclick="GargoLI.resetForm()">Clear</button>') + "</div></div>";
   }
   function shipperOptions() {
     const set = /* @__PURE__ */ new Set();
@@ -337,6 +337,19 @@
     }
     S.rows.forEach((r) => {
       if (r.shipper) set.add(r.shipper);
+    });
+    return Array.from(set).map((n) => '<option value="' + esc(n) + '"></option>').join("");
+  }
+  function lineOptions() {
+    const set = /* @__PURE__ */ new Set();
+    try {
+      (state.db.shippingLines || []).forEach((l) => {
+        if (l.name) set.add(l.name);
+      });
+    } catch (e) {
+    }
+    S.rows.forEach((r) => {
+      if (r.shipping_line) set.add(r.shipping_line);
     });
     return Array.from(set).map((n) => '<option value="' + esc(n) + '"></option>').join("");
   }
@@ -463,6 +476,10 @@
       issue_date: val("li_date"),
       shipper: val("li_shipper"),
       truck_no: val("li_truck").toUpperCase(),
+      shipping_line: val("li_line") || null,
+      transporter: val("li_transporter") || null,
+      driver_name: val("li_driver") || null,
+      driver_id_number: val("li_driverid") || null,
       release_order_no: val("li_ro") || null,
       box_count: box,
       container_types: types,
@@ -722,10 +739,16 @@
     doc.setFontSize(10.5);
     doc.text("PART 1: To be completed by documentation clerk", M, y);
     y += 10;
-    line("SHIPPER'S NAME:", r.shipper, M, y, W);
+    line("SHIPPER'S NAME:", r.shipper, M, y, 160);
+    line("COMMODITY:", r.commodity, M + 170, y, W - 170);
     y += 11;
-    line("TRUCK NUMBER:", r.truck_no, M, y, 118);
-    line("RELEASE ORDER NO.:", r.release_order_no, M + 128, y, W - 128);
+    line("TRUCK NUMBER:", r.truck_no, M, y, 84);
+    line("SHIPPING LINE:", r.shipping_line, M + 92, y, 84);
+    line("RELEASE ORDER NO.:", r.release_order_no, M + 184, y, W - 184);
+    y += 11;
+    line("TRANSPORTER:", r.transporter, M, y, 84);
+    line("DRIVER NAME:", r.driver_name, M + 92, y, 84);
+    line("DRIVER ID NO.:", r.driver_id_number, M + 184, y, W - 184);
     y += 12;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.5);
@@ -760,8 +783,6 @@
     });
     doc.setLineWidth(0.25);
     y += gh + 11;
-    line("COMMODITY:", r.commodity, M, y, W);
-    y += 11;
     line("NAME OF CLERK:", r.clerk_name, M, y, 170);
     line("SIGN:", "", M + 180, y, W - 180);
     y += 13;
@@ -898,7 +919,7 @@
     const row = (k, v) => '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text-3)">' + k + '</span><b style="text-align:right;color:var(--text)">' + (v || "\u2014") + "</b></div>";
     openModal(
       "Verify loading instruction " + r.serial_no,
-      '<div style="margin-bottom:12px"><span class="li-serial" style="font-size:20px">' + esc(r.serial_no) + "</span> " + chip(r.status) + " " + vchip(r) + "</div>" + row("Shipper", esc(r.shipper)) + row("Truck number", '<span class="li-mono" style="font-size:16px">' + esc(r.truck_no) + "</span>") + row("Containers to load", esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? " \xB7 " + esc(asList(r.container_types).join(", ")) : "")) + row("Container number(s)", cs.map((c) => '<span class="li-mono">' + esc(c.no) + "</span>").join("<br>") || '<span class="li-dim">not yet entered</span>') + row("Release order", esc(r.release_order_no)) + row("Commodity", esc(r.commodity)) + row("Issued by", esc(r.clerk_name) + " \xB7 " + esc(dshort(r.issue_date))) + (done ? '<div class="ops-notice" style="margin:12px 0">' + (r.verify_result === "verified" ? "Verified" : "Rejected") + " by <b>" + esc(r.verified_by_name || "") + "</b> \xB7 " + esc(hhmm(r.verified_at)) + (r.verify_note ? "<br>" + esc(r.verify_note) : "") + "</div>" : "") + (done && r.verify_result === "verified" ? "" : '<div class="li-part">CHECK AT THE GATE</div><div class="fg"><label>Plate on the vehicle in front of you *</label><input id="lv_veh" autocapitalize="characters" autocomplete="off" placeholder="Type the plate" oninput="GargoLI.verifyCheck()" style="font-size:18px;font-weight:700;letter-spacing:1px"/><div id="lv_match" class="li-hint"></div></div>' + (cs.length ? '<div class="fg"><label>Container number on the box <span class="label-optional">(optional check)</span></label><input id="lv_con" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567" oninput="GargoLI.verifyCheck()"/></div>' : "") + '<div class="fg"><label>Note <span class="label-optional">(required to reject)</span></label><input id="lv_note" autocomplete="off" placeholder="e.g. driver ID checked, seal 123456"/></div><div id="lv_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div><div class="li-acts"><button type="button" class="submit-btn" id="lv_ok" style="flex:2;min-width:180px;min-height:50px" onclick="GargoLI.verify(\'' + esc(id) + '\',\'verified\')">\u2714 Verify and allow</button><button type="button" class="action-btn" id="lv_no" style="min-height:50px;color:var(--red);border-color:var(--red)" onclick="GargoLI.verify(\'' + esc(id) + '\',\'rejected\')">\u2716 Reject</button><button type="button" class="action-btn ghost" style="min-height:50px" onclick="GargoLI.docById(\'' + esc(id) + "','preview')\">\u{1F441} View slip</button></div>") + (done && r.verify_result === "verified" ? '<div class="li-acts" style="margin-top:12px"><button type="button" class="action-btn" onclick="GargoLI.recordOut(\'' + esc(id) + '\')">Record vehicle out</button><button type="button" class="action-btn ghost" onclick="GargoLI.docById(\'' + esc(id) + "','preview')\">\u{1F441} View slip</button></div>" : "")
+      '<div style="margin-bottom:12px"><span class="li-serial" style="font-size:20px">' + esc(r.serial_no) + "</span> " + chip(r.status) + " " + vchip(r) + "</div>" + row("Shipper", esc(r.shipper)) + row("Truck number", '<span class="li-mono" style="font-size:16px">' + esc(r.truck_no) + "</span>") + row("Containers to load", esc(boxLabel(r.box_count)) + (asList(r.container_types).length ? " \xB7 " + esc(asList(r.container_types).join(", ")) : "")) + row("Container number(s)", cs.map((c) => '<span class="li-mono">' + esc(c.no) + "</span>").join("<br>") || '<span class="li-dim">not yet entered</span>') + row("Shipping line", esc(r.shipping_line)) + row("Transporter", esc(r.transporter)) + row("Driver", esc(r.driver_name) + (r.driver_id_number ? " \xB7 ID " + esc(r.driver_id_number) : "")) + row("Release order", esc(r.release_order_no)) + row("Commodity", esc(r.commodity)) + row("Issued by", esc(r.clerk_name) + " \xB7 " + esc(dshort(r.issue_date))) + (done ? '<div class="ops-notice" style="margin:12px 0">' + (r.verify_result === "verified" ? "Verified" : "Rejected") + " by <b>" + esc(r.verified_by_name || "") + "</b> \xB7 " + esc(hhmm(r.verified_at)) + (r.verify_note ? "<br>" + esc(r.verify_note) : "") + "</div>" : "") + (done && r.verify_result === "verified" ? "" : '<div class="li-part">CHECK AT THE GATE</div><div class="fg"><label>Plate on the vehicle in front of you *</label><input id="lv_veh" autocapitalize="characters" autocomplete="off" placeholder="Type the plate" oninput="GargoLI.verifyCheck()" style="font-size:18px;font-weight:700;letter-spacing:1px"/><div id="lv_match" class="li-hint"></div></div>' + (cs.length ? '<div class="fg"><label>Container number on the box <span class="label-optional">(optional check)</span></label><input id="lv_con" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567" oninput="GargoLI.verifyCheck()"/></div>' : "") + '<div class="fg"><label>Note <span class="label-optional">(required to reject)</span></label><input id="lv_note" autocomplete="off" placeholder="e.g. driver ID checked, seal 123456"/></div><div id="lv_err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div><div class="li-acts"><button type="button" class="submit-btn" id="lv_ok" style="flex:2;min-width:180px;min-height:50px" onclick="GargoLI.verify(\'' + esc(id) + '\',\'verified\')">\u2714 Verify and allow</button><button type="button" class="action-btn" id="lv_no" style="min-height:50px;color:var(--red);border-color:var(--red)" onclick="GargoLI.verify(\'' + esc(id) + '\',\'rejected\')">\u2716 Reject</button><button type="button" class="action-btn ghost" style="min-height:50px" onclick="GargoLI.docById(\'' + esc(id) + "','preview')\">\u{1F441} View slip</button></div>") + (done && r.verify_result === "verified" ? '<div class="li-acts" style="margin-top:12px"><button type="button" class="action-btn" onclick="GargoLI.recordOut(\'' + esc(id) + '\')">Record vehicle out</button><button type="button" class="action-btn ghost" onclick="GargoLI.docById(\'' + esc(id) + "','preview')\">\u{1F441} View slip</button></div>" : "")
     );
     setTimeout(() => {
       const v = $("lv_veh");
