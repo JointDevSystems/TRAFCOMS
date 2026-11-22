@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "4.2.8";
+const CACHE_VERSION = "4.2.9";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -142,6 +142,7 @@ const SHELL_FILES = [
   "./js/depot-ops.js",
   "./js/dispatch-trips.js",
   "./js/documents.js",
+  "./js/edi-codeco.js",
   "./js/erp-hub.js",
   "./js/finance-billing.js",
   "./js/finance-corp.js",
