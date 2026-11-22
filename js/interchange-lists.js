@@ -107,27 +107,49 @@
     if ($('icxCss')) return;
     const st = document.createElement('style'); st.id = 'icxCss';
     st.textContent = `
-    .icx-tabs{display:flex;gap:8px;flex-wrap:wrap}
-    .icx-tab{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-2);font:600 13px var(--font-body,inherit);cursor:pointer;min-height:44px}
-    .icx-tab .icx-n{min-width:26px;padding:1px 8px;border-radius:999px;background:var(--surface-2);color:var(--text-3);font-size:11px;text-align:center}
-    .icx-tab[data-d=inward][aria-selected=true]{color:var(--blue);border-color:var(--blue);background:var(--blue-dim)}
-    .icx-tab[data-d=outward][aria-selected=true]{color:var(--gold);border-color:var(--gold-border);background:var(--gold-dim)}
+    /* Glass layer. Colours match the inspection report: blue = inward, gold = outward, green = good/complete.
+       Only the big panels blur; cards inside them use translucent fills + a light edge (nested blur is slow on tablets and
+       cannot see through its parent anyway). Lite mode (html.gx-lite) already removes blur and makes the variables solid. */
+    .icx-tabs{display:flex;gap:6px;flex-wrap:wrap;width:fit-content;max-width:100%;padding:5px;border:1px solid var(--glass-edge,var(--border));border-radius:16px;
+      background:var(--glass,var(--surface));-webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+      box-shadow:0 1px 0 var(--glass-hi,transparent) inset,var(--card-shadow,0 14px 30px -22px rgba(0,0,0,.6))}
+    .icx-tab{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--text-2);font:600 13px var(--font-body,inherit);cursor:pointer;min-height:44px;transition:background .18s,color .18s,border-color .18s,box-shadow .18s}
+    .icx-tab:hover{background:var(--hover);color:var(--text)}
+    .icx-tab .icx-n{min-width:26px;padding:1px 8px;border-radius:999px;background:var(--glass-hi,var(--surface-2));border:1px solid var(--glass-edge,var(--border));color:var(--text-3);font-size:11px;text-align:center}
+    .icx-tab[data-d=inward][aria-selected=true]{color:var(--blue);border-color:var(--blue);background:linear-gradient(180deg,var(--glass-hi,transparent),var(--blue-dim));box-shadow:0 1px 0 var(--glass-hi,transparent) inset,0 6px 18px -10px var(--blue)}
+    .icx-tab[data-d=outward][aria-selected=true]{color:var(--gold);border-color:var(--gold-border);background:linear-gradient(180deg,var(--glass-hi,transparent),var(--gold-dim));box-shadow:0 1px 0 var(--glass-hi,transparent) inset,0 6px 18px -10px var(--gold)}
+    .icx-tab[aria-selected=true] .icx-n{color:inherit;border-color:currentColor}
     .icx-tab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-    .icx-area{border-left:3px solid var(--gold);padding-left:14px;margin-top:14px}
-    .icx-area[data-d=inward]{border-left-color:var(--blue)}
+    .icx-area{--ax:var(--gold);--ax-t:var(--gold-dim);position:relative;overflow:hidden;margin-top:14px;padding:16px 16px 10px 20px;border:1px solid var(--glass-edge,var(--border));border-radius:18px;
+      background:radial-gradient(70% 90% at 100% 0,var(--ax-t),transparent 70%),var(--glass,var(--surface));
+      -webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+      box-shadow:0 1px 0 var(--glass-hi,transparent) inset,var(--card-shadow,0 18px 40px -26px rgba(0,0,0,.7))}
+    .icx-area::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:var(--ax)}
+    .icx-area[data-d=inward]{--ax:var(--blue);--ax-t:var(--blue-dim)}
     .icx-blurb{font-size:12px;color:var(--text-3);margin:0 0 10px;line-height:1.5}
-    .icx-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
-    .icx-bar input[type=search]{flex:1;min-width:190px}
+    .icx-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+    .icx-bar input[type=search]{flex:1;min-width:190px;background:var(--surface-2);border:1px solid var(--glass-edge,var(--border));border-radius:12px;box-shadow:0 1px 0 var(--glass-hi,transparent) inset;transition:border-color .15s,box-shadow .15s}
+    .icx-bar input[type=search]:focus{outline:none;border-color:var(--ax);box-shadow:0 0 0 3px var(--ax-t)}
     .icx-bar label{font-size:11px;color:var(--text-3);display:flex;gap:5px;align-items:center}
-    .icx-note{font-size:11.5px;padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid var(--border);color:var(--text-2)}
-    .icx-note.warn{border-color:var(--amber);color:var(--amber)}
-    .icx-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;margin-left:6px;border:1px solid var(--border)}
+    .icx-note{font-size:11.5px;padding:8px 12px;border-radius:12px;margin-bottom:10px;border:1px solid var(--glass-edge,var(--border));background:var(--glass-hi,transparent);color:var(--text-2)}
+    .icx-note.warn{border-color:var(--amber);background:var(--amber-dim);color:var(--amber)}
+    .icx-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;margin-left:6px;border:1px solid var(--glass-edge,var(--border));background:var(--glass-hi,transparent)}
     .icx-pill.in{color:var(--blue);border-color:var(--blue);background:var(--blue-dim)}
     .icx-pill.out{color:var(--text-3)}
-    .icx-pill.cond{color:var(--gold);border-color:var(--gold-border);background:var(--gold-dim)}
+    .icx-pill.cond{color:var(--green);border-color:var(--green);background:var(--green-dim)}
     .icx-more{padding:14px;text-align:center;font-size:12px;color:var(--text-3)}
     .icx-thumb img{width:100%;height:100%;object-fit:cover}
-    @media(max-width:700px){.icx-tab{flex:1;justify-content:center}.icx-area{padding-left:10px}}`;
+    /* record cards (also the Inward page): frosted tile, bright top edge, accent edge on hover */
+    .icx-area .ic-card,#sec-inward .ic-card{border:1px solid var(--glass-edge,var(--border));border-radius:14px!important;
+      background:linear-gradient(135deg,var(--glass-hi,transparent) 0%,transparent 55%),var(--surface);
+      box-shadow:0 1px 0 var(--glass-hi,transparent) inset,0 10px 26px -20px rgba(0,0,0,.75);
+      transition:border-color .18s,box-shadow .18s,transform .18s}
+    .icx-area .ic-card:hover,#sec-inward .ic-card:hover{border-color:var(--ax,var(--border-mid));box-shadow:0 1px 0 var(--glass-hi,transparent) inset,0 14px 30px -18px var(--ax,rgba(0,0,0,.8))}
+    .icx-area .ic-card-img,.icx-area .ic-card-img-placeholder,#sec-inward .ic-card-img,#sec-inward .ic-card-img-placeholder{border-radius:10px;border-color:var(--glass-edge,var(--border))}
+    [data-theme=light] .icx-area .ic-card,[data-theme=light] #sec-inward .ic-card{box-shadow:0 1px 0 #fff inset,0 10px 24px -20px rgba(16,20,32,.35)}
+    @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.icx-tabs,.icx-area{background:var(--surface)}}
+    @media(prefers-reduced-motion:reduce){.icx-tab,.icx-area .ic-card,#sec-inward .ic-card{transition:none}}
+    @media(max-width:700px){.icx-tab{flex:1;justify-content:center}.icx-tabs{width:100%}.icx-area{padding:12px 12px 6px 16px;border-radius:16px}}`;
     document.head.appendChild(st);
   }
 
