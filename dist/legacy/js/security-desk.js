@@ -100,7 +100,7 @@
         }
       }
     } catch (e) {
-      S.err = navigator.onLine ? String(e && e.message || "Could not load") : "offline";
+      S.err = navigator.onLine ? /permission denied|jwt|not authenticated/i.test(String(e && e.message || "")) ? "auth" : String(e && e.message || "Could not load") : "offline";
       console.warn("Gate desk load failed:", e && e.message);
     } finally {
       S.busy = false;
@@ -140,6 +140,17 @@
     }, 15e3);
   };
   window.addEventListener("online", () => D.refresh && D.refresh());
+  try {
+    supabase.auth.onAuthStateChange((ev) => {
+      if (ev === "TOKEN_REFRESHED" || ev === "SIGNED_IN") setTimeout(() => {
+        try {
+          D.refresh && D.refresh();
+        } catch (e) {
+        }
+      }, 400);
+    });
+  } catch (e) {
+  }
   window.addEventListener("offline", () => {
     const n = $("gdNet");
     if (n) {
@@ -203,7 +214,7 @@
     if (q) {
       vis = rows.filter((r) => clean(r.truck_no).indexOf(q) > -1 || clean(r.serial_no).indexOf(q) > -1 || clean(r.container_text).indexOf(q) > -1 || clean(r.driver_id_number).indexOf(q) > -1 || String(r.shipper || "").toLowerCase().indexOf(qt2) > -1 || String(r.driver_name || "").toLowerCase().indexOf(qt2) > -1 || String(r.shipping_line || "").toLowerCase().indexOf(qt2) > -1 || String(r.transporter || "").toLowerCase().indexOf(qt2) > -1);
     }
-    const warn = S.err ? '<div class="gd-warn">' + (S.err === "offline" ? "No connection. The list may be out of date, and Verify needs a connection." : "Could not refresh: " + esc(S.err)) + "</div>" : "";
+    const warn = S.err ? '<div class="gd-warn">' + (S.err === "offline" ? "No connection. The list may be out of date, and Verify needs a connection." : S.err === "auth" ? "Your sign-in needs renewing. Tap Refresh at the top. If this stays, sign out and sign in again." : "Could not refresh: " + esc(S.err)) + "</div>" : "";
     if (!vis.length) {
       list.innerHTML = warn + '<div class="gd-empty">' + (q ? "No loading instruction found for <b>" + esc(S.q.toUpperCase()) + '</b>.<br>Do not let the truck load without a slip. If it should be here, ask the documentation clerk.<div class="gd-acts" style="justify-content:center"><button type="button" class="action-btn" onclick="GateSec.add(\'out\',{vehicle_no:\'' + esc(S.q.toUpperCase().replace(/[^A-Z0-9 ]/g, "")) + "'})\">Record this vehicle anyway</button></div>" : S.f === "todo" ? "\u2714 Nothing is waiting to be verified." : "Nothing to show.") + "</div>";
       return;

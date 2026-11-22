@@ -1398,7 +1398,7 @@ async function buildInspectionReport(surveyId, opts) {
   kv(MARGIN + 126, y, "EIR Number", s.eir_number);
   y += 12;
   kv(MARGIN, y, "Seal Number", s.seal_number);
-  kv(MARGIN + 63, y, "Gate Pass No.", s.gate_pass_number);
+  kv(MARGIN + 63, y, "Phone Number", s.gate_pass_number);
   y += 18;
   const extraVals = window.GargoForms && GargoForms.valuesFromRow ? GargoForms.valuesFromRow("survey", s) : [];
   if (extraVals.length) {

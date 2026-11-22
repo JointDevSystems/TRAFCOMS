@@ -1487,7 +1487,7 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="${pick(x.manufactureDate)}"></div>
       <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label><select id="sv_cargo">${cargoOpts}</select></div>
     </div>
-    <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
+    <div class="fg"><label>Phone Number</label><input id="sv_gatepass"></div>
     <div class="form-row-2">
       <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="${sanitize(x.truck ? truckName(x.truck).split(' · ')[0] : (x.truckRegText || booking.truck_reg || ''))}"></div>
       <div class="fg"><label>Trailer Number</label><input id="sv_trailer" value="${pick(x.trailerNo)}"></div>
@@ -2068,7 +2068,7 @@ function printSurveyRegister() {
 
 function downloadSurveyRegisterCSV() {
   if (!_surveyRegisterData.length) { toast('Nothing to download yet', 'error'); return; }
-  const headers = ['Date','Container','Type','ISO Code','Line ID','Consignee','Guarantee/B-L','Vessel','Voyage','Transporter','Vehicle No','Trailer No','Driver','Driver ID No','Surveyed By','Seal','Gate Pass','MGW','TW','Condition','Escalated','Interchange Generated','Photos'];
+  const headers = ['Date','Container','Type','ISO Code','Line ID','Consignee','Guarantee/B-L','Vessel','Voyage','Transporter','Vehicle No','Trailer No','Driver','Driver ID No','Surveyed By','Seal','Phone Number','MGW','TW','Condition','Escalated','Interchange Generated','Photos'];
   const rows = _surveyRegisterData.map(s => [
     s.surveyed_at, s.container, s.container_type, s.iso_code, s.shipping_line_id, s.consignee, s.bl_number, s.vessel, s.voyage,
     s.transporter, s.truck_reg, s.trailer_number, s.driver_name, s.driver_id_number, s.clerk_name, s.seal_number, s.gate_pass_number,

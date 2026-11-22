@@ -1196,7 +1196,7 @@ async function buildInspectionReport(surveyId, opts) {
   kv(MARGIN + 126, y, 'EIR Number', s.eir_number);
   y += 12;
   kv(MARGIN, y, 'Seal Number', s.seal_number);
-  kv(MARGIN + 63, y, 'Gate Pass No.', s.gate_pass_number);
+  kv(MARGIN + 63, y, 'Phone Number', s.gate_pass_number);
   y += 18;
 
   // ---- Form Designer fields saved with this survey (cf_* columns of depot_surveys) ---------------------

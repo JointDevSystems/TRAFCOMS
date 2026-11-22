@@ -54,7 +54,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       ["sv_tare", "Tare Weight (kg)"],
       ["sv_dom", "Date of Manufacture", { cfg: "survey.requireManufactureDate", def: false }],
       ["sv_cargo", "Cargo Status", { cfg: "survey.requireCargoStatus", def: false }],
-      ["sv_gatepass", "Gate Pass No."],
+      ["sv_gatepass", "Phone Number"],
       ["sv_truck", "Vehicle / Truck No."],
       ["sv_trailer", "Trailer Number"],
       ["sv_driver", "Driver Name"],

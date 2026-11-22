@@ -7,7 +7,45 @@ const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9raXNqaXpjeWlkdnZ3ZHdlaGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTYzNjMsImV4cCI6MjA5ODM5MjM2M30.O_0EeK297a07B7FLunpWr6HDlqrfP5Z8Owyp3qE4hQE';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* Self-healing requests. supabase-js 2.39 sends the PUBLIC anon key when it cannot read a session at that instant
+   (expired token + a refresh that hiccups: tablet waking up, weak signal, several screens refreshing at once).
+   The database then answers 401 "permission denied" for every call in that burst. Here, a data request that went out
+   as anon is retried ONCE with the user's real token (refreshed if needed). Genuine permission errors are untouched. */
+const _gargoHeal = { p: null, at: 0 };
+function _gargoFreshToken() {
+  if (_gargoHeal.p && Date.now() - _gargoHeal.at < 8000) return _gargoHeal.p;
+  _gargoHeal.at = Date.now();
+  const tok = async () => {
+    let { data } = await supabase.auth.getSession();
+    let s = data && data.session;
+    if (!s && navigator.onLine !== false) { const r = await supabase.auth.refreshSession(); s = r && r.data && r.data.session; }
+    return (s && s.access_token) || '';
+  };
+  _gargoHeal.p = (async () => {
+    try {
+      let t = await tok();
+      if (!t && navigator.onLine !== false) { await new Promise(r => setTimeout(r, 1500)); t = await tok(); }
+      return t;
+    } catch (e) { return ''; }
+  })();
+  return _gargoHeal.p;
+}
+async function _gargoFetch(input, init) {
+  const res = await fetch(input, init);
+  if (res.status !== 401) return res;
+  try {
+    const url = typeof input === 'string' ? input : ((input && input.url) || '');
+    if (url.indexOf('/rest/v1/') < 0) return res;
+    const h = new Headers((init && init.headers) || (input && input.headers) || undefined);
+    if (h.get('Authorization') !== 'Bearer ' + SUPABASE_ANON_KEY) return res;   // it carried a real token: a genuine permission problem
+    const t = await _gargoFreshToken();
+    if (!t) return res;                                                         // really signed out: let the 401 through
+    h.set('Authorization', 'Bearer ' + t);
+    return await fetch(input, Object.assign({}, init, { headers: h }));
+  } catch (e) { return res; }
+}
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: _gargoFetch } });
 
 let state = {
   currentUser       : null,
