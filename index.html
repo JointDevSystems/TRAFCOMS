@@ -30,14 +30,16 @@
     </script>
 
    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" media="print" onload="this.media='all'" />
     <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Only the two families the app really uses (Manrope = UI, Bodoni Moda = headings). Non-blocking: text shows in a system font first, then swaps. -->
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="royal.css" />
     <link rel="stylesheet" href="glass.css" />
@@ -48,6 +50,7 @@
     <link rel="stylesheet" href="cameras.css" />
     <link rel="stylesheet" href="kpi-polish.css" />
     <link rel="stylesheet" href="gate-desk.css" />
+    <link rel="stylesheet" href="perf.css" />
 <style>
 .yard-slot{width:100%;aspect-ratio:1/1;border-radius:3px;background:#2a2a35;border:1px solid rgba(255,255,255,0.06)}
 .yard-slot-empty{background:#2a2a35}
