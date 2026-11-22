@@ -192,14 +192,14 @@
     }
     const kind = [ic.type, lineName(ic.line), inward ? ic.condition : '', ic.ctype].filter(Boolean).map(E).join(' · ');
     const who = [ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'), ic.trailerNo && !inward ? 'Trailer ' + ic.trailerNo : '', ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'), fmtDate(ic.date)].filter(Boolean).map(E).join(' · ');
-    const repair = (inward && ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length > 1 ? 's' : ''} · ${GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs))}</div>` : '';
+    const repair = (inward && ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px${isAdmin() ? ';cursor:pointer;text-decoration:underline dotted' : ''}" ${isAdmin() ? `onclick="showEditInterchangeModal('${id}','repairs')" title="Edit damage items and tariff amounts (administrator)"` : ''}>${ic.repairs.length} damage item${ic.repairs.length > 1 ? 's' : ''} · ${GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs))}</div>` : '';
     const inYardNow = inward && (ic._inYard !== undefined ? ic._inYard : icInYard(ic, idx));
     const btns = [];
     if (isAdmin() && ic.status === 'pending') btns.push(`<button class="modal-btn success" onclick="approveInterchange('${id}')">Approve</button>`);
     if (inYardNow) btns.push(`<button class="modal-btn ghost" onclick="quickDispatchOut('${id}')">Quick Dispatch →</button>`);
     if (inward && !ic.surveyStatus) btns.push(`<button class="modal-btn ghost" onclick="sendToSurvey('${id}')">Send to Survey →</button>`);
     btns.push(`<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${id}')">⬇ Download</button>`, `<button class="modal-btn ghost" onclick="printInterchangeSlip('${id}')" title="Print">🖨 Print</button>`);
-    if (isAdmin()) btns.push(`<button class="modal-btn ghost" onclick="showEditInterchangeModal('${id}')" title="Correct details (administrator only)">✎ Edit</button>`);
+    if (isAdmin()) btns.push(`<button class="modal-btn ghost" onclick="showEditInterchangeModal('${id}')" title="Correct details, damage items and tariff amounts (administrator only)">✎ Edit</button>`);
     if (ic.flaggedForReview) btns.push(`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${id}')">✓ Mark Reviewed</button>`);
     if (ic.surveyId) btns.push(`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`, `<button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`);
     if (ic.surveyId || ic.img || ic.hasImg || ic.hasPhotos || (ic.photos && ic.photos.length)) btns.push(`<button class="modal-btn ghost" onclick="showContainerPhotos('${id}')">📷 Photos</button>`);

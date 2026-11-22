@@ -212,14 +212,14 @@
     }
     const kind = [ic.type, lineName(ic.line), inward ? ic.condition : "", ic.ctype].filter(Boolean).map(E).join(" \xB7 ");
     const who = [ic.truck ? truckName(ic.truck) : ic.truckRegText || "\u2014", ic.trailerNo && !inward ? "Trailer " + ic.trailerNo : "", ic.driver ? driverName(ic.driver) : ic.driverNameText || "\u2014", fmtDate(ic.date)].filter(Boolean).map(E).join(" \xB7 ");
-    const repair = inward && ic.repairs && ic.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px">'.concat(ic.repairs.length, " damage item").concat(ic.repairs.length > 1 ? "s" : "", " \xB7 ").concat(GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs)), "</div>") : "";
+    const repair = inward && ic.repairs && ic.repairs.length ? '<div style="font-size:10.5px;color:var(--red);margin-top:2px'.concat(isAdmin() ? ";cursor:pointer;text-decoration:underline dotted" : "", '" ').concat(isAdmin() ? "onclick=\"showEditInterchangeModal('".concat(id, "','repairs')\" title=\"Edit damage items and tariff amounts (administrator)\"") : "", ">").concat(ic.repairs.length, " damage item").concat(ic.repairs.length > 1 ? "s" : "", " \xB7 ").concat(GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs)), "</div>") : "";
     const inYardNow = inward && (ic._inYard !== void 0 ? ic._inYard : icInYard(ic, idx));
     const btns = [];
     if (isAdmin() && ic.status === "pending") btns.push('<button class="modal-btn success" onclick="approveInterchange(\''.concat(id, "')\">Approve</button>"));
     if (inYardNow) btns.push('<button class="modal-btn ghost" onclick="quickDispatchOut(\''.concat(id, "')\">Quick Dispatch \u2192</button>"));
     if (inward && !ic.surveyStatus) btns.push('<button class="modal-btn ghost" onclick="sendToSurvey(\''.concat(id, "')\">Send to Survey \u2192</button>"));
     btns.push('<button class="modal-btn ghost" onclick="downloadInterchangeSlip(\''.concat(id, "')\">\u2B07 Download</button>"), '<button class="modal-btn ghost" onclick="printInterchangeSlip(\''.concat(id, '\')" title="Print">\u{1F5A8} Print</button>'));
-    if (isAdmin()) btns.push('<button class="modal-btn ghost" onclick="showEditInterchangeModal(\''.concat(id, '\')" title="Correct details (administrator only)">\u270E Edit</button>'));
+    if (isAdmin()) btns.push('<button class="modal-btn ghost" onclick="showEditInterchangeModal(\''.concat(id, '\')" title="Correct details, damage items and tariff amounts (administrator only)">\u270E Edit</button>'));
     if (ic.flaggedForReview) btns.push("<button class=\"modal-btn ghost\" onclick=\"clearReviewFlag('interchange','".concat(id, "')\">\u2713 Mark Reviewed</button>"));
     if (ic.surveyId) btns.push('<button class="modal-btn ghost" onclick="downloadInspectionReport(\''.concat(ic.surveyId, "')\">\u2B07 Inspection Report</button>"), '<button class="modal-btn ghost" onclick="printInspectionReport(\''.concat(ic.surveyId, '\')" title="Print">\u{1F5A8} Print Report</button>'));
     if (ic.surveyId || ic.img || ic.hasImg || ic.hasPhotos || ic.photos && ic.photos.length) btns.push('<button class="modal-btn ghost" onclick="showContainerPhotos(\''.concat(id, "')\">\u{1F4F7} Photos</button>"));

@@ -21,6 +21,7 @@
     },
    
     curFor(prefix) {
+      if (prefix === 'ice' && window._iceCur) return window._iceCur;                   // admin interchange editor
       const items = (window._repairItems && window._repairItems[prefix]) || [];
       if (items.length) return M.itemCur(items[0]);
       if (prefix === 'sv') { const f = $(FIELD); if (f && f.value) return f.value; }

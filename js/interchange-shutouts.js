@@ -1980,6 +1980,7 @@ function removeRepairItem(prefix, i) {
 }
 
 function renderRepairItemsList(prefix) {
+  if (prefix === 'ice' && typeof renderIceLines === 'function') return renderIceLines();   // admin editor has its own editable list
   const el = document.getElementById(`${prefix}_repairList`);
   if (!el) return;
   GargoMoney.refreshLabels();
@@ -2012,8 +2013,11 @@ function _tripToInterchangeReportRow(t) {
 }
 
 /* ── Admin: correct an interchange record ─────────────────────────────────────────────────────
-   Only an administrator can open this. Every detail can be corrected EXCEPT the interchange (EIR) number,
-   which is never shown as an input and is never written by this form. Each change is written to the audit log. */
+   Only an administrator can open this. Two tabs:
+     Details          every field can be corrected EXCEPT the interchange (EIR) number, which is never shown as an input.
+     Damage & tariff  the damage / repair lines and their amounts: change quantity, hours or amount on any line,
+                      fix a code or description, add lines from the tariff, remove lines, or switch the currency.
+   Every change is written to the audit log with the old and the new figures. */
 const IC_EDIT_FIELDS = [
   ['container', 'Container No.'], ['ctype', 'Type / Size'], ['line', 'Shipping Line'], ['date', 'Date'], ['condition', 'Condition / Status'],
   ['vessel', 'Vessel'], ['voyage', 'Voyage'], ['blNumber', 'Guarantee / B/L No.'], ['deliveringParty', 'Consignee / C&F'],
@@ -2026,14 +2030,134 @@ function _icLocalInput(iso) {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-async function showEditInterchangeModal(icId) {
+
+/* styles for the editor (added once; all colours come from the theme variables) */
+function _iceStyles() {
+  if (document.getElementById('iceStyles')) return;
+  const s = document.createElement('style'); s.id = 'iceStyles';
+  s.textContent = `
+.ice-tabs{display:flex;gap:2px;margin:0 0 14px;border-bottom:1px solid var(--border)}
+.ice-tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2);font:600 13.5px var(--font-ui);cursor:pointer}
+.ice-tab:hover{color:var(--text)}
+.ice-tab.on{color:var(--gold);border-bottom-color:var(--gold)}
+.ice-count{min-width:20px;padding:1px 7px;border-radius:999px;background:var(--gold-dim);color:var(--gold);font:700 11px var(--font-ui);text-align:center}
+.ice-tab:focus-visible,.ice-line :focus-visible,.ice-add>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.ice-lines{display:flex;flex-direction:column;gap:10px;margin:0 0 12px}
+.ice-line{padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.ice-l1{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr) auto;gap:8px;align-items:center}
+.ice-l1 input,.ice-l2 input{width:100%;box-sizing:border-box;min-width:0}
+.ice-code{font-family:var(--font-mono,monospace);font-weight:600;color:var(--gold)}
+.ice-x{width:40px;height:40px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--red);font-size:14px;cursor:pointer}
+.ice-x:hover{background:var(--red-dim);border-color:var(--red)}
+.ice-l2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.ice-l2 label,.ice-lt{display:flex;flex-direction:column;gap:4px;font:600 11.5px var(--font-ui);color:var(--text-2)}
+.ice-lt b{display:flex;align-items:center;min-height:38px;font:600 14px var(--font-mono,monospace);color:var(--text);font-variant-numeric:tabular-nums}
+@media(min-width:520px){.ice-l2{grid-template-columns:70px repeat(2,minmax(0,1fr)) minmax(0,1.2fr)}}
+.ice-empty{padding:18px;border:1px dashed var(--border-mid);border-radius:12px;text-align:center;color:var(--text-3);font-size:12.5px;line-height:1.6}
+.ice-sum{display:grid;grid-template-columns:1fr auto;gap:4px 16px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--border-mid);border-radius:12px;background:var(--gold-dim);font-size:12.5px;color:var(--text-2)}
+.ice-sum b{font-family:var(--font-mono,monospace);font-weight:600;color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+.ice-sum .ice-tot{padding-top:6px;margin-top:2px;border-top:1px solid var(--border-mid);font-size:14px;color:var(--text);font-weight:700}
+.ice-sum .ice-tot b{color:var(--gold);font-size:15px}
+.ice-add{margin:6px 0 4px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.ice-add>summary{min-height:44px;display:flex;align-items:center;padding:0 14px;cursor:pointer;font:600 13px var(--font-ui);color:var(--text);list-style:none}
+.ice-add>summary::-webkit-details-marker{display:none}
+.ice-add>summary::before{content:"+";margin-right:10px;color:var(--gold);font-weight:700}
+.ice-add[open]>summary::before{content:"\\2212"}
+.ice-add>div{padding:0 14px 6px}
+#ice_repairList{display:none}`;
+  document.head.appendChild(s);
+}
+
+const _iceR2 = n => Math.round(n * 100) / 100;
+const _iceItems = () => repairItemsFor('ice');
+const _iceCurNow = () => window._iceCur || GargoMoney.itemsCur(_iceItems());
+const _iceEl = id => document.getElementById(id);
+/* copy of the saved lines, with unit hours / unit amount worked out for lines saved before quantities existed */
+function _iceClone(list) {
+  return (list || []).map(r => {
+    const q = Math.max(1, Number(r.qty) || 1);
+    return Object.assign({}, r, {
+      qty: q,
+      unitHours: r.unitHours != null ? Number(r.unitHours) : (Number(r.hours) || 0) / q,
+      unitMaterial: r.unitMaterial != null ? Number(r.unitMaterial) : (Number(r.material) || 0) / q,
+    });
+  });
+}
+const _iceSig = list => JSON.stringify((list || []).map(r => [String(r.code || ''), String(r.item || ''), Number(r.qty) || 1, _iceR2(Number(r.hours) || 0), _iceR2(Number(r.material) || 0), GargoMoney.itemCur(r)]));
+const _iceBrief = list => (list || []).map(r => `${r.code}${(Number(r.qty) || 1) > 1 ? ' x' + r.qty : ''} ${Number(r.hours) || 0}h/${Number(r.material) || 0}`).join(', ') || 'none';
+
+function iceTab(t) {
+  ['d', 'r'].forEach(k => {
+    const p = _iceEl('ice_pane_' + k); if (p) p.style.display = k === t ? '' : 'none';
+    const b = _iceEl('ice_tab_' + k); if (b) { b.classList.toggle('on', k === t); b.setAttribute('aria-selected', k === t ? 'true' : 'false'); }
+  });
+}
+
+function _iceSummary() {
+  const items = _iceItems(), cur = _iceCurNow(), rate = GargoMoney.labourRate(cur);
+  const hrs = items.reduce((s, r) => s + (Number(r.hours) || 0), 0), mat = items.reduce((s, r) => s + (Number(r.material) || 0), 0);
+  const el = _iceEl('ice_sum'); if (!el) return;
+  el.innerHTML = `<span>Labour: ${_iceR2(hrs)} h &times; ${GargoMoney.fmt(rate, cur)} per hour</span><b>${GargoMoney.fmt(hrs * rate, cur)}</b>
+    <span>Material / amounts</span><b>${GargoMoney.fmt(mat, cur)}</b>
+    <span class="ice-tot">Total repair cost</span><b class="ice-tot">${GargoMoney.fmt(repairItemsTotal(items), cur)}</b>`;
+  const n = _iceEl('ice_count'); if (n) n.textContent = items.length;
+  const w = _iceEl('ice_warn'); if (w) w.innerHTML = GargoMoney.labourWarning(items);
+}
+function _iceLineTotal(r) { return GargoMoney.fmt((Number(r.hours) || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r)) + (Number(r.material) || 0), GargoMoney.itemCur(r)); }
+
+function renderIceLines() {
+  const el = _iceEl('ice_lines'); if (!el) return;
+  const items = _iceItems(), cur = _iceCurNow();
+  const lab = GargoMoney.sym(cur);
+  el.innerHTML = items.length ? items.map((r, i) => `<div class="ice-line">
+    <div class="ice-l1">
+      <input class="ice-code" value="${esc(r.code)}" aria-label="Tariff code" oninput="iceSet(${i},'code',this.value)"/>
+      <input value="${esc(r.item)}" aria-label="Description" oninput="iceSet(${i},'item',this.value)"/>
+      <button type="button" class="ice-x" aria-label="Remove this line" title="Remove this line" onclick="iceRemove(${i})">&#10005;</button>
+    </div>
+    <div class="ice-l2">
+      <label>Qty<input type="number" min="1" max="999" step="1" value="${Number(r.qty) || 1}" oninput="iceSet(${i},'qty',this.value)"/></label>
+      <label>Hours each<input type="number" min="0" step="0.05" value="${_iceR2(Number(r.unitHours) || 0)}" oninput="iceSet(${i},'unitHours',this.value)"/></label>
+      <label>Amount each (${esc(lab)})<input type="number" min="0" step="0.01" value="${_iceR2(Number(r.unitMaterial) || 0)}" oninput="iceSet(${i},'unitMaterial',this.value)"/></label>
+      <div class="ice-lt">Line total<b id="ice_lt_${i}">${_iceLineTotal(r)}</b></div>
+    </div>
+  </div>`).join('') : '<div class="ice-empty">No damage items on this record.<br>Add one from the tariff below, or type a one-off code, description and amount.</div>';
+  el.innerHTML = `<div class="ice-lines">${el.innerHTML}</div>`;
+  _iceSummary();
+}
+/* typing in a line: update the figures in place so the cursor never jumps */
+function iceSet(i, field, raw) {
+  const r = _iceItems()[i]; if (!r) return;
+  if (field === 'code' || field === 'item') { r[field] = raw; return; }
+  const n = Math.max(0, parseFloat(raw) || 0);
+  if (field === 'qty') r.qty = Math.min(999, Math.max(1, Math.round(n) || 1));
+  else r[field] = n;
+  const q = Number(r.qty) || 1;
+  r.hours = _iceR2((Number(r.unitHours) || 0) * q); r.material = _iceR2((Number(r.unitMaterial) || 0) * q);
+  const lt = _iceEl('ice_lt_' + i); if (lt) lt.innerHTML = _iceLineTotal(r);
+  _iceSummary();
+}
+function iceRemove(i) { _iceItems().splice(i, 1); renderIceLines(); }
+function iceCur(c) {
+  window._iceCur = c;
+  _iceItems().forEach(r => { r.currency = c; });
+  refreshTariffPicker('ice');
+  renderIceLines();
+}
+
+async function showEditInterchangeModal(icId, tab) {
   if (!isAdmin()) { toast('Only an administrator can edit interchange details', 'error'); return; }
   let ic = null;
   try { ic = (window.ICR && ICR.enabled) ? await ICR.ensurePhotos(icId) : state.db.interchange.find(i => i.id === icId); } catch (e) { console.warn('edit: could not load photos', e); }
   if (!ic) ic = state.db.interchange.find(i => i.id === icId);
   if (!ic) { toast('Interchange record not found', 'error'); return; }
   if (ic._light) { toast('Could not load the full record. Check the connection and try again.', 'error'); return; }
+  _iceStyles();
   const v = x => esc(x == null ? '' : x);
+  /* working copy of the damage lines: nothing touches the record until Save */
+  window._repairItems.ice = _iceClone(ic.repairs);
+  const ln = state.db.shippingLines.find(l => l.id === ic.line);
+  window._iceCur = ic.repairs && ic.repairs.length ? GargoMoney.itemCur(ic.repairs[0]) : GargoMoney.defaultFor(ln ? `${ln.code} ${ln.name}` : '');
   const lineOpts = '<option value="">—</option>' + state.db.shippingLines.map(l => `<option value="${esc(l.id)}" ${l.id === ic.line ? 'selected' : ''}>${esc(l.code)} — ${esc(l.name)}</option>`).join('');
   const types = CONTAINER_TYPE_OPTIONS.slice(); if (ic.ctype && types.indexOf(ic.ctype) < 0) types.unshift(ic.ctype);
   const typeOpts = '<option value="">—</option>' + types.map(t => `<option ${t === ic.ctype ? 'selected' : ''}>${esc(t)}</option>`).join('');
@@ -2044,25 +2168,43 @@ async function showEditInterchangeModal(icId) {
     ? `<select id="ice_driver">${state.db.drivers.map(d => `<option value="${esc(d.id)}" ${d.id === ic.driver ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>`
     : `<input id="ice_driverText" value="${v(ic.driverNameText)}"/>`;
   const f = (id, label, val, extra) => `<div class="fg"><label>${label}</label><input id="ice_${id}" value="${v(val)}" ${extra || ''}/></div>`;
+  const curOpts = ['USD', 'KES'].map(c => `<option value="${c}" ${c === window._iceCur ? 'selected' : ''}>${c}</option>`).join('');
   openModal(`Edit interchange — ${esc(ic.container)}`, `
-    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Administrator only. Use this to correct details that were entered wrongly. The <b>EIR No. ${v(ic.eirNumber) || '—'}</b> cannot be changed. Every edit is recorded in the audit log.</span></div>
-    <div class="form-row-2">${f('container', 'Container No.', ic.container, 'style="text-transform:uppercase"')}
-      <div class="fg"><label>Type / Size</label><select id="ice_ctype">${typeOpts}</select></div></div>
-    <div class="form-row-2"><div class="fg"><label>Shipping Line / Agent</label><select id="ice_line">${lineOpts}</select></div>
-      <div class="fg"><label>Date</label><input id="ice_date" type="datetime-local" value="${_icLocalInput(ic.date)}"/></div></div>
-    <div class="form-row-2">${f('condition', 'Condition / Status', ic.condition)}${f('cargoStatus', 'Cargo Status', ic.cargoStatus)}</div>
-    <div class="form-row-2">${f('vessel', 'Vessel', ic.vessel)}${f('voyage', 'Voyage', ic.voyage)}</div>
-    <div class="form-row-2">${f('bl', 'Guarantee / B/L No.', ic.blNumber || ic.guaranteeNo)}${f('consignee', 'Consignee / C&amp;F', ic.deliveringParty)}</div>
-    <div class="form-row-2">${f('receiving', 'Receiving Party', ic.receivingParty)}${f('ro', 'Release Order No.', ic.releaseOrderNo)}</div>
-    <div class="form-row-2">${f('transporter', 'Transporter', ic.transporter)}${f('trailer', 'Trailer No.', ic.trailerNo)}</div>
-    <div class="form-row-2"><div class="fg"><label>Truck</label>${truckField}</div><div class="fg"><label>Driver</label>${driverField}</div></div>
-    <div class="form-row-2">${f('driverId', 'Driver ID / Driving No.', ic.driverIdNumber)}${f('iso', 'ISO Code', ic.isoCode, 'maxlength="6" style="text-transform:uppercase"')}</div>
-    <div class="form-row-2"><div class="fg"><label>Gross Weight (kg)</label><input id="ice_gross" type="number" min="0" step="1" value="${v(ic.grossWeight)}"/></div>
-      ${f('dom', 'Date of Manufacture (MM/YYYY)', ic.manufactureDate, 'maxlength="7" placeholder="MM/YYYY"')}</div>
-    ${f('clerk', 'Clerk', ic.clerkName)}
-    <div class="fg"><label>Notes</label><textarea id="ice_notes" rows="2">${v(ic.notes)}</textarea></div>
+    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Administrator only. Use this to correct details and repair amounts that were entered wrongly. The <b>EIR No. ${v(ic.eirNumber) || '—'}</b> cannot be changed. Every edit is recorded in the audit log.</span></div>
+    <div class="ice-tabs" role="tablist">
+      <button type="button" class="ice-tab on" id="ice_tab_d" role="tab" aria-selected="true" onclick="iceTab('d')">Details</button>
+      <button type="button" class="ice-tab" id="ice_tab_r" role="tab" aria-selected="false" onclick="iceTab('r')">Damage &amp; tariff <span class="ice-count" id="ice_count">${(ic.repairs || []).length}</span></button>
+    </div>
+    <div id="ice_pane_d" role="tabpanel">
+      <div class="form-row-2">${f('container', 'Container No.', ic.container, 'style="text-transform:uppercase"')}
+        <div class="fg"><label>Type / Size</label><select id="ice_ctype">${typeOpts}</select></div></div>
+      <div class="form-row-2"><div class="fg"><label>Shipping Line / Agent</label><select id="ice_line">${lineOpts}</select></div>
+        <div class="fg"><label>Date</label><input id="ice_date" type="datetime-local" value="${_icLocalInput(ic.date)}"/></div></div>
+      <div class="form-row-2">${f('condition', 'Condition / Status', ic.condition)}${f('cargoStatus', 'Cargo Status', ic.cargoStatus)}</div>
+      <div class="form-row-2">${f('vessel', 'Vessel', ic.vessel)}${f('voyage', 'Voyage', ic.voyage)}</div>
+      <div class="form-row-2">${f('bl', 'Guarantee / B/L No.', ic.blNumber || ic.guaranteeNo)}${f('consignee', 'Consignee / C&amp;F', ic.deliveringParty)}</div>
+      <div class="form-row-2">${f('receiving', 'Receiving Party', ic.receivingParty)}${f('ro', 'Release Order No.', ic.releaseOrderNo)}</div>
+      <div class="form-row-2">${f('transporter', 'Transporter', ic.transporter)}${f('trailer', 'Trailer No.', ic.trailerNo)}</div>
+      <div class="form-row-2"><div class="fg"><label>Truck</label>${truckField}</div><div class="fg"><label>Driver</label>${driverField}</div></div>
+      <div class="form-row-2">${f('driverId', 'Driver ID / Driving No.', ic.driverIdNumber)}${f('iso', 'ISO Code', ic.isoCode, 'maxlength="6" style="text-transform:uppercase"')}</div>
+      <div class="form-row-2"><div class="fg"><label>Gross Weight (kg)</label><input id="ice_gross" type="number" min="0" step="1" value="${v(ic.grossWeight)}"/></div>
+        ${f('dom', 'Date of Manufacture (MM/YYYY)', ic.manufactureDate, 'maxlength="7" placeholder="MM/YYYY"')}</div>
+      ${f('clerk', 'Clerk', ic.clerkName)}
+      <div class="fg"><label>Notes</label><textarea id="ice_notes" rows="2">${v(ic.notes)}</textarea></div>
+    </div>
+    <div id="ice_pane_r" role="tabpanel" style="display:none">
+      <div class="fg" style="max-width:200px"><label>Pricing currency</label><select id="ice_cur" onchange="iceCur(this.value)">${curOpts}</select></div>
+      <div id="ice_lines"></div>
+      <div id="ice_warn"></div>
+      <div class="ice-sum" id="ice_sum" aria-live="polite"></div>
+      <details class="ice-add" ${(ic.repairs || []).length ? '' : 'open'}><summary>Add an item from the tariff</summary><div>${tariffPickerHtml('ice')}</div></details>
+      <div style="font-size:11.5px;color:var(--text-3);line-height:1.5;margin:8px 0 12px">Only this interchange record is changed. To set a fixed price for a line, put the price in <b>Amount each</b> and set <b>Hours each</b> to 0.</div>
+    </div>
     <div id="ice_err" style="color:var(--red);font-size:12px;min-height:16px"></div>
     <button class="submit-btn" id="ice_go" onclick="saveEditedInterchange('${esc(ic.id)}')">Save changes →</button>`);
+  renderIceLines();
+  refreshTariffPicker('ice');
+  if (tab === 'repairs') iceTab('r');
 }
 let _iceSaving = false;
 async function saveEditedInterchange(icId) {
@@ -2072,12 +2214,22 @@ async function saveEditedInterchange(icId) {
   const val = id => { const el = document.getElementById('ice_' + id); return el ? el.value.trim() : ''; };
   const err = m => { const e = document.getElementById('ice_err'); if (e) e.textContent = m; else toast(m, 'error'); };
   const cont = val('container').toUpperCase().replace(/\s+/g, '');
-  if (!cont) return err('Container number is required.');
-  if (cont !== String(ic.container || '').toUpperCase()) { const issue = containerFormatIssue(cont); if (issue) return err('Container number: ' + issue); }
-  const dom = normalizeManufactureDate(val('dom')); if (dom === null) return err('Date of manufacture must look like 05/2011.');
+  if (!cont) { iceTab('d'); return err('Container number is required.'); }
+  if (cont !== String(ic.container || '').toUpperCase()) { const issue = containerFormatIssue(cont); if (issue) { iceTab('d'); return err('Container number: ' + issue); } }
+  const dom = normalizeManufactureDate(val('dom')); if (dom === null) { iceTab('d'); return err('Date of manufacture must look like 05/2011.'); }
   const grossRaw = val('gross'), gross = grossRaw ? Number(grossRaw) : '';
-  if (grossRaw && (!isFinite(gross) || gross <= 0)) return err('Gross weight must be a positive number.');
-  const dateRaw = val('date'); if (dateRaw && isNaN(new Date(dateRaw))) return err('The date is not valid.');
+  if (grossRaw && (!isFinite(gross) || gross <= 0)) { iceTab('d'); return err('Gross weight must be a positive number.'); }
+  const dateRaw = val('date'); if (dateRaw && isNaN(new Date(dateRaw))) { iceTab('d'); return err('The date is not valid.'); }
+  /* damage / tariff lines */
+  const draft = _iceItems(), cur = _iceCurNow();
+  for (let n = 0; n < draft.length; n++) if (!String(draft[n].item || '').trim()) { iceTab('r'); return err(`Damage line ${n + 1} needs a description.`); }
+  const newRepairs = draft.map(r => {
+    const q = Math.min(999, Math.max(1, Number(r.qty) || 1)), uh = Math.max(0, Number(r.unitHours) || 0), um = Math.max(0, Number(r.unitMaterial) || 0);
+    return Object.assign({}, r, { code: sanitize(String(r.code || '').trim()) || 'CUSTOM', item: sanitize(String(r.item || '').trim()), qty: q, unitHours: uh, unitMaterial: um, hours: _iceR2(uh * q), material: _iceR2(um * q), currency: r.currency || cur });
+  });
+  const oldRepairs = ic.repairs || [], oldTotal = Number(ic.repairTotal) || 0, newTotal = repairItemsTotal(newRepairs);
+  const repairsChanged = _iceSig(oldRepairs) !== _iceSig(newRepairs) || _iceR2(oldTotal) !== _iceR2(newTotal);
+
   const before = {}; IC_EDIT_FIELDS.forEach(([k]) => { before[k] = ic[k]; }); const snap = Object.assign({}, ic);   // the EIR number is not in this list on purpose
   const bl = sanitize(val('bl'));
   Object.assign(ic, {
@@ -2093,8 +2245,9 @@ async function saveEditedInterchange(icId) {
   });
   if (document.getElementById('ice_truck')) ic.truck = val('truck'); else ic.truckRegText = sanitize(val('truckText'));
   if (document.getElementById('ice_driver')) ic.driver = val('driver'); else ic.driverNameText = sanitize(val('driverText'));
+  if (repairsChanged) { ic.repairs = newRepairs; ic.repairTotal = newTotal; }
   const changed = IC_EDIT_FIELDS.filter(([k]) => String(before[k] == null ? '' : before[k]) !== String(ic[k] == null ? '' : ic[k]));
-  if (!changed.length) { closeModal(); toast('No changes to save', 'info'); return; }
+  if (!changed.length && !repairsChanged) { closeModal(); toast('No changes to save', 'info'); return; }
   _iceSaving = true;
   const btn = document.getElementById('ice_go'); if (btn) btn.disabled = true;
   try {
@@ -2106,9 +2259,13 @@ async function saveEditedInterchange(icId) {
       err('Not saved: ' + ((fail.error && fail.error.message) || 'the server refused the change'));
       return;
     }
-    addAudit(state.profile.username, 'Interchange Edited', `${cont} · EIR ${ic.eirNumber || '—'} · ` + changed.map(([k, l]) => `${l}: "${before[k] == null ? '' : before[k]}" → "${ic[k] == null ? '' : ic[k]}"`).join('; ').slice(0, 900));
+    const parts = [];
+    if (repairsChanged) parts.push(`Damage items: [${_iceBrief(oldRepairs)}] ${GargoMoney.fmt(oldTotal, GargoMoney.itemsCur(oldRepairs))} → [${_iceBrief(newRepairs)}] ${GargoMoney.fmt(newTotal, GargoMoney.itemsCur(newRepairs))}`);
+    changed.forEach(([k, l]) => parts.push(`${l}: "${before[k] == null ? '' : before[k]}" → "${ic[k] == null ? '' : ic[k]}"`));
+    addAudit(state.profile.username, 'Interchange Edited', `${cont} · EIR ${ic.eirNumber || '—'} · ` + parts.join('; ').slice(0, 900));
+    window._repairItems.ice = []; window._iceCur = null;
     closeModal();
     try { if (typeof refreshContainerHistory === 'function') refreshContainerHistory(); renderInterchange(); } catch (e) {}
-    toast('Interchange updated', 'success');
+    toast(repairsChanged ? 'Interchange and repair amounts updated' : 'Interchange updated', 'success');
   } finally { _iceSaving = false; if (btn) btn.disabled = false; }
 }
