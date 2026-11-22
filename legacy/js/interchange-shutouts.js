@@ -1308,9 +1308,24 @@ async function buildInspectionReport(surveyId, opts) {
     doc.setTextColor(90);
     doc.text(String(label).toUpperCase(), x, y2);
     doc.setFont(void 0, "bold");
-    doc.setFontSize(9.5);
     doc.setTextColor(...valueColor || [20, 20, 20]);
-    doc.text(String(value || "\u2014"), x, y2 + 5);
+    const txt = String(value || "\u2014"), maxW = Math.min(59, RIGHT - x);
+    let fs = 9.5;
+    doc.setFontSize(fs);
+    while (fs > 7.5 && doc.getTextWidth(txt) > maxW) {
+      fs -= 0.5;
+      doc.setFontSize(fs);
+    }
+    if (doc.getTextWidth(txt) <= maxW) doc.text(txt, x, y2 + 5);
+    else {
+      let lines = doc.splitTextToSize(txt, maxW);
+      if (lines.length > 2) {
+        lines = lines.slice(0, 2);
+        lines[1] = lines[1].slice(0, -2) + "\u2026";
+      }
+      doc.text(lines, x, y2 + 4.6);
+    }
+    doc.setFontSize(9.5);
     doc.setTextColor(20);
   }
   function sectionHeading(text, y2) {

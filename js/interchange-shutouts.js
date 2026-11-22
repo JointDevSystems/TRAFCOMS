@@ -1111,9 +1111,18 @@ async function buildInspectionReport(surveyId, opts) {
   function kv(x, y, label, value, valueColor) {
     doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(90);
     doc.text(String(label).toUpperCase(), x, y);
-    doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(...(valueColor || [20,20,20]));
-    doc.text(String(value || '—'), x, y + 5);
-    doc.setTextColor(20);
+    doc.setFont(undefined, 'bold'); doc.setTextColor(...(valueColor || [20,20,20]));
+    // A value must never run into the next column: shrink it to fit (down to 7.5pt), then wrap onto a second line.
+    const txt = String(value || '—'), maxW = Math.min(59, RIGHT - x);
+    let fs = 9.5; doc.setFontSize(fs);
+    while (fs > 7.5 && doc.getTextWidth(txt) > maxW) { fs -= 0.5; doc.setFontSize(fs); }
+    if (doc.getTextWidth(txt) <= maxW) doc.text(txt, x, y + 5);
+    else {
+      let lines = doc.splitTextToSize(txt, maxW);
+      if (lines.length > 2) { lines = lines.slice(0, 2); lines[1] = lines[1].slice(0, -2) + '…'; }
+      doc.text(lines, x, y + 4.6);
+    }
+    doc.setFontSize(9.5); doc.setTextColor(20);
   }
   function sectionHeading(text, y) {
     doc.setFont(undefined, 'bold'); doc.setFontSize(10); doc.setTextColor(20);
