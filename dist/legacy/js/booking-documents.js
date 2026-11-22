@@ -23,7 +23,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
   const DOC_TYPES = ["guarantee_form", "release_order", "delivery_order"];
   const OUTWARD_REQUIRED_DOC_TYPES = ["release_order"];
   const PORT_LOCATIONS = ["Mombasa Port (KPA)", "APM Terminals", "APM Terminals Mombasa"];
-  const CONDITION_STATUSES = ["food_grade", "under_repair", "damaged", "heavily_damaged"];
+  const CONDITION_STATUSES = ["food_grade", "available", "under_repair", "damaged", "heavily_damaged"];
   function kmaMaxStackHeight(containerType) {
     return /reefer/i.test(containerType || "") ? 6 : 7;
   }

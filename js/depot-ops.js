@@ -1503,6 +1503,7 @@ async function openSurveyModal(bookingId) {
 
     <div class="fg"><label>Overall Condition</label><select id="sv_condition" onchange="onSurveyConditionChange()">
       <option value="food_grade">Food Grade</option>
+      <option value="available">Available</option>
       <option value="under_repair">Under Repair</option>
       <option value="damaged">Damaged</option>
       <option value="heavily_damaged">Heavily Damaged — requires joint survey</option>
@@ -1708,7 +1709,7 @@ async function saveSurvey(bookingId) {
    fresh Depot-In record being generated. The caller then promotes it to Depot-In. */
 function syncSurveyBackToInterchange(ic, survey, heavy, x) {
   x = x || {};
-  const conditionMap = { food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+  const conditionMap = { food_grade: 'Good', available: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
   if (survey.container) ic.container = survey.container.toUpperCase();
   ic.condition = conditionMap[survey.condition_status] || ic.condition;
   ic.surveyId = survey.id;
@@ -1757,7 +1758,7 @@ async function generateInterchangeFromSurvey(bookingId, surveyId) {
     const survey = await window.bookingDocs.surveyForOccupant({ bookingId });
     if (!survey) { toast('No survey found for this container', 'error'); return; }
     if (survey.interchange_generated_at) { return; }
-    const conditionMap = { food_grade: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
+    const conditionMap = { food_grade: 'Good', available: 'Good', under_repair: 'Needs Repair', damaged: 'Damaged', heavily_damaged: 'Damaged' };
     const matchedTruck = state.db.trucks.find(t => (t.reg || '').toUpperCase() === (survey.truck_reg || '').toUpperCase());
     const matchedDriver = state.db.drivers.find(d => (d.name || '').toLowerCase() === (survey.driver_name || '').toLowerCase());
 
@@ -1991,6 +1992,7 @@ async function renderDepOpsYardMap() {
     html += `<div class="panel"><div class="panel-head"><span class="panel-title">Legend</span></div><div style="padding:10px 14px;display:flex;gap:14px;flex-wrap:wrap;font-size:11px">
       <span><span class="yard-slot yard-slot-empty" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Empty</span>
       <span><span class="yard-slot yard-slot-food_grade" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Food Grade</span>
+      <span><span class="yard-slot yard-slot-available" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Available</span>
       <span><span class="yard-slot yard-slot-under_repair" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Under Repair</span>
       <span><span class="yard-slot yard-slot-damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Damaged</span>
       <span><span class="yard-slot yard-slot-heavily_damaged" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>Heavily Damaged</span>
@@ -2028,7 +2030,7 @@ async function renderDepOpsSurveyRegister() {
         <td style="padding:6px 8px">${sanitize(s.transporter||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.truck_reg||'—')}</td>
         <td style="padding:6px 8px">${sanitize(s.clerk_name||'—')}</td>
-        <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : (s.condition_status === 'food_grade' ? 'approved' : 'pending'))} ${sanitize(conditionStatusLabel(s.condition_status))}</td>
+        <td style="padding:6px 8px">${sbadge(s.condition_status === 'heavily_damaged' ? 'rejected' : ((s.condition_status === 'food_grade' || s.condition_status === 'available') ? 'approved' : 'pending'))} ${sanitize(conditionStatusLabel(s.condition_status))}</td>
         <td style="padding:6px 8px">${s.interchange_generated_at ? `✓ Generated${s.interchange_id ? ` <button class="tbl-btn" onclick="GargoDocs.eir('${s.interchange_id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInterchangeSlip('${s.interchange_id}')">⬇</button><button class="tbl-btn" onclick="printInterchangeSlip('${s.interchange_id}')" title="Print">🖨</button>` : ''}` : '—'}</td>
         <td style="padding:6px 8px"><button class="tbl-btn" onclick="GargoDocs.inspection('${s.id}','preview')" title="Preview">👁</button><button class="tbl-btn" onclick="downloadInspectionReport('${s.id}')">⬇ Report</button><button class="tbl-btn" onclick="printInspectionReport('${s.id}')" title="Print">🖨</button></td>
         <td style="padding:6px 8px">${Array.isArray(s.photos) && s.photos.length ? `<button class="tbl-btn" onclick="viewSurveyPhotos('${s.id}')">📷 ${s.photos.length}</button>` : '<span style="color:var(--text-3);font-size:10.5px">—</span>'}</td>

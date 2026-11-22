@@ -12,7 +12,7 @@
 
 
 
-  const CONDITION_STATUSES = ['food_grade', 'under_repair', 'damaged', 'heavily_damaged'];
+  const CONDITION_STATUSES = ['food_grade', 'available', 'under_repair', 'damaged', 'heavily_damaged'];
 
   function kmaMaxStackHeight(containerType) {
     return /reefer/i.test(containerType || '') ? 6 : 7;
