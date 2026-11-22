@@ -602,6 +602,14 @@ async function saveInterchange() {
   }
 }
 
+/* Slip palette: identical to the Container Inspection Report so every printed document looks like one family. */
+const IC_PAL = {
+  GREEN: [46, 125, 50], GREEN_LT: [232, 245, 233],
+  BLUE: [30, 64, 175], BLUE_LT: [219, 234, 254],
+  GOLD: [201, 162, 39], RED: [200, 60, 60],
+  HAIR: 205, CAP: [110, 110, 110], INK: [20, 20, 20], NOTE: [245, 245, 245],
+};
+
 function buildInterchangeSlip(icId, opts) {
   opts = opts || {};
   const ic = state.db.interchange.find(i => i.id === icId);
@@ -615,38 +623,62 @@ function buildInterchangeSlip(icId, opts) {
   if (!inward) return icBuildOutwardSlip(ic, doc, opts);   // outward EIR = the paper "Container Interchange Report / Receipt" layout
   const money = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // One bordered cell: small caption on top, value centred beneath — the same
-  // grid the paper interchange uses.
-  function cell(x, y, w, h, label, value) {
-    doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(x, y, w, h);
-    doc.setFont(undefined, 'bold'); doc.setFontSize(6.8); doc.setTextColor(90);
-    doc.text(String(label).toUpperCase(), x + w / 2, y + 4.2, { align: 'center' });
-    doc.setTextColor(20);
+  // One field cell: hairline border, small grey caption, bold value beneath (left aligned, like the inspection report).
+  const P = IC_PAL;
+  function cell(x, y, w, h, label, value, color) {
+    doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(6.4); doc.setTextColor(...P.CAP);
+    doc.text(String(label).toUpperCase(), x + 2.2, y + 4);
+    doc.setTextColor(...(color || P.INK));
     const text = String(value == null || value === '' ? '' : value);
     doc.setFontSize(9.5);
-    let lines = doc.splitTextToSize(text, w - 4);
+    let lines = doc.splitTextToSize(text, w - 4.4);
     if (lines.length > 1) {
       doc.setFontSize(7.5);
-      lines = doc.splitTextToSize(text, w - 4).slice(0, 2);
-      doc.text(lines, x + w / 2, y + 8, { align: 'center', lineHeightFactor: 1.05 });
+      lines = doc.splitTextToSize(text, w - 4.4).slice(0, 2);
+      doc.text(lines, x + 2.2, y + 7.8, { lineHeightFactor: 1.05 });
     } else {
-      doc.text(lines, x + w / 2, y + 9.4, { align: 'center' });
+      doc.text(lines, x + 2.2, y + 9.2);
     }
+    doc.setTextColor(...P.INK);
   }
+  function kv(x, y, label, value, color) {
+    doc.setFont(undefined, 'normal'); doc.setFontSize(7); doc.setTextColor(90);
+    doc.text(String(label).toUpperCase(), x, y);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(...(color || P.INK));
+    doc.text(String(value || '—'), x, y + 5);
+    doc.setTextColor(...P.INK);
+  }
+  function panel(x, y, w, h, fill) { doc.setFillColor(...fill); doc.roundedRect(x, y, w, h, 1.5, 1.5, 'F'); }
 
-  // ---- letterhead + title block ---------------------------------------------
+  // ---- letterhead + title -----------------------------------------------------
   ghPdfLetterhead(doc, MARGIN, 8, CONTENT_W);   // logo + company details, centred, with the gold rule
 
-  let y = 40;
-  doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.setTextColor(20);
-  doc.text(`EIR NO. ${ic.eirNumber || '—'}`, MARGIN, y + 6);
-  doc.setFontSize(14);
-  doc.text(inward ? 'INWARD INTERCHANGE' : 'OUTWARD INTERCHANGE', 112, y + 6, { align: 'center' });
   const when = new Date(ic.date);
   const timeStr = isNaN(when) ? '—' : when.toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase();
-  doc.setFontSize(9);
-  doc.text(`Date ${inward ? 'in' : 'out'} :  ${fmtDate(ic.date)}`, RIGHT, y + 3.5, { align: 'right' });
-  doc.text(`Time ${inward ? 'in' : 'out'} :  ${timeStr}`, RIGHT, y + 8.5, { align: 'right' });
+  let y = 39;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(...P.INK);
+  doc.text(inward ? 'INWARD INTERCHANGE' : 'OUTWARD INTERCHANGE', MARGIN, y);
+  doc.setFontSize(9); doc.setTextColor(...P.GOLD);
+  doc.text(`EIR NO. ${ic.eirNumber || '—'}`, RIGHT, y - 2, { align: 'right' });
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5); doc.setTextColor(120);
+  doc.text(new Date().toLocaleString('en-KE'), RIGHT, y + 2.5, { align: 'right' });
+  doc.setTextColor(...P.INK);
+
+  // green information panel
+  y = 44;
+  panel(MARGIN, y, CONTENT_W, 14, P.GREEN_LT);
+  kv(MARGIN + 4,   y + 4.5, 'EIR No.', ic.eirNumber, P.GREEN);
+  kv(MARGIN + 52,  y + 4.5, 'Movement', inward ? 'Inward Interchange' : 'Outward Interchange', P.GREEN);
+  kv(MARGIN + 108, y + 4.5, `Date ${inward ? 'in' : 'out'}`, fmtDate(ic.date), P.GREEN);
+  kv(MARGIN + 148, y + 4.5, `Time ${inward ? 'in' : 'out'}`, timeStr, P.GREEN);
+  y += 18;
+
+  // blue title banner
+  panel(MARGIN, y, CONTENT_W, 9, P.BLUE_LT);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(10.5); doc.setTextColor(...P.BLUE);
+  doc.text('Equipment Interchange Receipt \u2014 ' + (inward ? 'Container Received' : 'Container Released'), MARGIN + 4, y + 6.1);
+  doc.setTextColor(...P.INK);
   y += 13;
 
   // ---- field grid --------------------------------------------------------------
@@ -666,7 +698,7 @@ function buildInterchangeSlip(icId, opts) {
   cell(MARGIN,      y, 91, ROW, 'Consignee / C and F', ic.deliveringParty);
   cell(MARGIN + 91, y, 91, ROW, 'Shipping Line / Agent', ic.line ? lineName(ic.line) : '');
   y += ROW;
-  cell(MARGIN,       y, 52, ROW, 'Container No.', ic.container);
+  cell(MARGIN,       y, 52, ROW, 'Container No.', ic.container, P.BLUE);
   cell(MARGIN + 52,  y, 22, ROW, 'ISO', ic.isoCode);
   cell(MARGIN + 74,  y, 18, ROW, 'Size', String(sz.size || '').replace(/ft$/i, ''));
   cell(MARGIN + 92,  y, 22, ROW, 'Type', sz.type);
@@ -705,10 +737,10 @@ function buildInterchangeSlip(icId, opts) {
     if (c.align === 'right') doc.text(String(txt), c.x + c.w - 1.5, yy, { align: 'right' });
     else doc.text(String(txt), c.x + 1.5, yy);
   };
-  doc.setDrawColor(90); doc.setLineWidth(0.3); doc.setFillColor(235, 235, 235);
+  doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.setFillColor(...P.BLUE_LT);
   doc.rect(MARGIN, y, CONTENT_W, 7, 'FD');
   cols.forEach(c => doc.rect(c.x, y, c.w, 7));
-  doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(...P.BLUE);
   cols.forEach((c, i) => {
     if (c.align === 'right') doc.text(c.label, c.x + c.w - 1.5, y + 4.7, { align: 'right' });
     else doc.text(c.label, c.x + 1.5, y + 4.7);
@@ -745,8 +777,9 @@ function buildInterchangeSlip(icId, opts) {
     y += 8;
   }
   // totals row
-  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
-  cols.forEach(c => doc.rect(c.x, y, c.w, 7.5));
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...P.GREEN);
+  doc.setFillColor(...P.GREEN_LT);
+  cols.forEach(c => doc.rect(c.x, y, c.w, 7.5, 'FD'));
   doc.text('Totals :   ' + GargoMoney.sym(GargoMoney.itemsCur(repairs)), cols[1].x + cols[1].w - 1.5, y + 5, { align: 'right' });
   put(3, totHrs.toFixed(2), y + 5);
   put(4, money(totLabour), y + 5);
@@ -756,18 +789,21 @@ function buildInterchangeSlip(icId, opts) {
 
   // ---- statement + remarks --------------------------------------------------------
   if (y > 262) { doc.addPage(); y = 20; }
-  doc.setFont(undefined, 'bold'); doc.setFontSize(9); doc.setTextColor(20);
-  doc.text(`THIS CONTAINER WAS ${inward ? 'RECEIVED' : 'RELEASED'} IN GOOD CONDITION EXCEPT AS NOTED ABOVE.`, MARGIN, y);
-  y += 7;
+  doc.setFillColor(...P.NOTE); doc.rect(MARGIN + 2, y - 4.6, CONTENT_W - 2, 9, 'F');
+  doc.setDrawColor(...P.GOLD); doc.setLineWidth(1); doc.line(MARGIN, y - 4.6, MARGIN, y + 4.4);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(60);
+  doc.text(`THIS CONTAINER WAS ${inward ? 'RECEIVED' : 'RELEASED'} IN GOOD CONDITION EXCEPT AS NOTED ABOVE.`, MARGIN + 5, y + 0.9);
+  doc.setTextColor(...P.INK);
+  y += 12;
   // the system note "Booking REF · name · phone" is internal; keep it off the printed slip
   const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || '')) ? '' : String(ic.notes || '');
   if (slipNotes) {
     const noteLines = doc.splitTextToSize(slipNotes, CONTENT_W - 4).slice(0, 5);
     const boxH = 9 + noteLines.length * 4;
     if (y + boxH > 285) { doc.addPage(); y = 20; }
-    doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(MARGIN, y, CONTENT_W, boxH);
-    doc.setFont(undefined, 'bold'); doc.setFontSize(6.8); doc.setTextColor(90);
-    doc.text('REMARKS', MARGIN + 2, y + 4.2);
+    doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.rect(MARGIN, y, CONTENT_W, boxH);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(6.4); doc.setTextColor(...P.CAP);
+    doc.text('REMARKS', MARGIN + 2.2, y + 4.2);
     doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
     doc.text(noteLines, MARGIN + 2, y + 8.6);
     y += boxH + 4;
@@ -844,7 +880,7 @@ function icBuildOutwardSlip(ic, doc, opts) {
   const S = ic._slip || {}, X = S.extra || {}, inw = S.inward || null, sv = S.survey || {}, trip = S.trip || null;
   const U = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
   const num = v => (v === '' || v == null || !isFinite(Number(v)) || Number(v) <= 0) ? '' : String(Number(v));
-  const M = 14, W = 182, LINE = 150, INK = 20, VAL = 55;
+  const M = 14, W = 182, LINE = IC_PAL.HAIR, INK = 20, VAL = 30, P = IC_PAL;
 
   // ── data ──────────────────────────────────────────────────────────────────────────────
   const lineRec = (state.db.shippingLines || []).find(l => l.id === ic.line);
@@ -880,10 +916,12 @@ function icBuildOutwardSlip(ic, doc, opts) {
 
   // ── drawing helpers (mm, A4) ────────────────────────────────────────────────────────────
   const box = (x, y, w, h) => { doc.setDrawColor(LINE); doc.setLineWidth(0.25); doc.rect(x, y, w, h); };
-  const label = (t, x, y, sz, align) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(sz || 7.4); doc.setTextColor(INK); doc.text(t, x, y, align ? { align } : undefined); };
+  const ink = c => Array.isArray(c) ? doc.setTextColor(c[0], c[1], c[2]) : doc.setTextColor(c);
+  const fill = (x, y, w, h, c) => { doc.setFillColor(c[0], c[1], c[2]); doc.rect(x, y, w, h, 'F'); };
+  const label = (t, x, y, sz, align, col) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(sz || 6.8); ink(col || P.CAP); doc.text(t, x, y, align ? { align } : undefined); };
   const fit = (t, x, y, w, size, o) => {
     o = o || {}; let s = size;
-    doc.setFont('helvetica', o.bold ? 'bold' : 'normal'); doc.setFontSize(s); doc.setTextColor(o.ink || VAL);
+    doc.setFont('helvetica', o.bold ? 'bold' : 'normal'); doc.setFontSize(s); ink(o.ink || VAL);
     while (s > 5 && doc.getTextWidth(t) > w) { s -= 0.25; doc.setFontSize(s); }
     doc.text(t, x, y, o.align ? { align: o.align } : undefined);
   };
@@ -898,7 +936,7 @@ function icBuildOutwardSlip(ic, doc, opts) {
     if (val) fit(U(val), x + off, y + h / 2 + 1.7, w - off - 2, 11, { bold: true, ink: INK });
   };
   const strip = (x, y, w, hH, hV, cap, val) => {            // caption row + value row (ISO … CSC block)
-    box(x, y, w, hH); label(cap, x + w / 2, y + hH - 1.9, 7.2, 'center');
+    fill(x, y, w, hH, P.BLUE_LT); box(x, y, w, hH); label(cap, x + w / 2, y + hH - 1.9, 6.6, 'center', P.BLUE);
     box(x, y + hH, w, hV); if (val) fit(U(val), x + w / 2, y + hH + hV - 2.6, w - 3, 9, { align: 'center' });
   };
 
@@ -906,9 +944,9 @@ function icBuildOutwardSlip(ic, doc, opts) {
   ghPdfLetterhead(doc, M, 8, W);
   let y = 37;
 
-  box(M, y, 101, 11); label('CONTAINER INTERCHANGE REPORT / RECEIPT', M + 2, y + 6.9, 9.2);
-  box(M + 101, y, 81, 11); label('OUTWARD EIR NO.', M + 103, y + 6.9, 8.6);
-  if (D.eir) fit(U(D.eir), M + W - 3, y + 7.8, 38, 15, { bold: true, ink: INK, align: 'right' });
+  fill(M, y, 101, 11, P.GREEN_LT); box(M, y, 101, 11); label('CONTAINER INTERCHANGE REPORT / RECEIPT', M + 3, y + 6.9, 9, null, P.GREEN);
+  fill(M + 101, y, 81, 11, P.BLUE_LT); box(M + 101, y, 81, 11); label('OUTWARD EIR NO.', M + 104, y + 6.9, 8, null, P.BLUE);
+  if (D.eir) fit(U(D.eir), M + W - 3, y + 7.8, 38, 15, { bold: true, ink: P.BLUE, align: 'right' });
   y += 11;
 
   lv(M, y, 87, 13, 'SHIPPER NAME', D.shipper);
@@ -946,15 +984,17 @@ function icBuildOutwardSlip(ic, doc, opts) {
   lv(M + 100, y, 82, 13, 'GHD SIGN / STAMP :', '');
   y += 13 + 6;
 
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(INK);
+  fill(M + 2, y - 4.8, W - 2, 16, P.NOTE);
+  doc.setDrawColor(P.GOLD[0], P.GOLD[1], P.GOLD[2]); doc.setLineWidth(1); doc.line(M, y - 4.8, M, y + 11.2);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.8); doc.setTextColor(60);
   doc.text(['NB: CONTAINER RELEASED / RECEIVED IN GOOD CONDITION.',
             'IT IS THE RESPONSIBILITY OF THE SHIPPER / TRANSPORTER / AGENT FOR ANY LOSS / DAMAGE',
-            'OR CLEANLINESS OF THE EQUIPMENT AFTER IT HAS LEFT THE DEPOT.'], M, y, { lineHeightFactor: 1.35 });
+            'OR CLEANLINESS OF THE EQUIPMENT AFTER IT HAS LEFT THE DEPOT.'], M + 5, y, { lineHeightFactor: 1.4 });
 
   // ── "came in on" block, fixed at the foot of the page ──────────────────────────────────────
   const fy = 262, cols = [['DATE IN', 41, D.inDate], ['EIR IN', 42, D.inEir], ['VESSEL IN', 53, D.inVessel], ['VOYAGE IN', 46, D.inVoyage]];
   let fx = M; cols.forEach(c => {
-    box(fx, fy, c[1], 7); label(c[0], fx + c[1] / 2, fy + 4.9, 8.4, 'center');
+    fill(fx, fy, c[1], 7, P.GREEN_LT); box(fx, fy, c[1], 7); label(c[0], fx + c[1] / 2, fy + 4.8, 7.4, 'center', P.GREEN);
     box(fx, fy + 7, c[1], 8); if (c[2]) fit(c[0] === 'DATE IN' ? String(c[2]) : U(c[2]), fx + c[1] / 2, fy + 12.4, c[1] - 3, 9, { align: 'center' });
     fx += c[1];
   });
