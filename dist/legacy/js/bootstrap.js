@@ -146,7 +146,18 @@ async function handleInstallClick() {
 }
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch((err) => {
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      const check = () => {
+        try {
+          if (navigator.onLine) reg.update();
+        } catch (e) {
+        }
+      };
+      setInterval(check, 15 * 60 * 1e3);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") check();
+      });
+    }).catch((err) => {
       console.error("Service worker registration failed:", err);
     });
     navigator.serviceWorker.addEventListener("message", (event) => {
@@ -155,8 +166,16 @@ if ("serviceWorker" in navigator) {
           toast("A new version is ready \u2014 it will load after your changes sync", "info", 4e3);
           return;
         }
-        toast("A new version is available \u2014 reloading\u2026", "info", 2500);
-        setTimeout(() => window.location.reload(), 1200);
+        const reloadWhenIdle = () => {
+          const ov = document.getElementById("modalOverlay");
+          if (ov && ov.classList.contains("active")) {
+            setTimeout(reloadWhenIdle, 1e4);
+            return;
+          }
+          toast("A new version is available \u2014 reloading\u2026", "info", 2500);
+          setTimeout(() => window.location.reload(), 1200);
+        };
+        reloadWhenIdle();
       }
     });
   });

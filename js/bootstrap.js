@@ -189,7 +189,12 @@ async function handleInstallClick() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((err) => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Tablets at the gate stay open all day and would keep running old code: look for a new version every 15 min and whenever the app comes back to the screen.
+      const check = () => { try { if (navigator.onLine) reg.update(); } catch (e) {} };
+      setInterval(check, 15 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    }).catch((err) => {
       console.error('Service worker registration failed:', err);
     });
  
@@ -199,8 +204,14 @@ if ('serviceWorker' in navigator) {
           toast('A new version is ready — it will load after your changes sync', 'info', 4000);
           return;
         }
-        toast('A new version is available — reloading…', 'info', 2500);
-        setTimeout(() => window.location.reload(), 1200);
+        // Never reload under someone who is filling in a form (a survey, for example): wait until the dialog is closed.
+        const reloadWhenIdle = () => {
+          const ov = document.getElementById('modalOverlay');
+          if (ov && ov.classList.contains('active')) { setTimeout(reloadWhenIdle, 10000); return; }
+          toast('A new version is available — reloading…', 'info', 2500);
+          setTimeout(() => window.location.reload(), 1200);
+        };
+        reloadWhenIdle();
       }
     });
   });

@@ -573,6 +573,56 @@
       toast("".concat(u.name, " ").concat(u.active ? "activated" : "deactivated. They are signed out within a minute."), "success");
     }
   };
+  window.deleteUser = async function(id) {
+    const u = profiles().find((x) => x.id === id);
+    if (!u) return;
+    if (u.id === state.profile.id) {
+      toast("You cannot delete your own account.", "error");
+      return;
+    }
+    if (u.active) {
+      toast("Deactivate this user first, then delete.", "warning");
+      return;
+    }
+    if (!navigator.onLine) {
+      toast("You are offline. Connect and try again.", "warning");
+      return;
+    }
+    const typed = prompt("Permanently delete " + u.name + " (" + u.username + ")?\n\nThis removes their login and cannot be undone.\nType the username to confirm:");
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== String(u.username || "").toLowerCase()) {
+      toast("Username did not match. Nothing was deleted.", "warning", 4500);
+      return;
+    }
+    let res;
+    try {
+      res = await supabase.rpc("admin_delete_user", { p_user: id });
+    } catch (e) {
+      res = { error: e };
+    }
+    const d = res && res.data, err = res && res.error;
+    if (err || !d) {
+      console.warn("admin_delete_user failed:", err);
+      toast("Could not delete user" + (err && err.message ? ": " + err.message : ""), "error", 6e3);
+      return;
+    }
+    if (!d.ok) {
+      const why = {
+        self: "You cannot delete your own account.",
+        not_found: "That user no longer exists.",
+        still_active: "Deactivate this user first, then delete.",
+        has_history: u.name + " has records in the system (" + String(d.table || "history").replace(/_/g, " ") + "), so the account cannot be erased. Leave it deactivated instead."
+      };
+      toast(why[d.reason] || "Could not delete user", d.reason === "has_history" ? "warning" : "error", 7e3);
+      return;
+    }
+    state.db.profiles = profiles().filter((x) => x.id !== id);
+    SEL.delete(id);
+    addAudit(state.profile.username, "User Deleted", u.name + " (" + u.username + ") was " + roleName(u.role));
+    closeModal();
+    renderUserMgmt();
+    toast(u.name + " deleted", "success");
+  };
   window.showUserDetail = function(id) {
     const u = profiles().find((x) => x.id === id);
     if (!u) return;
@@ -585,7 +635,7 @@
       const [s, t] = x.split(":"), f = subTabs(s).find((y) => y[0] === t);
       return '<span class="x">'.concat(E(secLabel(s)), " \u203A ").concat(E(f ? f[1] : t), "</span>");
     }).join("");
-    openModal("User \u2014 ".concat(u.name), '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">'.concat(initials(u.name), '</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">').concat(E(u.name), '</div><div class="mono" style="font-size:9px;color:var(--text-3)">').concat(E(u.id), '</div></div></div>\n      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">\n        <div class="fg" style="margin:0"><label>Username</label><div class="mono">').concat(E(u.username), '</div></div><div class="fg" style="margin:0"><label>Role</label><div>').concat(E(roleName(u.role))).concat(isCustom(u) ? ' <span class="ac-tag">custom</span>' : "", '</div></div>\n        <div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">').concat(E(u.email), '</div></div><div class="fg" style="margin:0"><label>Status</label><div>').concat(sbadge(u.active ? "active" : "off_duty"), '</div></div>\n        <div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">').concat(fmtDate(u.created), '</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">').concat(u.lastLogin ? timeAgo(u.lastLogin) : "Never", '</div></div></div>\n      <div class="fg"><label>Can open</label><div class="ac-chips">').concat(chips, "</div></div>\n      ").concat(hid ? '<div class="fg"><label>Tabs denied</label><div class="ac-chips">'.concat(hid, "</div></div>") : "", '\n      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="modal-btn" onclick="showEditAccessModal(\'').concat(u.id, '\')">Edit Access</button><button class="modal-btn" onclick="showSetPasswordModal(\'').concat(u.id, "')\">Set New Password</button>\n      ").concat(u.id !== state.profile.id ? '<button class="modal-btn '.concat(u.active ? "danger" : "success", '" onclick="toggleUserActive(\'').concat(u.id, "')\">").concat(u.active ? "Deactivate" : "Activate", " User</button>") : '<span style="font-size:11px;color:var(--text-3);align-self:center">This is your account</span>', "</div>"));
+    openModal("User \u2014 ".concat(u.name), '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">'.concat(initials(u.name), '</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">').concat(E(u.name), '</div><div class="mono" style="font-size:9px;color:var(--text-3)">').concat(E(u.id), '</div></div></div>\n      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">\n        <div class="fg" style="margin:0"><label>Username</label><div class="mono">').concat(E(u.username), '</div></div><div class="fg" style="margin:0"><label>Role</label><div>').concat(E(roleName(u.role))).concat(isCustom(u) ? ' <span class="ac-tag">custom</span>' : "", '</div></div>\n        <div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">').concat(E(u.email), '</div></div><div class="fg" style="margin:0"><label>Status</label><div>').concat(sbadge(u.active ? "active" : "off_duty"), '</div></div>\n        <div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">').concat(fmtDate(u.created), '</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">').concat(u.lastLogin ? timeAgo(u.lastLogin) : "Never", '</div></div></div>\n      <div class="fg"><label>Can open</label><div class="ac-chips">').concat(chips, "</div></div>\n      ").concat(hid ? '<div class="fg"><label>Tabs denied</label><div class="ac-chips">'.concat(hid, "</div></div>") : "", '\n      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="modal-btn" onclick="showEditAccessModal(\'').concat(u.id, '\')">Edit Access</button><button class="modal-btn" onclick="showSetPasswordModal(\'').concat(u.id, "')\">Set New Password</button>\n      ").concat(u.id !== state.profile.id ? '<button class="modal-btn '.concat(u.active ? "danger" : "success", '" onclick="toggleUserActive(\'').concat(u.id, "')\">").concat(u.active ? "Deactivate" : "Activate", " User</button>").concat(u.active ? "" : '<button class="modal-btn danger" onclick="deleteUser(\''.concat(u.id, "')\">Delete User</button>")) : '<span style="font-size:11px;color:var(--text-3);align-self:center">This is your account</span>', "</div>"));
   };
   function checkAccess() {
     const out = [], P = profiles(), push = (u, level, msg, fix) => out.push({ u, level, msg, fix });

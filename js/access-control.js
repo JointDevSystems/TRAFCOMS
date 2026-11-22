@@ -1,11 +1,5 @@
 'use strict';
-/* Gargo access control. Loads LAST (after form-guard.js).
-   1. Sub-section access: an administrator can allow a section but deny single tabs inside it
-      (e.g. HR Hub allowed, but not Payroll). Stored as profiles.denied_subs = ["hr:payroll", "finance:bills", ...].
-   2. User Management rebuilt: search + filters, bulk actions, one access editor for every role, role defaults,
-      copy-access-from-user, safety guards (last admin, self demotion) and an Access Check that finds users who cannot do their job.
-   3. Live sync: a signed-in user picks up access changes (or a deactivation) within ~45 s, without signing out.
-   NOTE: this is interface-level control, like the existing section ticks. Data protection itself must be enforced by Supabase RLS. */
+
 (function () {
   const $ = id => document.getElementById(id);
   const E = s => (typeof esc === 'function' ? esc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
@@ -416,6 +410,33 @@
     if (await setActive(id, !u.active)) { closeModal(); renderUserMgmt(); toast(`${u.name} ${u.active ? 'activated' : 'deactivated. They are signed out within a minute.'}`, 'success'); }
   };
 
+  /* Permanent delete. Only for deactivated accounts, never yourself. The database function re-checks all of that and refuses
+     when the person has records (surveys, requisitions, documents...): those accounts stay deactivated so history keeps its author. */
+  window.deleteUser = async function (id) {
+    const u = profiles().find(x => x.id === id); if (!u) return;
+    if (u.id === state.profile.id) { toast('You cannot delete your own account.', 'error'); return; }
+    if (u.active) { toast('Deactivate this user first, then delete.', 'warning'); return; }
+    if (!navigator.onLine) { toast('You are offline. Connect and try again.', 'warning'); return; }
+    const typed = prompt('Permanently delete ' + u.name + ' (' + u.username + ')?\n\nThis removes their login and cannot be undone.\nType the username to confirm:');
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== String(u.username || '').toLowerCase()) { toast('Username did not match. Nothing was deleted.', 'warning', 4500); return; }
+    let res;
+    try { res = await supabase.rpc('admin_delete_user', { p_user: id }); } catch (e) { res = { error: e }; }
+    const d = res && res.data, err = res && res.error;
+    if (err || !d) { console.warn('admin_delete_user failed:', err); toast('Could not delete user' + (err && err.message ? ': ' + err.message : ''), 'error', 6000); return; }
+    if (!d.ok) {
+      const why = { self: 'You cannot delete your own account.', not_found: 'That user no longer exists.', still_active: 'Deactivate this user first, then delete.',
+        has_history: u.name + ' has records in the system (' + String(d.table || 'history').replace(/_/g, ' ') + '), so the account cannot be erased. Leave it deactivated instead.' };
+      toast(why[d.reason] || 'Could not delete user', d.reason === 'has_history' ? 'warning' : 'error', 7000);
+      return;
+    }
+    state.db.profiles = profiles().filter(x => x.id !== id);
+    SEL.delete(id);
+    addAudit(state.profile.username, 'User Deleted', u.name + ' (' + u.username + ') was ' + roleName(u.role));
+    closeModal(); renderUserMgmt();
+    toast(u.name + ' deleted', 'success');
+  };
+
   /* ── user detail: effective access at a glance ── */
   window.showUserDetail = function (id) {
     const u = profiles().find(x => x.id === id); if (!u) return;
@@ -430,7 +451,7 @@
       <div class="fg"><label>Can open</label><div class="ac-chips">${chips}</div></div>
       ${hid ? `<div class="fg"><label>Tabs denied</label><div class="ac-chips">${hid}</div></div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="modal-btn" onclick="showEditAccessModal('${u.id}')">Edit Access</button><button class="modal-btn" onclick="showSetPasswordModal('${u.id}')">Set New Password</button>
-      ${u.id !== state.profile.id ? `<button class="modal-btn ${u.active ? 'danger' : 'success'}" onclick="toggleUserActive('${u.id}')">${u.active ? 'Deactivate' : 'Activate'} User</button>` : '<span style="font-size:11px;color:var(--text-3);align-self:center">This is your account</span>'}</div>`);
+      ${u.id !== state.profile.id ? `<button class="modal-btn ${u.active ? 'danger' : 'success'}" onclick="toggleUserActive('${u.id}')">${u.active ? 'Deactivate' : 'Activate'} User</button>${u.active ? '' : `<button class="modal-btn danger" onclick="deleteUser('${u.id}')">Delete User</button>`}` : '<span style="font-size:11px;color:var(--text-3);align-self:center">This is your account</span>'}</div>`);
   };
 
   /* ── Access Check ── */
