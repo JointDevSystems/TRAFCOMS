@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '4.2.8';
+const CACHE_VERSION = '4.2.9';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -39,6 +39,7 @@ const SHELL_FILES = [
   './js/tracking.js',
   './js/reports-audit.js',
   './js/reports-centre.js',
+  './js/edi-codeco.js',
   './js/documents.js',
   './js/admin-ui-shell.js',
   './js/nav-compat.js',
