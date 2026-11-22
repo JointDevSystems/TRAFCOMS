@@ -2065,7 +2065,7 @@ function refreshTariffPicker(prefix) {
 function tariffPickerHtml(prefix) {
   const categoryOptions = _tariffCatOptions(prefix);
   const canSave = typeof canEditTariffCatalog === "function" && canEditTariffCatalog();
-  return '\n    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">\n      <span>Damage / Repair Items</span>\n      '.concat(canSave ? '<button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="openTariffCatalogEditor()">Edit tariff codes</button>' : "", '\n    </div>\n    <div class="fg"><label>Search tariff <span class="label-optional">(code or words, e.g. cold wash, D10)</span></label>\n      <input id="').concat(prefix, '_tsearch" autocomplete="off" placeholder="Type to search every category\u2026" oninput="onTariffSearch(\'').concat(prefix, '\')" />\n      <div id="').concat(prefix, '_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>\n    </div>\n    <div id="').concat(prefix, '_tnote" style="display:none;font-size:11px;color:var(--text-2);margin:-2px 0 8px"></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Category</label><select id="').concat(prefix, '_tcat" data-tariff="').concat(tariffMode(prefix), '" onchange="onRepairCategoryChange(\'').concat(prefix, '\')"><option value="">\u2014</option>').concat(categoryOptions, '</select></div>\n      <div class="fg"><label>Code / Item</label><select id="').concat(prefix, '_tcode" onchange="onRepairCodeChange(\'').concat(prefix, '\')"><option value="">Select category first\u2026</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Code</label><input id="').concat(prefix, '_tcodetext" placeholder="Auto-filled \u2014 or type your own" /></div>\n      <div class="fg"><label>Description</label><input id="').concat(prefix, '_titem" placeholder="Auto-filled \u2014 editable" /></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Hours</label><input id="').concat(prefix, '_thours" type="number" step="0.1" min="0" placeholder="0" /></div>\n      <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="').concat(prefix, '">USD</span>)</label><input id="').concat(prefix, '_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>\n    </div>\n    ').concat(canSave ? '<label id="'.concat(prefix, '_tsavewrap" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="').concat(prefix, '_tsavecat" /> Also save this to the tariff catalog for next time</label>') : "", '\n    <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem(\'').concat(prefix, '\')">+ Add item</button>\n    <div id="').concat(prefix, '_repairList"></div>');
+  return '\n    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center">\n      <span>Damage / Repair Items</span>\n      '.concat(canSave ? '<button type="button" class="modal-btn ghost" style="padding:2px 8px;font-size:10px" onclick="openTariffCatalogEditor()">Edit tariff codes</button>' : "", '\n    </div>\n    <div class="fg"><label>Search tariff <span class="label-optional">(code or words, e.g. cold wash, D10)</span></label>\n      <input id="').concat(prefix, '_tsearch" autocomplete="off" placeholder="Type to search every category\u2026" oninput="onTariffSearch(\'').concat(prefix, '\')" />\n      <div id="').concat(prefix, '_tsearchResults" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:4px"></div>\n    </div>\n    <div id="').concat(prefix, '_tnote" style="display:none;font-size:11px;color:var(--text-2);margin:-2px 0 8px"></div>\n    <div class="form-row-2">\n      <div class="fg"><label>Category</label><select id="').concat(prefix, '_tcat" data-tariff="').concat(tariffMode(prefix), '" onchange="onRepairCategoryChange(\'').concat(prefix, '\')"><option value="">\u2014</option>').concat(categoryOptions, '</select></div>\n      <div class="fg"><label>Code / Item</label><select id="').concat(prefix, '_tcode" onchange="onRepairCodeChange(\'').concat(prefix, '\')"><option value="">Select category first\u2026</option></select></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Code</label><input id="').concat(prefix, '_tcodetext" placeholder="Auto-filled \u2014 or type your own" /></div>\n      <div class="fg"><label>Description</label><input id="').concat(prefix, '_titem" placeholder="Auto-filled \u2014 editable" /></div>\n    </div>\n    <div class="form-row-2">\n      <div class="fg"><label>Hours</label><input id="').concat(prefix, '_thours" type="number" step="0.1" min="0" placeholder="0" /></div>\n      <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="').concat(prefix, '">USD</span>)</label><input id="').concat(prefix, '_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>\n    </div>\n    <div class="fg"><label>Quantity <span class="label-optional">(how many of this item, e.g. 2 &mdash; or type "ABCD x2" in the search box)</span></label><input id="').concat(prefix, '_tqty" type="number" min="1" step="1" value="1" style="max-width:120px" /></div>\n    ').concat(canSave ? '<label id="'.concat(prefix, '_tsavewrap" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="').concat(prefix, '_tsavecat" /> Also save this to the tariff catalog for next time</label>') : "", '\n    <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem(\'').concat(prefix, '\')">+ Add item</button>\n    <div id="').concat(prefix, '_repairList"></div>');
 }
 function _tariffRows(cat, prefix) {
   return tariffFor(prefix)[cat] || [];
@@ -2080,11 +2080,22 @@ function _tariffFill(prefix, row, cat) {
   set("thours", row ? row.hours : "");
   set("tmaterial", row ? row.material : "");
 }
+function _splitQty(text) {
+  const m = String(text || "").match(/^(.*?)\s*[x\u00d7*]\s*(\d{1,3})\s*$/i);
+  if (!m || !m[1].trim()) return { text: String(text || ""), qty: null };
+  const q = parseInt(m[2], 10);
+  return q >= 1 ? { text: m[1].trim(), qty: q } : { text: String(text || ""), qty: null };
+}
 function onTariffSearch(prefix) {
   const box = document.getElementById("".concat(prefix, "_tsearch"));
   const out = document.getElementById("".concat(prefix, "_tsearchResults"));
   if (!box || !out) return;
-  const terms = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const sq = _splitQty(box.value);
+  if (sq.qty) {
+    const qe = document.getElementById("".concat(prefix, "_tqty"));
+    if (qe) qe.value = sq.qty;
+  }
+  const terms = sq.text.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) {
     out.style.display = "none";
     out.innerHTML = "";
@@ -2134,8 +2145,12 @@ function addRepairItem(prefix) {
     return e ? e.value.trim() : "";
   };
   const cat = val("tcat");
-  const code = val("tcodetext");
+  const cq = _splitQty(val("tcodetext"));
+  const code = cq.text.trim();
   const item = val("titem");
+  let qty = parseInt(val("tqty"), 10) || 1;
+  if (cq.qty) qty = cq.qty;
+  qty = Math.min(999, Math.max(1, qty));
   if (!code && !item) {
     toast("Pick a tariff code, or type a code and description", "error");
     return;
@@ -2146,7 +2161,8 @@ function addRepairItem(prefix) {
   }
   const hours = Math.max(0, parseFloat(val("thours")) || 0);
   const material = Math.max(0, parseFloat(val("tmaterial")) || 0);
-  const entry = { category: cat || "CUSTOM", code: sanitize(code) || "CUSTOM", item: sanitize(item), hours, material, currency: GargoMoney.curFor(prefix) };
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const entry = { category: cat || "CUSTOM", code: sanitize(code) || "CUSTOM", item: sanitize(item), hours: r2(hours * qty), material: r2(material * qty), qty, unitHours: hours, unitMaterial: material, currency: GargoMoney.curFor(prefix) };
   const picked = _tariffRows(cat, prefix)[val("tcode")];
   if (!picked) entry.custom = true;
   repairItemsFor(prefix).push(entry);
@@ -2162,6 +2178,23 @@ function addRepairItem(prefix) {
   });
   const codeSel = document.getElementById("".concat(prefix, "_tcode"));
   if (codeSel) codeSel.value = "";
+  const qtyEl = document.getElementById("".concat(prefix, "_tqty"));
+  if (qtyEl) qtyEl.value = "1";
+  renderRepairItemsList(prefix);
+}
+function setRepairQty(prefix, i, raw) {
+  const r = repairItemsFor(prefix)[i];
+  if (!r) return;
+  const q = Math.min(999, Math.max(1, parseInt(raw, 10) || 1));
+  const oldQ = Number(r.qty) || 1;
+  const uh = r.unitHours != null ? Number(r.unitHours) : (Number(r.hours) || 0) / oldQ;
+  const um = r.unitMaterial != null ? Number(r.unitMaterial) : (Number(r.material) || 0) / oldQ;
+  const r2 = (n) => Math.round(n * 100) / 100;
+  r.unitHours = uh;
+  r.unitMaterial = um;
+  r.qty = q;
+  r.hours = r2(uh * q);
+  r.material = r2(um * q);
   renderRepairItemsList(prefix);
 }
 function removeRepairItem(prefix, i) {
@@ -2178,7 +2211,7 @@ function renderRepairItemsList(prefix) {
     el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added \u2014 container will be logged as good condition.</div>';
     return;
   }
-  const rows = items.map((r, i) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">\n    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">'.concat(esc(r.code), "</span> \u2014 ").concat(esc(r.item)).concat(r.side ? ' <span style="color:var(--text-3)">('.concat(esc(r.side), ")</span>") : "").concat(r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : "", '</div>\n    <div style="font-size:11px;color:var(--text-2)">').concat(esc(r.hours), "h \xB7 ").concat(GargoMoney.sym(GargoMoney.itemCur(r)), " ").concat(Number(r.material).toLocaleString(), ' <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem(\'').concat(prefix, "',").concat(i, ')">\u2715</button></div>\n  </div>')).join("");
+  const rows = items.map((r, i) => '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">\n    <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">'.concat(esc(r.code), "</span> \u2014 ").concat(esc(r.item)).concat(r.side ? ' <span style="color:var(--text-3)">('.concat(esc(r.side), ")</span>") : "").concat(r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : "", '</div>\n    <div style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end"><label style="display:inline-flex;align-items:center;gap:3px">&times;<input type="number" min="1" max="999" step="1" value="').concat(Number(r.qty) || 1, '" onchange="setRepairQty(\'').concat(prefix, "',").concat(i, ',this.value)" style="width:52px;min-height:0;padding:2px 4px;font-size:12px" title="Quantity"/></label>').concat(esc(r.hours), "h \xB7 ").concat(GargoMoney.sym(GargoMoney.itemCur(r)), " ").concat(Number(r.material).toLocaleString(), ' <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem(\'').concat(prefix, "',").concat(i, ')">\u2715</button></div>\n  </div>')).join("");
   const total = repairItemsTotal(items);
   el.innerHTML = rows + '<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">\n    <span>Total (labour @ '.concat(GargoMoney.sym(GargoMoney.itemsCur(items)), " ").concat(GargoMoney.labourRate(GargoMoney.itemsCur(items)), "/hr + material)</span><span>").concat(GargoMoney.fmt(total, GargoMoney.itemsCur(items)), "</span>\n  </div>").concat(GargoMoney.labourWarning(items));
 }
@@ -2199,4 +2232,165 @@ function _tripToInterchangeReportRow(t) {
     notes: t.notes || "",
     _reportSource: "trips"
   };
+}
+const IC_EDIT_FIELDS = [
+  ["container", "Container No."],
+  ["ctype", "Type / Size"],
+  ["line", "Shipping Line"],
+  ["date", "Date"],
+  ["condition", "Condition / Status"],
+  ["vessel", "Vessel"],
+  ["voyage", "Voyage"],
+  ["blNumber", "Guarantee / B/L No."],
+  ["deliveringParty", "Consignee / C&F"],
+  ["receivingParty", "Receiving Party"],
+  ["releaseOrderNo", "Release Order No."],
+  ["transporter", "Transporter"],
+  ["truck", "Truck"],
+  ["driver", "Driver"],
+  ["driverIdNumber", "Driver ID No."],
+  ["trailerNo", "Trailer No."],
+  ["isoCode", "ISO Code"],
+  ["grossWeight", "Gross Weight"],
+  ["manufactureDate", "Date of Manufacture"],
+  ["cargoStatus", "Cargo Status"],
+  ["clerkName", "Clerk"],
+  ["notes", "Notes"]
+];
+function _icLocalInput(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return "".concat(d.getFullYear(), "-").concat(p(d.getMonth() + 1), "-").concat(p(d.getDate()), "T").concat(p(d.getHours()), ":").concat(p(d.getMinutes()));
+}
+async function showEditInterchangeModal(icId) {
+  if (!isAdmin()) {
+    toast("Only an administrator can edit interchange details", "error");
+    return;
+  }
+  let ic = null;
+  try {
+    ic = window.ICR && ICR.enabled ? await ICR.ensurePhotos(icId) : state.db.interchange.find((i) => i.id === icId);
+  } catch (e) {
+    console.warn("edit: could not load photos", e);
+  }
+  if (!ic) ic = state.db.interchange.find((i) => i.id === icId);
+  if (!ic) {
+    toast("Interchange record not found", "error");
+    return;
+  }
+  if (ic._light) {
+    toast("Could not load the full record. Check the connection and try again.", "error");
+    return;
+  }
+  const v = (x) => esc(x == null ? "" : x);
+  const lineOpts = '<option value="">\u2014</option>' + state.db.shippingLines.map((l) => '<option value="'.concat(esc(l.id), '" ').concat(l.id === ic.line ? "selected" : "", ">").concat(esc(l.code), " \u2014 ").concat(esc(l.name), "</option>")).join("");
+  const types = CONTAINER_TYPE_OPTIONS.slice();
+  if (ic.ctype && types.indexOf(ic.ctype) < 0) types.unshift(ic.ctype);
+  const typeOpts = '<option value="">\u2014</option>' + types.map((t) => "<option ".concat(t === ic.ctype ? "selected" : "", ">").concat(esc(t), "</option>")).join("");
+  const truckField = ic.truck ? '<select id="ice_truck">'.concat(state.db.trucks.map((t) => '<option value="'.concat(esc(t.id), '" ').concat(t.id === ic.truck ? "selected" : "", ">").concat(esc(t.reg), "</option>")).join(""), "</select>") : '<input id="ice_truckText" value="'.concat(v(ic.truckRegText), '"/>');
+  const driverField = ic.driver ? '<select id="ice_driver">'.concat(state.db.drivers.map((d) => '<option value="'.concat(esc(d.id), '" ').concat(d.id === ic.driver ? "selected" : "", ">").concat(esc(d.name), "</option>")).join(""), "</select>") : '<input id="ice_driverText" value="'.concat(v(ic.driverNameText), '"/>');
+  const f = (id, label, val, extra) => '<div class="fg"><label>'.concat(label, '</label><input id="ice_').concat(id, '" value="').concat(v(val), '" ').concat(extra || "", "/></div>");
+  openModal("Edit interchange \u2014 ".concat(esc(ic.container)), '\n    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Administrator only. Use this to correct details that were entered wrongly. The <b>EIR No. '.concat(v(ic.eirNumber) || "\u2014", '</b> cannot be changed. Every edit is recorded in the audit log.</span></div>\n    <div class="form-row-2">').concat(f("container", "Container No.", ic.container, 'style="text-transform:uppercase"'), '\n      <div class="fg"><label>Type / Size</label><select id="ice_ctype">').concat(typeOpts, '</select></div></div>\n    <div class="form-row-2"><div class="fg"><label>Shipping Line / Agent</label><select id="ice_line">').concat(lineOpts, '</select></div>\n      <div class="fg"><label>Date</label><input id="ice_date" type="datetime-local" value="').concat(_icLocalInput(ic.date), '"/></div></div>\n    <div class="form-row-2">').concat(f("condition", "Condition / Status", ic.condition)).concat(f("cargoStatus", "Cargo Status", ic.cargoStatus), '</div>\n    <div class="form-row-2">').concat(f("vessel", "Vessel", ic.vessel)).concat(f("voyage", "Voyage", ic.voyage), '</div>\n    <div class="form-row-2">').concat(f("bl", "Guarantee / B/L No.", ic.blNumber || ic.guaranteeNo)).concat(f("consignee", "Consignee / C&amp;F", ic.deliveringParty), '</div>\n    <div class="form-row-2">').concat(f("receiving", "Receiving Party", ic.receivingParty)).concat(f("ro", "Release Order No.", ic.releaseOrderNo), '</div>\n    <div class="form-row-2">').concat(f("transporter", "Transporter", ic.transporter)).concat(f("trailer", "Trailer No.", ic.trailerNo), '</div>\n    <div class="form-row-2"><div class="fg"><label>Truck</label>').concat(truckField, '</div><div class="fg"><label>Driver</label>').concat(driverField, '</div></div>\n    <div class="form-row-2">').concat(f("driverId", "Driver ID / Driving No.", ic.driverIdNumber)).concat(f("iso", "ISO Code", ic.isoCode, 'maxlength="6" style="text-transform:uppercase"'), '</div>\n    <div class="form-row-2"><div class="fg"><label>Gross Weight (kg)</label><input id="ice_gross" type="number" min="0" step="1" value="').concat(v(ic.grossWeight), '"/></div>\n      ').concat(f("dom", "Date of Manufacture (MM/YYYY)", ic.manufactureDate, 'maxlength="7" placeholder="MM/YYYY"'), "</div>\n    ").concat(f("clerk", "Clerk", ic.clerkName), '\n    <div class="fg"><label>Notes</label><textarea id="ice_notes" rows="2">').concat(v(ic.notes), '</textarea></div>\n    <div id="ice_err" style="color:var(--red);font-size:12px;min-height:16px"></div>\n    <button class="submit-btn" id="ice_go" onclick="saveEditedInterchange(\'').concat(esc(ic.id), "')\">Save changes \u2192</button>"));
+}
+let _iceSaving = false;
+async function saveEditedInterchange(icId) {
+  if (_iceSaving) return;
+  if (!isAdmin()) {
+    toast("Only an administrator can edit interchange details", "error");
+    return;
+  }
+  const ic = state.db.interchange.find((i) => i.id === icId);
+  if (!ic) {
+    toast("Interchange record not found", "error");
+    return;
+  }
+  const val = (id) => {
+    const el = document.getElementById("ice_" + id);
+    return el ? el.value.trim() : "";
+  };
+  const err = (m) => {
+    const e = document.getElementById("ice_err");
+    if (e) e.textContent = m;
+    else toast(m, "error");
+  };
+  const cont = val("container").toUpperCase().replace(/\s+/g, "");
+  if (!cont) return err("Container number is required.");
+  if (cont !== String(ic.container || "").toUpperCase()) {
+    const issue = containerFormatIssue(cont);
+    if (issue) return err("Container number: " + issue);
+  }
+  const dom = normalizeManufactureDate(val("dom"));
+  if (dom === null) return err("Date of manufacture must look like 05/2011.");
+  const grossRaw = val("gross"), gross = grossRaw ? Number(grossRaw) : "";
+  if (grossRaw && (!isFinite(gross) || gross <= 0)) return err("Gross weight must be a positive number.");
+  const dateRaw = val("date");
+  if (dateRaw && isNaN(new Date(dateRaw))) return err("The date is not valid.");
+  const before = {};
+  IC_EDIT_FIELDS.forEach(([k]) => {
+    before[k] = ic[k];
+  });
+  const snap = Object.assign({}, ic);
+  const bl = sanitize(val("bl"));
+  Object.assign(ic, {
+    container: cont,
+    ctype: val("ctype"),
+    line: val("line") || null,
+    date: dateRaw ? new Date(dateRaw).toISOString() : ic.date,
+    condition: sanitize(val("condition")),
+    cargoStatus: sanitize(val("cargoStatus")),
+    vessel: sanitize(val("vessel")),
+    voyage: sanitize(val("voyage")),
+    blNumber: bl,
+    guaranteeNo: bl,
+    deliveringParty: sanitize(val("consignee")),
+    receivingParty: sanitize(val("receiving")),
+    releaseOrderNo: sanitize(val("ro")),
+    transporter: sanitize(val("transporter")),
+    trailerNo: sanitize(val("trailer")),
+    driverIdNumber: sanitize(val("driverId")),
+    isoCode: sanitize(val("iso")).toUpperCase(),
+    grossWeight: gross,
+    manufactureDate: dom,
+    clerkName: sanitize(val("clerk")),
+    notes: sanitize(val("notes"))
+  });
+  if (document.getElementById("ice_truck")) ic.truck = val("truck");
+  else ic.truckRegText = sanitize(val("truckText"));
+  if (document.getElementById("ice_driver")) ic.driver = val("driver");
+  else ic.driverNameText = sanitize(val("driverText"));
+  const changed = IC_EDIT_FIELDS.filter(([k]) => String(before[k] == null ? "" : before[k]) !== String(ic[k] == null ? "" : ic[k]));
+  if (!changed.length) {
+    closeModal();
+    toast("No changes to save", "info");
+    return;
+  }
+  _iceSaving = true;
+  const btn = document.getElementById("ice_go");
+  if (btn) btn.disabled = true;
+  try {
+    ic._dirty = true;
+    const res = await saveNowAwaited();
+    const fail = (res && res.failures || []).find((x) => x && x.table === "interchange");
+    if (fail) {
+      Object.keys(ic).forEach((k) => {
+        if (!(k in snap)) delete ic[k];
+      });
+      Object.assign(ic, snap);
+      delete ic._dirty;
+      err("Not saved: " + (fail.error && fail.error.message || "the server refused the change"));
+      return;
+    }
+    addAudit(state.profile.username, "Interchange Edited", "".concat(cont, " \xB7 EIR ").concat(ic.eirNumber || "\u2014", " \xB7 ") + changed.map(([k, l]) => "".concat(l, ': "').concat(before[k] == null ? "" : before[k], '" \u2192 "').concat(ic[k] == null ? "" : ic[k], '"')).join("; ").slice(0, 900));
+    closeModal();
+    try {
+      if (typeof refreshContainerHistory === "function") refreshContainerHistory();
+      renderInterchange();
+    } catch (e) {
+    }
+    toast("Interchange updated", "success");
+  } finally {
+    _iceSaving = false;
+    if (btn) btn.disabled = false;
+  }
 }

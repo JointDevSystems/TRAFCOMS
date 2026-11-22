@@ -52,8 +52,6 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
       ["sv_iso", "ISO Code", { cfg: "survey.requireIso", def: false }],
       ["sv_mgwt", "Max Gross Weight (kg)"],
       ["sv_tare", "Tare Weight (kg)"],
-      ["sv_csc", "CSC Approval"],
-      ["sv_gross", "Gross Weight (kg)", { cfg: "survey.requireWeight", def: false }],
       ["sv_dom", "Date of Manufacture", { cfg: "survey.requireManufactureDate", def: false }],
       ["sv_cargo", "Cargo Status", { cfg: "survey.requireCargoStatus", def: false }],
       ["sv_gatepass", "Gate Pass No."],

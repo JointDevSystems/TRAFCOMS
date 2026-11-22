@@ -219,6 +219,7 @@
     if (inYardNow) btns.push('<button class="modal-btn ghost" onclick="quickDispatchOut(\''.concat(id, "')\">Quick Dispatch \u2192</button>"));
     if (inward && !ic.surveyStatus) btns.push('<button class="modal-btn ghost" onclick="sendToSurvey(\''.concat(id, "')\">Send to Survey \u2192</button>"));
     btns.push('<button class="modal-btn ghost" onclick="downloadInterchangeSlip(\''.concat(id, "')\">\u2B07 Download</button>"), '<button class="modal-btn ghost" onclick="printInterchangeSlip(\''.concat(id, '\')" title="Print">\u{1F5A8} Print</button>'));
+    if (isAdmin()) btns.push('<button class="modal-btn ghost" onclick="showEditInterchangeModal(\''.concat(id, '\')" title="Correct details (administrator only)">\u270E Edit</button>'));
     if (ic.flaggedForReview) btns.push("<button class=\"modal-btn ghost\" onclick=\"clearReviewFlag('interchange','".concat(id, "')\">\u2713 Mark Reviewed</button>"));
     if (ic.surveyId) btns.push('<button class="modal-btn ghost" onclick="downloadInspectionReport(\''.concat(ic.surveyId, "')\">\u2B07 Inspection Report</button>"), '<button class="modal-btn ghost" onclick="printInspectionReport(\''.concat(ic.surveyId, '\')" title="Print">\u{1F5A8} Print Report</button>'));
     if (ic.surveyId || ic.img || ic.hasImg || ic.hasPhotos || ic.photos && ic.photos.length) btns.push('<button class="modal-btn ghost" onclick="showContainerPhotos(\''.concat(id, "')\">\u{1F4F7} Photos</button>"));

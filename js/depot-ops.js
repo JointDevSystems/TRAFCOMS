@@ -1483,15 +1483,11 @@ async function openSurveyModal(bookingId) {
       <div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="sv_mgwt" type="number" min="0"></div>
       <div class="fg"><label>Tare Weight — TW (kg)</label><input id="sv_tare" type="number" min="0"></div>
     </div>
-    <div class="fg"><label>CSC Approval <span class="label-optional">(optional)</span></label><input id="sv_csc" placeholder="e.g. USA/AB-077/10-10" maxlength="40" style="text-transform:uppercase" value="${pick(x.cscApproval)}"></div>
     <div class="form-row-2">
-      <div class="fg"><label>Gross Weight (kg) <span class="label-optional">(optional)</span></label><input id="sv_gross" type="number" min="0" step="1" placeholder="e.g. 30480" value="${x.grossWeight || ''}"></div>
       <div class="fg"><label>Date of Manufacture <span class="label-optional">(optional)</span></label><input id="sv_dom" placeholder="MM/YYYY" maxlength="7" value="${pick(x.manufactureDate)}"></div>
-    </div>
-    <div class="form-row-2">
       <div class="fg"><label>Cargo Status <span class="label-optional">(optional)</span></label><select id="sv_cargo">${cargoOpts}</select></div>
-      <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
     </div>
+    <div class="fg"><label>Gate Pass No.</label><input id="sv_gatepass"></div>
     <div class="form-row-2">
       <div class="fg"><label>Vehicle / Truck No.</label><input id="sv_truck" list="iwTruckList" value="${sanitize(x.truck ? truckName(x.truck).split(' · ')[0] : (x.truckRegText || booking.truck_reg || ''))}"></div>
       <div class="fg"><label>Trailer Number</label><input id="sv_trailer" value="${pick(x.trailerNo)}"></div>

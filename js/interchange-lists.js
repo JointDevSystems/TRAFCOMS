@@ -199,6 +199,7 @@
     if (inYardNow) btns.push(`<button class="modal-btn ghost" onclick="quickDispatchOut('${id}')">Quick Dispatch →</button>`);
     if (inward && !ic.surveyStatus) btns.push(`<button class="modal-btn ghost" onclick="sendToSurvey('${id}')">Send to Survey →</button>`);
     btns.push(`<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${id}')">⬇ Download</button>`, `<button class="modal-btn ghost" onclick="printInterchangeSlip('${id}')" title="Print">🖨 Print</button>`);
+    if (isAdmin()) btns.push(`<button class="modal-btn ghost" onclick="showEditInterchangeModal('${id}')" title="Correct details (administrator only)">✎ Edit</button>`);
     if (ic.flaggedForReview) btns.push(`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${id}')">✓ Mark Reviewed</button>`);
     if (ic.surveyId) btns.push(`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button>`, `<button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`);
     if (ic.surveyId || ic.img || ic.hasImg || ic.hasPhotos || (ic.photos && ic.photos.length)) btns.push(`<button class="modal-btn ghost" onclick="showContainerPhotos('${id}')">📷 Photos</button>`);

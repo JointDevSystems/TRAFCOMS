@@ -1861,6 +1861,7 @@ function tariffPickerHtml(prefix) {
       <div class="fg"><label>Hours</label><input id="${prefix}_thours" type="number" step="0.1" min="0" placeholder="0" /></div>
       <div class="fg"><label>Material (<span class="gx-cur" data-cur-for="${prefix}">USD</span>)</label><input id="${prefix}_tmaterial" type="number" step="0.01" min="0" placeholder="0" /></div>
     </div>
+    <div class="fg"><label>Quantity <span class="label-optional">(how many of this item, e.g. 2 &mdash; or type "ABCD x2" in the search box)</span></label><input id="${prefix}_tqty" type="number" min="1" step="1" value="1" style="max-width:120px" /></div>
     ${canSave ? `<label id="${prefix}_tsavewrap" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-bottom:8px"><input type="checkbox" id="${prefix}_tsavecat" /> Also save this to the tariff catalog for next time</label>` : ''}
     <button type="button" class="modal-btn ghost" style="margin-bottom:8px" onclick="addRepairItem('${prefix}')">+ Add item</button>
     <div id="${prefix}_repairList"></div>`;
@@ -1877,11 +1878,20 @@ function _tariffFill(prefix, row, cat) {
 }
 
 // Free-text search across every category (code or any word of the description).
+/* "ABCD x2" / "ABCD X 2" / "ABCD*2" / "ABCD ×2": split the multiplier off the text */
+function _splitQty(text) {
+  const m = String(text || '').match(/^(.*?)\s*[x\u00d7*]\s*(\d{1,3})\s*$/i);
+  if (!m || !m[1].trim()) return { text: String(text || ''), qty: null };
+  const q = parseInt(m[2], 10);
+  return q >= 1 ? { text: m[1].trim(), qty: q } : { text: String(text || ''), qty: null };
+}
 function onTariffSearch(prefix) {
   const box = document.getElementById(`${prefix}_tsearch`);
   const out = document.getElementById(`${prefix}_tsearchResults`);
   if (!box || !out) return;
-  const terms = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const sq = _splitQty(box.value);
+  if (sq.qty) { const qe = document.getElementById(`${prefix}_tqty`); if (qe) qe.value = sq.qty; }
+  const terms = sq.text.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) { out.style.display = 'none'; out.innerHTML = ''; return; }
   const hits = [];
   const sched = tariffFor(prefix);
@@ -1925,13 +1935,19 @@ function onRepairCodeChange(prefix) {
 function addRepairItem(prefix) {
   const val = id => { const e = document.getElementById(`${prefix}_${id}`); return e ? e.value.trim() : ''; };
   const cat = val('tcat');
-  const code = val('tcodetext');
+  const cq = _splitQty(val('tcodetext'));
+  const code = cq.text.trim();
   const item = val('titem');
+  let qty = parseInt(val('tqty'), 10) || 1;
+  if (cq.qty) qty = cq.qty;                                   // "ABCD x2" typed in the code box wins
+  qty = Math.min(999, Math.max(1, qty));
   if (!code && !item) { toast('Pick a tariff code, or type a code and description', 'error'); return; }
   if (!item) { toast('Add a description for this item', 'error'); return; }
   const hours = Math.max(0, parseFloat(val('thours')) || 0);
   const material = Math.max(0, parseFloat(val('tmaterial')) || 0);
-  const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours, material, currency: GargoMoney.curFor(prefix) };
+  const r2 = n => Math.round(n * 100) / 100;
+  // hours / material hold the LINE TOTAL (unit x qty) so totals, reports and the EIR need no changes; unit values are kept for editing the quantity later
+  const entry = { category: cat || 'CUSTOM', code: sanitize(code) || 'CUSTOM', item: sanitize(item), hours: r2(hours * qty), material: r2(material * qty), qty, unitHours: hours, unitMaterial: material, currency: GargoMoney.curFor(prefix) };
   const picked = _tariffRows(cat, prefix)[val('tcode')];
   if (!picked) entry.custom = true;
   repairItemsFor(prefix).push(entry);
@@ -1942,6 +1958,19 @@ function addRepairItem(prefix) {
   }
   ['tsearch', 'tcodetext', 'titem', 'thours', 'tmaterial'].forEach(id => { const e = document.getElementById(`${prefix}_${id}`); if (e) e.value = ''; });
   const codeSel = document.getElementById(`${prefix}_tcode`); if (codeSel) codeSel.value = '';
+  const qtyEl = document.getElementById(`${prefix}_tqty`); if (qtyEl) qtyEl.value = '1';
+  renderRepairItemsList(prefix);
+}
+
+/* change the quantity of an item already added; the line total is recalculated from its unit values */
+function setRepairQty(prefix, i, raw) {
+  const r = repairItemsFor(prefix)[i]; if (!r) return;
+  const q = Math.min(999, Math.max(1, parseInt(raw, 10) || 1));
+  const oldQ = Number(r.qty) || 1;
+  const uh = r.unitHours != null ? Number(r.unitHours) : (Number(r.hours) || 0) / oldQ;
+  const um = r.unitMaterial != null ? Number(r.unitMaterial) : (Number(r.material) || 0) / oldQ;
+  const r2 = n => Math.round(n * 100) / 100;
+  r.unitHours = uh; r.unitMaterial = um; r.qty = q; r.hours = r2(uh * q); r.material = r2(um * q);
   renderRepairItemsList(prefix);
 }
 
@@ -1959,7 +1988,7 @@ function renderRepairItemsList(prefix) {
   if (!items.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No damage items added — container will be logged as good condition.</div>'; return; }
   const rows = items.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--border)">
     <div style="font-size:11.5px"><span class="mono" style="color:var(--gold)">${esc(r.code)}</span> — ${esc(r.item)}${r.side ? ` <span style="color:var(--text-3)">(${esc(r.side)})</span>` : ''}${r.custom ? ' <span class="sbadge s-pending" style="font-size:9px">custom</span>' : ''}</div>
-    <div style="font-size:11px;color:var(--text-2)">${esc(r.hours)}h · ${GargoMoney.sym(GargoMoney.itemCur(r))} ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
+    <div style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end"><label style="display:inline-flex;align-items:center;gap:3px">&times;<input type="number" min="1" max="999" step="1" value="${Number(r.qty) || 1}" onchange="setRepairQty('${prefix}',${i},this.value)" style="width:52px;min-height:0;padding:2px 4px;font-size:12px" title="Quantity"/></label>${esc(r.hours)}h · ${GargoMoney.sym(GargoMoney.itemCur(r))} ${Number(r.material).toLocaleString()} <button type="button" class="modal-btn danger" style="padding:2px 8px;margin-left:8px" onclick="removeRepairItem('${prefix}',${i})">✕</button></div>
   </div>`).join('');
   const total = repairItemsTotal(items);
   el.innerHTML = rows + `<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:12px">
@@ -1980,4 +2009,106 @@ function _tripToInterchangeReportRow(t) {
     notes: t.notes || '',
     _reportSource: 'trips',
   };
+}
+
+/* ── Admin: correct an interchange record ─────────────────────────────────────────────────────
+   Only an administrator can open this. Every detail can be corrected EXCEPT the interchange (EIR) number,
+   which is never shown as an input and is never written by this form. Each change is written to the audit log. */
+const IC_EDIT_FIELDS = [
+  ['container', 'Container No.'], ['ctype', 'Type / Size'], ['line', 'Shipping Line'], ['date', 'Date'], ['condition', 'Condition / Status'],
+  ['vessel', 'Vessel'], ['voyage', 'Voyage'], ['blNumber', 'Guarantee / B/L No.'], ['deliveringParty', 'Consignee / C&F'],
+  ['receivingParty', 'Receiving Party'], ['releaseOrderNo', 'Release Order No.'], ['transporter', 'Transporter'],
+  ['truck', 'Truck'], ['driver', 'Driver'], ['driverIdNumber', 'Driver ID No.'], ['trailerNo', 'Trailer No.'], ['isoCode', 'ISO Code'],
+  ['grossWeight', 'Gross Weight'], ['manufactureDate', 'Date of Manufacture'], ['cargoStatus', 'Cargo Status'], ['clerkName', 'Clerk'], ['notes', 'Notes'],
+];
+function _icLocalInput(iso) {
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+async function showEditInterchangeModal(icId) {
+  if (!isAdmin()) { toast('Only an administrator can edit interchange details', 'error'); return; }
+  let ic = null;
+  try { ic = (window.ICR && ICR.enabled) ? await ICR.ensurePhotos(icId) : state.db.interchange.find(i => i.id === icId); } catch (e) { console.warn('edit: could not load photos', e); }
+  if (!ic) ic = state.db.interchange.find(i => i.id === icId);
+  if (!ic) { toast('Interchange record not found', 'error'); return; }
+  if (ic._light) { toast('Could not load the full record. Check the connection and try again.', 'error'); return; }
+  const v = x => esc(x == null ? '' : x);
+  const lineOpts = '<option value="">—</option>' + state.db.shippingLines.map(l => `<option value="${esc(l.id)}" ${l.id === ic.line ? 'selected' : ''}>${esc(l.code)} — ${esc(l.name)}</option>`).join('');
+  const types = CONTAINER_TYPE_OPTIONS.slice(); if (ic.ctype && types.indexOf(ic.ctype) < 0) types.unshift(ic.ctype);
+  const typeOpts = '<option value="">—</option>' + types.map(t => `<option ${t === ic.ctype ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const truckField = ic.truck
+    ? `<select id="ice_truck">${state.db.trucks.map(t => `<option value="${esc(t.id)}" ${t.id === ic.truck ? 'selected' : ''}>${esc(t.reg)}</option>`).join('')}</select>`
+    : `<input id="ice_truckText" value="${v(ic.truckRegText)}"/>`;
+  const driverField = ic.driver
+    ? `<select id="ice_driver">${state.db.drivers.map(d => `<option value="${esc(d.id)}" ${d.id === ic.driver ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>`
+    : `<input id="ice_driverText" value="${v(ic.driverNameText)}"/>`;
+  const f = (id, label, val, extra) => `<div class="fg"><label>${label}</label><input id="ice_${id}" value="${v(val)}" ${extra || ''}/></div>`;
+  openModal(`Edit interchange — ${esc(ic.container)}`, `
+    <div class="ops-notice" style="margin-bottom:12px;font-size:11.5px"><span style="flex:1;min-width:0">Administrator only. Use this to correct details that were entered wrongly. The <b>EIR No. ${v(ic.eirNumber) || '—'}</b> cannot be changed. Every edit is recorded in the audit log.</span></div>
+    <div class="form-row-2">${f('container', 'Container No.', ic.container, 'style="text-transform:uppercase"')}
+      <div class="fg"><label>Type / Size</label><select id="ice_ctype">${typeOpts}</select></div></div>
+    <div class="form-row-2"><div class="fg"><label>Shipping Line / Agent</label><select id="ice_line">${lineOpts}</select></div>
+      <div class="fg"><label>Date</label><input id="ice_date" type="datetime-local" value="${_icLocalInput(ic.date)}"/></div></div>
+    <div class="form-row-2">${f('condition', 'Condition / Status', ic.condition)}${f('cargoStatus', 'Cargo Status', ic.cargoStatus)}</div>
+    <div class="form-row-2">${f('vessel', 'Vessel', ic.vessel)}${f('voyage', 'Voyage', ic.voyage)}</div>
+    <div class="form-row-2">${f('bl', 'Guarantee / B/L No.', ic.blNumber || ic.guaranteeNo)}${f('consignee', 'Consignee / C&amp;F', ic.deliveringParty)}</div>
+    <div class="form-row-2">${f('receiving', 'Receiving Party', ic.receivingParty)}${f('ro', 'Release Order No.', ic.releaseOrderNo)}</div>
+    <div class="form-row-2">${f('transporter', 'Transporter', ic.transporter)}${f('trailer', 'Trailer No.', ic.trailerNo)}</div>
+    <div class="form-row-2"><div class="fg"><label>Truck</label>${truckField}</div><div class="fg"><label>Driver</label>${driverField}</div></div>
+    <div class="form-row-2">${f('driverId', 'Driver ID / Driving No.', ic.driverIdNumber)}${f('iso', 'ISO Code', ic.isoCode, 'maxlength="6" style="text-transform:uppercase"')}</div>
+    <div class="form-row-2"><div class="fg"><label>Gross Weight (kg)</label><input id="ice_gross" type="number" min="0" step="1" value="${v(ic.grossWeight)}"/></div>
+      ${f('dom', 'Date of Manufacture (MM/YYYY)', ic.manufactureDate, 'maxlength="7" placeholder="MM/YYYY"')}</div>
+    ${f('clerk', 'Clerk', ic.clerkName)}
+    <div class="fg"><label>Notes</label><textarea id="ice_notes" rows="2">${v(ic.notes)}</textarea></div>
+    <div id="ice_err" style="color:var(--red);font-size:12px;min-height:16px"></div>
+    <button class="submit-btn" id="ice_go" onclick="saveEditedInterchange('${esc(ic.id)}')">Save changes →</button>`);
+}
+let _iceSaving = false;
+async function saveEditedInterchange(icId) {
+  if (_iceSaving) return;
+  if (!isAdmin()) { toast('Only an administrator can edit interchange details', 'error'); return; }
+  const ic = state.db.interchange.find(i => i.id === icId); if (!ic) { toast('Interchange record not found', 'error'); return; }
+  const val = id => { const el = document.getElementById('ice_' + id); return el ? el.value.trim() : ''; };
+  const err = m => { const e = document.getElementById('ice_err'); if (e) e.textContent = m; else toast(m, 'error'); };
+  const cont = val('container').toUpperCase().replace(/\s+/g, '');
+  if (!cont) return err('Container number is required.');
+  if (cont !== String(ic.container || '').toUpperCase()) { const issue = containerFormatIssue(cont); if (issue) return err('Container number: ' + issue); }
+  const dom = normalizeManufactureDate(val('dom')); if (dom === null) return err('Date of manufacture must look like 05/2011.');
+  const grossRaw = val('gross'), gross = grossRaw ? Number(grossRaw) : '';
+  if (grossRaw && (!isFinite(gross) || gross <= 0)) return err('Gross weight must be a positive number.');
+  const dateRaw = val('date'); if (dateRaw && isNaN(new Date(dateRaw))) return err('The date is not valid.');
+  const before = {}; IC_EDIT_FIELDS.forEach(([k]) => { before[k] = ic[k]; }); const snap = Object.assign({}, ic);   // the EIR number is not in this list on purpose
+  const bl = sanitize(val('bl'));
+  Object.assign(ic, {
+    container: cont, ctype: val('ctype'), line: val('line') || null,
+    date: dateRaw ? new Date(dateRaw).toISOString() : ic.date,
+    condition: sanitize(val('condition')), cargoStatus: sanitize(val('cargoStatus')),
+    vessel: sanitize(val('vessel')), voyage: sanitize(val('voyage')),
+    blNumber: bl, guaranteeNo: bl, deliveringParty: sanitize(val('consignee')),
+    receivingParty: sanitize(val('receiving')), releaseOrderNo: sanitize(val('ro')),
+    transporter: sanitize(val('transporter')), trailerNo: sanitize(val('trailer')),
+    driverIdNumber: sanitize(val('driverId')), isoCode: sanitize(val('iso')).toUpperCase(),
+    grossWeight: gross, manufactureDate: dom, clerkName: sanitize(val('clerk')), notes: sanitize(val('notes')),
+  });
+  if (document.getElementById('ice_truck')) ic.truck = val('truck'); else ic.truckRegText = sanitize(val('truckText'));
+  if (document.getElementById('ice_driver')) ic.driver = val('driver'); else ic.driverNameText = sanitize(val('driverText'));
+  const changed = IC_EDIT_FIELDS.filter(([k]) => String(before[k] == null ? '' : before[k]) !== String(ic[k] == null ? '' : ic[k]));
+  if (!changed.length) { closeModal(); toast('No changes to save', 'info'); return; }
+  _iceSaving = true;
+  const btn = document.getElementById('ice_go'); if (btn) btn.disabled = true;
+  try {
+    ic._dirty = true;
+    const res = await saveNowAwaited();
+    const fail = ((res && res.failures) || []).find(x => x && x.table === 'interchange');
+    if (fail) {
+      Object.keys(ic).forEach(k => { if (!(k in snap)) delete ic[k]; }); Object.assign(ic, snap); delete ic._dirty;   // put the record back as it was
+      err('Not saved: ' + ((fail.error && fail.error.message) || 'the server refused the change'));
+      return;
+    }
+    addAudit(state.profile.username, 'Interchange Edited', `${cont} · EIR ${ic.eirNumber || '—'} · ` + changed.map(([k, l]) => `${l}: "${before[k] == null ? '' : before[k]}" → "${ic[k] == null ? '' : ic[k]}"`).join('; ').slice(0, 900));
+    closeModal();
+    try { if (typeof refreshContainerHistory === 'function') refreshContainerHistory(); renderInterchange(); } catch (e) {}
+    toast('Interchange updated', 'success');
+  } finally { _iceSaving = false; if (btn) btn.disabled = false; }
 }
