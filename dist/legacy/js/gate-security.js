@@ -296,7 +296,7 @@
     const officer = esc(officerOf(r) || r.released_by || r.received_by || state.profile && state.profile.name || "");
     openModal(
       rec ? "Edit gate entry" : dir === "out" ? "Vehicle going out" : "Vehicle coming in",
-      '<div class="gs-form"><select id="gs_dir" class="gs-hidden" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select><div class="gs-seg" role="group" aria-label="Movement"><button type="button" data-d="in" onclick="GateSec.setDir(\'in\')">\u2B07 Vehicle in</button><button type="button" data-d="out" onclick="GateSec.setDir(\'out\')">\u2B06 Vehicle out</button></div><div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="fg gs-outonly"><label for="gs_tr">Transporter</label><input id="gs_tr" list="gs_trl" value="' + esc(r.transporter) + '" placeholder="Pick a transporter or type a new one" autocomplete="off"/><datalist id="gs_trl">' + tl + '</datalist></div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f("idn", "ID number", r.driver_id_number || (di > -1 ? P[di].id : ""), 'autocomplete="off"') + '</div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? "" : " gs-hidden") + '" value="' + (other ? esc(cv) : "") + '" placeholder="Type the commodity" autocomplete="off"/></div></div><div class="gs-group"><div class="gs-group-h">Gate record</div><div class="form-row-2"><div class="fg"><label for="gs_when">Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div>' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '</div><div class="fg"><label id="gs_rellbl" for="gs_rel">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + officer + '" autocomplete="off"/></div></div><div id="gs_err" class="gs-err" role="alert"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + "</button></div>"
+      '<div class="gs-form"><select id="gs_dir" class="gs-hidden" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select><div class="gs-seg" role="group" aria-label="Movement"><button type="button" data-d="in" onclick="GateSec.setDir(\'in\')">\u2B07 Vehicle in</button><button type="button" data-d="out" onclick="GateSec.setDir(\'out\')">\u2B06 Vehicle out</button></div>' + (!rec && G._inside && G._inside.length ? '<div class="gs-group gs-outonly"><div class="gs-group-h">Vehicle already inside</div><select id="gs_inside" onchange="GateSec.insidePick()"><option value="">Pick the vehicle that gated in\u2026</option>' + G._inside.map((v, i) => '<option value="' + i + '">' + esc(v.vehicle_no) + (v.driver_name ? " \xB7 " + esc(v.driver_name) : "") + " \xB7 in " + esc(fmtWhen(v.movement_at)) + "</option>").join("") + '</select><div class="gs-hint" style="margin:8px 0 12px">Choosing it fills in the vehicle, driver and transporter from the gate-in. Add the container and commodity.</div></div>' : "") + '<div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off" oninput="GateSec.vehTyped()"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="fg gs-outonly"><label for="gs_tr">Transporter</label><input id="gs_tr" list="gs_trl" value="' + esc(r.transporter) + '" placeholder="Pick a transporter or type a new one" autocomplete="off"/><datalist id="gs_trl">' + tl + '</datalist></div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f("idn", "ID number", r.driver_id_number || (di > -1 ? P[di].id : ""), 'autocomplete="off"') + '</div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? "" : " gs-hidden") + '" value="' + (other ? esc(cv) : "") + '" placeholder="Type the commodity" autocomplete="off"/></div></div><div class="gs-group"><div class="gs-group-h">Gate record</div><div class="form-row-2"><div class="fg"><label for="gs_when">Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div>' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '</div><div class="fg"><label id="gs_rellbl" for="gs_rel">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + officer + '" autocomplete="off"/></div></div><div id="gs_err" class="gs-err" role="alert"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + "</button></div>"
     );
     G.dirChanged();
     setTimeout(() => {
@@ -351,9 +351,89 @@
     if (o) x.focus();
   };
   const comVal = () => $("gs_com") && $("gs_com").value === "__other" ? val("gs_comx") : val("gs_com");
-  G.add = function(dir, pre) {
+  G.loadInside = async function() {
+    let rows = null;
+    const cols = "direction,vehicle_no,trailer_no,driver_name,driver_id_number,container_no,movement_at";
+    if (navigator.onLine && sb()) {
+      try {
+        let r = await sb().from(TABLE).select(cols + ",transporter").order("movement_at", { ascending: false }).limit(500);
+        if (r.error) r = await sb().from(TABLE).select(cols).order("movement_at", { ascending: false }).limit(500);
+        if (!r.error) rows = r.data || [];
+      } catch (e) {
+      }
+    }
+    if (!rows) rows = S.rows.slice();
+    rows = rows.concat(qRead());
+    rows.sort((a, b) => new Date(b.movement_at) - new Date(a.movement_at));
+    const seen = {}, inside = [];
+    rows.forEach((r) => {
+      const k = nkey(r.vehicle_no);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      if (r.direction === "in") inside.push(r);
+    });
+    G._inside = inside.slice(0, 120);
+    return G._inside;
+  };
+  const insideFor = (v) => {
+    const k = nkey(v);
+    return k ? (G._inside || []).find((x) => nkey(x.vehicle_no) === k) : null;
+  };
+  function applyInside(v) {
+    if (!v) return;
+    const set = (id, x) => {
+      const el = $(id);
+      if (el && x != null && x !== "") el.value = x;
+    };
+    set("gs_veh", v.vehicle_no);
+    set("gs_trl", v.trailer_no);
+    set("gs_idn", v.driver_id_number);
+    set("gs_tr", v.transporter);
+    if (!val("gs_con")) set("gs_con", v.container_no);
+    const man = $("gs_drv"), sel = $("gs_drvsel");
+    if (man) {
+      man.value = v.driver_name || "";
+    }
+    if (sel) {
+      const i = (G._pool || []).findIndex((d) => nkey(d.name) === nkey(v.driver_name));
+      if (i > -1) {
+        sel.value = String(i);
+        if (man) man.classList.add("gs-hidden");
+      } else {
+        sel.value = "__manual";
+        if (man) man.classList.remove("gs-hidden");
+      }
+    } else if (man) man.classList.remove("gs-hidden");
+    const c = $("gs_con");
+    if (c && !c.value) c.focus();
+    else {
+      const m = $("gs_com");
+      if (m) m.focus();
+    }
+  }
+  G.insidePick = function() {
+    const s = $("gs_inside");
+    if (!s || s.value === "") return;
+    applyInside((G._inside || [])[Number(s.value)]);
+  };
+  G.vehTyped = function() {
+    if (val("gs_dir") !== "out" || val("gs_drv")) return;
+    const v = insideFor(val("gs_veh"));
+    if (v) applyInside(v);
+  };
+  G.add = async function(dir, pre) {
     if (!can()) return toast("You do not have access to Gate Processes", "error");
-    form(null, dir === "out" ? "out" : "in", pre || null);
+    dir = dir === "out" ? "out" : "in";
+    try {
+      await G.loadInside();
+    } catch (e) {
+      G._inside = [];
+    }
+    if (pre && dir === "out") {
+      const m = insideFor(pre.vehicle_no);
+      if (m) pre = Object.assign({}, { trailer_no: m.trailer_no, driver_name: m.driver_name, driver_id_number: m.driver_id_number, transporter: m.transporter }, pre, { driver_name: pre.driver_name || m.driver_name, driver_id_number: pre.driver_id_number || m.driver_id_number, trailer_no: pre.trailer_no || m.trailer_no, transporter: pre.transporter || m.transporter });
+    }
+    form(null, dir, pre || null);
   };
   G.edit = function(id) {
     if (!canFix()) return toast("Only an administrator can correct a gate entry", "error");

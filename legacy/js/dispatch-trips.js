@@ -1399,11 +1399,19 @@ function downloadBulkTemplate() {
   a.click();
 }
 function quickDispatchOut(id) {
+  if (!isAdmin()) {
+    toast("Quick Dispatch is for administrators only", "error");
+    return;
+  }
   const ic = state.db.interchange.find((i) => i.id === id);
   if (!ic) return;
   openModal("Quick Dispatch \u2014 ".concat(sanitize(ic.container)), '\n    <div class="ops-notice" style="margin-bottom:12px">\n      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>\n      Use this to record that a container already left the depot without creating a full dispatch trip \u2014 for containers that left before this system was in use, or whose exit wasn\'t captured through Dispatch Console. It won\'t ask for a truck or driver.\n    </div>\n    <div class="fg"><label>Date Out <span class="label-optional">(optional, defaults to now)</span></label><input id="qd_dateout" type="datetime-local" /></div>\n    <div class="fg"><label>Receiving Party</label><input id="qd_receiving" placeholder="Consignee / receiving party" /></div>\n    <div class="fg"><label>Release Order No.</label><input id="qd_release_no" placeholder="CRO / release order no. (if any)" /></div>\n    <button class="submit-btn" onclick="confirmQuickDispatchOut(\''.concat(id, "')\">Mark as Dispatched \u2192</button>\n  "));
 }
 function confirmQuickDispatchOut(id) {
+  if (!isAdmin()) {
+    closeModal();
+    return;
+  }
   const ic = state.db.interchange.find((i) => i.id === id);
   if (!ic) {
     closeModal();

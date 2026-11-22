@@ -7,7 +7,7 @@
       ${icAwaitingSurvey(a)?'<span class="sbadge s-pending">Awaiting survey</span>':sbadge(a.status)}
       ${(()=>{const r=icExitDate(a,o);return r?`<span class="sbadge" title="This container has left the yard" style="color:var(--text-3)">Exited ${fmtDate(r)}</span>`:a.surveyStatus==="awaiting_survey"?"":'<span class="sbadge s-active">In yard</span>'})()}
       <div class="dqi-time">${timeAgo(a.date)}</div>
-      ${icInYard(a,o)?`<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${a.id}')">Quick Dispatch \u2192</button>`:""}
+      ${isAdmin()&&icInYard(a,o)?`<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${a.id}')">Quick Dispatch \u2192</button>`:""}
     </div>`).join("")||'<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>'}function renderInwardStillInStorage(){const t=document.getElementById("inwardStillInStorageList"),e=document.getElementById("inwardStillInStorageMeta");if(!t)return;const n=50,i=icOutIndex(),o=state.db.interchange.filter(s=>icInYard(s,i)).map(s=>[+new Date(s.date)||0,s]).sort((s,p)=>s[0]-p[0]).map(s=>s[1]);if(e&&(e.textContent=o.length?`${o.length} without a recorded exit${o.length>n?` \xB7 showing oldest ${n}`:""}`:""),!o.length){t.innerHTML='<div class="empty-state" style="padding:20px"><div class="empty-state-label">Everything logged has a recorded exit</div></div>';return}const a=o.slice(0,n).map(s=>`<div class="dispatch-queue-item">
       <div class="dqi-ref">${esc(s.container)}</div>
       <div class="dqi-route">
@@ -16,7 +16,7 @@
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${s.surveyStatus?"":`<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="sendToSurvey('${s.id}')">Send to Survey \u2192</button>`}
-        <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${s.id}')">Quick Dispatch \u2192</button>
+        ${isAdmin()?`<button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${s.id}')">Quick Dispatch \u2192</button>`:""}
       </div>
     </div>`).join(""),r=o.length>n?`<div style="padding:10px 14px;font-size:11px;color:var(--text-3);text-align:center">${o.length-n} more not shown \u2014 use the Reports tab (Status: Still In Storage) to search and export the full list.</div>`:"";t.innerHTML=a+r}async function renderInwardAwaitingSurvey(){const t=document.getElementById("inwardAwaitingSurveyList"),e=document.getElementById("inwardAwaitingSurveyMeta");if(!t)return;const n=100,i=state.db.interchange.filter(l=>l.surveyStatus==="awaiting_survey").sort((l,c)=>new Date(l.date)-new Date(c.date)),o=i.slice(0,n);if(e&&(e.textContent=i.length?`${i.length} waiting${i.length>n?` \xB7 showing oldest ${n}`:""}`:""),!o.length){t.innerHTML='<div class="empty-state" style="padding:20px"><div class="empty-state-label">Nothing awaiting survey</div></div>';return}let a={},r={};try{if(window.bookingDocs){a=await window.bookingDocs.documentsForInterchanges(o.map(c=>c.id));const l=o.map(c=>c.bookingId).filter(Boolean);l.length&&(r=await window.bookingDocs.documentsForBookings(l))}}catch{}const s=o.map(l=>{const c=(a[l.id]||[]).some(v=>v.doc_type==="guarantee_form")||(r[l.bookingId]||[]).some(v=>v.doc_type==="guarantee_form");return`<div class="dispatch-queue-item">
       <div class="dqi-ref">${esc(l.container)}</div>

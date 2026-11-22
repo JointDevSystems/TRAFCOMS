@@ -88,7 +88,7 @@ function renderInwardRecent() {
       ${icAwaitingSurvey(ic) ? '<span class="sbadge s-pending">Awaiting survey</span>' : sbadge(ic.status)}
       ${(() => { const x = icExitDate(ic, _idx); return x ? `<span class="sbadge" title="This container has left the yard" style="color:var(--text-3)">Exited ${fmtDate(x)}</span>` : (ic.surveyStatus === 'awaiting_survey' ? '' : '<span class="sbadge s-active">In yard</span>'); })()}
       <div class="dqi-time">${timeAgo(ic.date)}</div>
-      ${icInYard(ic, _idx) ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
+      ${isAdmin() && icInYard(ic, _idx) ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="event.stopPropagation();quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
     </div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No inward entries yet</div></div>';
 }
 
@@ -126,7 +126,7 @@ function renderInwardStillInStorage() {
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${!ic.surveyStatus ? `<button class="modal-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>` : ''}
-        <button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>
+        ${isAdmin() ? `<button class="modal-btn primary" style="padding:4px 10px;font-size:10.5px" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>` : ''}
       </div>
     </div>`).join('');
 

@@ -1264,6 +1264,7 @@ function downloadBulkTemplate() {
 }
 
 function quickDispatchOut(id) {
+  if (!isAdmin()) { toast('Quick Dispatch is for administrators only', 'error'); return; }
   const ic = state.db.interchange.find(i => i.id === id);
   if (!ic) return;
   openModal(`Quick Dispatch — ${sanitize(ic.container)}`, `
@@ -1279,6 +1280,7 @@ function quickDispatchOut(id) {
 }
 
 function confirmQuickDispatchOut(id) {
+  if (!isAdmin()) { closeModal(); return; }
   const ic = state.db.interchange.find(i => i.id === id);
   if (!ic) { closeModal(); return; }
   const dateInput = document.getElementById('qd_dateout').value;

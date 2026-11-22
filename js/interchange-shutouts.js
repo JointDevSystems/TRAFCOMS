@@ -278,7 +278,7 @@ function renderInterchange(f){
   el.innerHTML=waitNote+items.map(ic=>{
     const meta = [ic.eirNumber ? `EIR ${ic.eirNumber}` : null, (ic.vessel || ic.voyage) ? `${ic.vessel||'—'} / ${ic.voyage||'—'}` : null, ic.dateOut ? `Out ${fmtDate(ic.dateOut)}` : null].filter(Boolean).join(' · ');
     const repairBadge = (ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px">${ic.repairs.length} damage item${ic.repairs.length>1?'s':''} · ${GargoMoney.fmt(ic.repairTotal||0, GargoMoney.itemsCur(ic.repairs))}</div>` : '';
-    const canQuickDispatch = icInYard(ic, _icIdx);
+    const canQuickDispatch = isAdmin() && icInYard(ic, _icIdx);
     const canSendToSurvey = (ic.type === 'Gate-In' || ic.type === 'Depot-In') && !ic.surveyStatus;
     return `<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img loading="lazy" decoding="async" src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}${ic.flaggedForReview?`<span class="status-badge" style="background:rgba(230,160,60,.15);color:#e6a03c" title="${esc((ic.flagReasons||[]).join('; '))}">⚠ Flagged</span>`:''}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}${ic.ctype ? ' · ' + ic.ctype : ''}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—')} · ${ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—')} · ${fmtDate(ic.date)}</div>${meta?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${meta}</div>`:''}${repairBadge}${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${canQuickDispatch?`<button class="modal-btn ghost" onclick="quickDispatchOut('${ic.id}')">Quick Dispatch →</button>`:''}${canSendToSurvey?`<button class="modal-btn ghost" onclick="sendToSurvey('${ic.id}')">Send to Survey →</button>`:''}<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${ic.id}')">⬇ Download</button><button class="modal-btn ghost" onclick="printInterchangeSlip('${ic.id}')" title="Print">🖨 Print</button>${ic.flaggedForReview?`<button class="modal-btn ghost" onclick="clearReviewFlag('interchange','${ic.id}')">✓ Mark Reviewed</button>`:''}${ic.surveyId?`<button class="modal-btn ghost" onclick="downloadInspectionReport('${ic.surveyId}')">⬇ Inspection Report</button><button class="modal-btn ghost" onclick="printInspectionReport('${ic.surveyId}')" title="Print">🖨 Print Report</button>`:''}${(ic.surveyId || ic.img || (ic.photos && ic.photos.length))?`<button class="modal-btn ghost" onclick="showContainerPhotos('${ic.id}')">📷 Photos</button>`:''}</div></div>`;
   }).join('')||'<div class="empty-state"><div class="empty-state-icon">\u{1F504}</div><div class="empty-state-label">No interchange records</div></div>';
@@ -686,7 +686,7 @@ function buildInterchangeSlip(icId, opts) {
   const truckReg = ic.truck ? String(truckName(ic.truck)).split(' · ')[0] : (ic.truckRegText || '');
   const lorry = [truckReg, ic.trailerNo].filter(Boolean).join(' / ');
   const drv = ic.driver ? state.db.drivers.find(d => d.id === ic.driver) : null;
-  const driverNm = ic.driver ? driverName(ic.driver) : (ic.driverNameText || '');
+  const driverNm = (ic.driver ? driverName(ic.driver) : (ic.driverNameText || '')) + (icDriverPhone(ic) ? '  Tel ' + icDriverPhone(ic) : '');
   const driverIdNo = ic.driverIdNumber || (drv && (drv.idNo || drv.id_no)) || '';
   const sz = decomposeCtype(ic.ctype);
   const guaranteeBl = ic.guaranteeNo || ic.blNumber || '';
@@ -705,9 +705,9 @@ function buildInterchangeSlip(icId, opts) {
   cell(MARGIN + 114, y, 40, ROW, 'Vessel', ic.vessel);
   cell(MARGIN + 154, y, 28, ROW, 'Voyage', ic.voyage);
   y += ROW;
-  cell(MARGIN,       y, 56, ROW, 'Lorry No. / Trailer No.', lorry);
-  cell(MARGIN + 56,  y, 50, ROW, 'Driver Name', driverNm);
-  cell(MARGIN + 106, y, 40, ROW, 'ID / Driving No.', driverIdNo);
+  cell(MARGIN,       y, 50, ROW, 'Lorry No. / Trailer No.', lorry);
+  cell(MARGIN + 50,  y, 62, ROW, 'Driver Name / Phone', driverNm);
+  cell(MARGIN + 112, y, 34, ROW, 'ID / Driving No.', driverIdNo);
   cell(MARGIN + 146, y, 36, ROW * 2, 'Signature', '');
   y += ROW;
   cell(MARGIN,      y, 73, ROW, 'Transporter', ic.transporter);
@@ -1055,22 +1055,55 @@ async function icPrinter(ic, what) {
   return by;
 }
 
+/* ── Driver phone: registered drivers carry it; for typed-in drivers it is the "Phone Number" on the survey ── */
+window._icPhone = window._icPhone || {};
+function icDriverPhone(ic) {
+  if (!ic) return '';
+  const d = ic.driver ? (state.db.drivers || []).find(x => x.id === ic.driver) : null;
+  if (d && d.phone) return d.phone;
+  if (ic.driverPhone) return ic.driverPhone;
+  return (ic.surveyId && window._icPhone[ic.surveyId]) || '';
+}
+async function icPhonesLoad(list) {
+  if (!navigator.onLine || typeof supabase === 'undefined') return false;
+  const ids = Array.from(new Set((list || []).filter(ic => ic && ic.surveyId && !icDriverPhone(ic) && !(ic.surveyId in window._icPhone)).map(ic => ic.surveyId)));
+  if (!ids.length) return false;
+  ids.forEach(i => { window._icPhone[i] = ''; });
+  try {
+    const { data, error } = await supabase.from('depot_surveys').select('id,gate_pass_number').in('id', ids);
+    if (error) return false;
+    (data || []).forEach(r => { window._icPhone[r.id] = r.gate_pass_number || ''; });
+    return (data || []).some(r => r.gate_pass_number);
+  } catch (e) { return false; }
+}
+
+/* An interchange becomes approved automatically once it has been printed / downloaded. */
+function icAutoApprove(ic) {
+  if (!ic || ic.status !== 'pending' || icAwaitingSurvey(ic)) return;
+  ic.status = 'approved'; ic._dirty = true;
+  try { scheduleSave(); buildBadges(); } catch (e) {}
+  try { addAudit((state.profile && state.profile.username) || 'system', 'Interchange Approved', ic.container + ' (auto, on print)'); } catch (e) {}
+  try { if (typeof renderInterchange === 'function' && document.getElementById('icxList')) renderInterchange(typeof _icFilter !== 'undefined' ? _icFilter : undefined); } catch (e) {}
+}
+
 async function downloadInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
   if (ic) { try { await icSlipPrefetch(ic); } catch (e) { console.warn('slip data', e); } }
+  try { await icPhonesLoad([ic]); } catch (e) {}
   const by = await icPrinter(ic); if (by === null) return;
   const r = buildInterchangeSlip(icId, { printedBy: by });
-  if (r) r.doc.save(r.filename);
+  if (r) { r.doc.save(r.filename); icAutoApprove(ic); }
 }
 
 async function printInterchangeSlip(icId) {
   const ic = state.db.interchange.find(x => x.id === icId);
   if (ic && !icAwaitingSurvey(ic)) await ensureEirNumber(ic);
   if (ic) { try { await icSlipPrefetch(ic); } catch (e) { console.warn('slip data', e); } }
+  try { await icPhonesLoad([ic]); } catch (e) {}
   const by = await icPrinter(ic); if (by === null) return;
   const r = buildInterchangeSlip(icId, { printedBy: by });
-  if (r) ghPrintPdf(r.doc);
+  if (r) { ghPrintPdf(r.doc); icAutoApprove(ic); }
 }
 
 /* Survey photos + the container file (post-repair, damage, seal, other), as images a PDF can embed. */

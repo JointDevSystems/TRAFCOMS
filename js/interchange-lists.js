@@ -213,12 +213,12 @@
         ic.deliveringParty ? 'Consignee ' + ic.deliveringParty : '', (ic.blNumber || ic.guaranteeNo) ? 'B/L ' + (ic.blNumber || ic.guaranteeNo) : '', (ic.vessel || ic.voyage) ? (ic.vessel || '—') + ' / ' + (ic.voyage || '—') : ''].filter(Boolean).join(' · ');
     }
     const kind = [ic.type, lineName(ic.line), inward ? ic.condition : '', ic.ctype].filter(Boolean).map(E).join(' · ');
-    const who = [ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'), ic.trailerNo && !inward ? 'Trailer ' + ic.trailerNo : '', ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'), fmtDate(ic.date)].filter(Boolean).map(E).join(' · ');
+    const who = [ic.truck ? truckName(ic.truck) : (ic.truckRegText || '—'), ic.trailerNo && !inward ? 'Trailer ' + ic.trailerNo : '', ic.driver ? driverName(ic.driver) : (ic.driverNameText || '—'), (typeof icDriverPhone === 'function' && icDriverPhone(ic)) ? '☎ ' + icDriverPhone(ic) : '', fmtDate(ic.date)].filter(Boolean).map(E).join(' · ');
     const repair = (inward && ic.repairs && ic.repairs.length) ? `<div style="font-size:10.5px;color:var(--red);margin-top:2px${isAdmin() ? ';cursor:pointer;text-decoration:underline dotted' : ''}" ${isAdmin() ? `onclick="showEditInterchangeModal('${id}','repairs')" title="Edit damage items and tariff amounts (administrator)"` : ''}>${ic.repairs.length} damage item${ic.repairs.length > 1 ? 's' : ''} · ${GargoMoney.fmt(ic.repairTotal || 0, GargoMoney.itemsCur(ic.repairs))}</div>` : '';
     const inYardNow = inward && (ic._inYard !== undefined ? ic._inYard : icInYard(ic, idx));
     const btns = [];
     if (isAdmin() && ic.status === 'pending') btns.push(`<button class="modal-btn success" onclick="approveInterchange('${id}')">Approve</button>`);
-    if (inYardNow) btns.push(`<button class="modal-btn ghost" onclick="quickDispatchOut('${id}')">Quick Dispatch →</button>`);
+    if (inYardNow && isAdmin()) btns.push(`<button class="modal-btn ghost" onclick="quickDispatchOut('${id}')">Quick Dispatch →</button>`);
     if (inward && !ic.surveyStatus) btns.push(`<button class="modal-btn ghost" onclick="sendToSurvey('${id}')">Send to Survey →</button>`);
     btns.push(`<button class="modal-btn ghost" onclick="downloadInterchangeSlip('${id}')">⬇ Download</button>`, `<button class="modal-btn ghost" onclick="printInterchangeSlip('${id}')" title="Print">🖨 Print</button>`);
     if (isAdmin()) btns.push(`<button class="modal-btn ghost" onclick="showEditInterchangeModal('${id}')" title="Correct details, damage items and tariff amounts (administrator only)">✎ Edit</button>`);
@@ -256,6 +256,7 @@
     }
     host.innerHTML = html;
     if (window.ICR && ICR.enabled && ICR.fillThumbs) { try { ICR.fillThumbs(host); } catch (e) {} }
+    try { if (typeof icPhonesLoad === 'function' && st.items.length) icPhonesLoad(st.items).then(ch => { if (ch) paintList(); }); } catch (e) {}   // driver phones kept on the survey
   }
   function paint() { paintTabs(); paintList(); }
 
