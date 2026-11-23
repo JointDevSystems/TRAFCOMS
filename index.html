@@ -549,6 +549,10 @@
                                             <span>Completing an awaiting-dispatch trip — pick a truck &amp; driver and confirm details below.</span>
                                             <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
                                         </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Shipping Line</label><select id="d_line" onchange="dispatchLineChanged()"></select></div>
+                                            <div class="fg"><label>Reserve No. <span class="label-optional">(Repat: fills the form)</span></label><select id="d_reserve" onchange="dispatchReserveChanged()" disabled><option value="">Select shipping line first</option></select></div>
+                                        </div>
                                         <div id="d_outwardtype_row" style="margin-bottom:12px">
                                             <div class="fg" style="margin:0;max-width:260px">
                                                 <label>Status <span class="label-optional" id="d_outwardtype_hint">(required for Depot → Port)</span></label>
@@ -593,7 +597,9 @@
                                                     <option>Client → Port</option><option>Yard Move</option>
                                                 </select>
                                             </div>
-                                            <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
+                                            <div class="fg"><label>Priority</label>
+                                                <select id="d_priority"><option>Normal</option><option>High</option><option>Urgent</option></select>
+                                            </div>
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>
@@ -601,11 +607,8 @@
                                         </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Distance (km)</label><input id="d_distance" type="number" placeholder="25" /></div>
-                                            <div class="fg"><label>Priority</label>
-                                                <select id="d_priority"><option>Normal</option><option>High</option><option>Urgent</option></select>
-                                            </div>
+                                            <div class="fg"><label>Client Reference</label><input id="d_ref" placeholder="BL / Booking ref" /></div>
                                         </div>
-                                        <div class="fg"><label>Client Reference</label><input id="d_ref" placeholder="BL / Booking ref" /></div>
                                         <div class="fg"><label>Notes</label><textarea id="d_notes" rows="2" placeholder="Special instructions…"></textarea></div>
                                         <!-- Container Image Upload (multiple) -->
                                         <div class="fg">
