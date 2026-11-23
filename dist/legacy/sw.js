@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "6.2.2";
+const CACHE_VERSION = "6.2.3";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -137,6 +137,7 @@ const SHELL_FILES = [
   "./js/cameras-p2p.js",
   "./js/clerk-tools.js",
   "./js/client-auth.js",
+  "./js/container-link.js",
   "./js/core-db.js",
   "./js/core-state.js",
   "./js/depot-ops.js",

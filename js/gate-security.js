@@ -176,6 +176,7 @@
     return out.sort((a, b) => a.localeCompare(b));
   }
   function form(rec, newDir, pre) {
+    linkKey = ''; linkSeq++;
     const r = rec || pre || {}, dir = r.direction || newDir || 'in', P = pool();
     G._pool = P;
     const f = (id, label, v, extra) => '<div class="fg"><label for="gs_' + id + '">' + label + '</label><input id="gs_' + id + '" value="' + esc(v) + '" ' + (extra || '') + '/></div>';
@@ -202,7 +203,7 @@
       '</div>' +
       '<div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f('idn', 'ID number', r.driver_id_number || (di > -1 ? P[di].id : ''), 'autocomplete="off"') + '</div>' +
       '<div class="gs-group"><div class="gs-group-h">Cargo</div>' +
-        '<div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div>' +
+        '<div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567" oninput="GateSec.conTyped()" onchange="GateSec.conTyped()"/></div><div class="gs-hint" id="gs_link" role="status" style="display:none;margin:-4px 0 12px"></div>' +
         '<div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? '' : ' gs-hidden') + '" value="' + (other ? esc(cv) : '') + '" placeholder="Type the commodity" autocomplete="off"/></div>' +
       '</div>' +
       '<div class="gs-group"><div class="gs-group-h">Gate record</div>' +
@@ -221,6 +222,7 @@
     const c = $('gs_cwrap'); if (c) { const lb = c.querySelector('label'); if (lb) lb.textContent = d === 'out' ? 'Container number' : 'Container number (if any)'; }
     Array.prototype.forEach.call(document.querySelectorAll('#modalOverlay .gs-outonly'), el => el.classList.toggle('gs-hidden', d !== 'out'));   // transporter + commodity: vehicles going out only
     Array.prototype.forEach.call(document.querySelectorAll('#modalOverlay .gs-seg button'), b => b.classList.toggle('on', b.getAttribute('data-d') === d));
+    if (val('gs_con')) G.conTyped();
   };
   G.drvPick = function () {
     const sel = $('gs_drvsel'), man = $('gs_drv'); if (!sel || !man) return;
@@ -269,6 +271,55 @@
     if (val('gs_dir') !== 'out' || val('gs_drv')) return;
     const v = insideFor(val('gs_veh')); if (v) applyInside(v);
   };
+  /* ── container link: whatever the system already knows about the container fills the empty fields ──
+     Only EMPTY fields are filled; anything typed or picked by the officer is never replaced. If the system places the
+     container on a different vehicle than the one typed, a warning is shown instead of overwriting it. */
+  let linkKey = '', linkSeq = 0, linkT = 0;
+  G.conTyped = function () {
+    clearTimeout(linkT);
+    linkT = setTimeout(async () => {
+      const GC = window.GargoContainer; if (!GC || !$('gs_con')) return;
+      const list = GC.list(val('gs_con')), dir = val('gs_dir') === 'out' ? 'out' : 'in', key = dir + ':' + list.join(',');
+      if (key === linkKey) return; linkKey = key;
+      if (!list.length) return linkNote('');
+      const seq = ++linkSeq; let info = null;
+      try { info = await GC.find(list, dir); } catch (e) { console.warn('container link failed:', e && e.message); }
+      if (seq !== linkSeq || !$('gs_con')) return;           // the form was closed, or the number changed meanwhile
+      linkApply(info, dir);
+    }, 250);
+  };
+  function linkNote(html, warn) {
+    const n = $('gs_link'); if (!n) return;
+    n.style.display = html ? '' : 'none'; n.innerHTML = html; n.style.color = warn ? 'var(--amber)' : 'var(--green)';
+  }
+  function linkApply(info, dir) {
+    if (!info) return linkNote('');
+    const done = [];
+    const put = (id, v, label) => { const el = $(id); v = String(v == null ? '' : v).trim(); if (el && v && !el.value.trim()) { el.value = v; done.push(label); } };
+    const mismatch = info.truck && val('gs_veh') && nkey(info.truck) !== nkey(val('gs_veh'));
+    if (!mismatch) put('gs_veh', info.truck, 'vehicle');
+    put('gs_trl', info.trailer, 'trailer');
+    put('gs_gp', info.gatePass, 'gate pass');
+    if (dir === 'out') put('gs_tr', info.transporter, 'transporter');
+    /* driver: only when none is chosen or typed yet, and only if the truck is not contradicted */
+    const man = $('gs_drv'), sel = $('gs_drvsel');
+    if (!mismatch && info.driver && man && !man.value.trim() && !(sel && sel.value && sel.value !== '__manual')) {
+      const i = (G._pool || []).findIndex(d => nkey(d.name) === nkey(info.driver));
+      man.value = info.driver;
+      if (sel) { if (i > -1) { sel.value = String(i); man.classList.add('gs-hidden'); } else { sel.value = '__manual'; man.classList.remove('gs-hidden'); } }
+      else man.classList.remove('gs-hidden');
+      done.push('driver');
+    }
+    if (!mismatch) put('gs_idn', info.driverId, 'ID number');
+    if (dir === 'out' && info.commodity && $('gs_com') && !comVal()) {
+      const m = COMMODITIES.find(c => nkey(c) === nkey(info.commodity)), sel2 = $('gs_com');
+      if (m) sel2.value = m; else { sel2.value = '__other'; if ($('gs_comx')) $('gs_comx').value = info.commodity; }
+      G.comPick(); done.push('commodity');
+    }
+    const src = esc(info.from.join(' + '));
+    if (mismatch) return linkNote('⚠ The system has this container on vehicle <b>' + esc(info.truck) + '</b> (' + src + '), not ' + esc(val('gs_veh')) + '. Check before saving. Nothing was overwritten.', true);
+    linkNote(done.length ? '✔ Filled from the ' + src + ': ' + done.join(', ') + '. Check, then save.' : '');
+  }
   G.add = async function (dir, pre) {
     if (!can()) return toast('You do not have access to Gate Processes', 'error');
     dir = dir === 'out' ? 'out' : 'in';

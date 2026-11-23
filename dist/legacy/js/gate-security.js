@@ -279,6 +279,8 @@
     return out.sort((a, b) => a.localeCompare(b));
   }
   function form(rec, newDir, pre) {
+    linkKey = "";
+    linkSeq++;
     const r = rec || pre || {}, dir = r.direction || newDir || "in", P = pool();
     G._pool = P;
     const f = (id, label, v, extra) => '<div class="fg"><label for="gs_' + id + '">' + label + '</label><input id="gs_' + id + '" value="' + esc(v) + '" ' + (extra || "") + "/></div>";
@@ -296,7 +298,7 @@
     const officer = esc(officerOf(r) || r.released_by || r.received_by || state.profile && state.profile.name || "");
     openModal(
       rec ? "Edit gate entry" : dir === "out" ? "Vehicle going out" : "Vehicle coming in",
-      '<div class="gs-form"><select id="gs_dir" class="gs-hidden" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select><div class="gs-seg" role="group" aria-label="Movement"><button type="button" data-d="in" onclick="GateSec.setDir(\'in\')">\u2B07 Vehicle in</button><button type="button" data-d="out" onclick="GateSec.setDir(\'out\')">\u2B06 Vehicle out</button></div>' + (!rec && G._inside && G._inside.length ? '<div class="gs-group gs-outonly"><div class="gs-group-h">Vehicle already inside</div><select id="gs_inside" onchange="GateSec.insidePick()"><option value="">Pick the vehicle that gated in\u2026</option>' + G._inside.map((v, i) => '<option value="' + i + '">' + esc(v.vehicle_no) + (v.driver_name ? " \xB7 " + esc(v.driver_name) : "") + " \xB7 in " + esc(fmtWhen(v.movement_at)) + "</option>").join("") + '</select><div class="gs-hint" style="margin:8px 0 12px">Choosing it fills in the vehicle, driver and transporter from the gate-in. Add the container and commodity.</div></div>' : "") + '<div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off" oninput="GateSec.vehTyped()"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="fg gs-outonly"><label for="gs_tr">Transporter</label><input id="gs_tr" list="gs_trl" value="' + esc(r.transporter) + '" placeholder="Pick a transporter or type a new one" autocomplete="off"/><datalist id="gs_trl">' + tl + '</datalist></div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f("idn", "ID number", r.driver_id_number || (di > -1 ? P[di].id : ""), 'autocomplete="off"') + '</div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567"/></div><div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? "" : " gs-hidden") + '" value="' + (other ? esc(cv) : "") + '" placeholder="Type the commodity" autocomplete="off"/></div></div><div class="gs-group"><div class="gs-group-h">Gate record</div><div class="form-row-2"><div class="fg"><label for="gs_when">Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div>' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '</div><div class="fg"><label id="gs_rellbl" for="gs_rel">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + officer + '" autocomplete="off"/></div></div><div id="gs_err" class="gs-err" role="alert"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + "</button></div>"
+      '<div class="gs-form"><select id="gs_dir" class="gs-hidden" onchange="GateSec.dirChanged()"><option value="in"' + (dir === "in" ? " selected" : "") + '>Vehicle in</option><option value="out"' + (dir === "out" ? " selected" : "") + '>Vehicle out</option></select><div class="gs-seg" role="group" aria-label="Movement"><button type="button" data-d="in" onclick="GateSec.setDir(\'in\')">\u2B07 Vehicle in</button><button type="button" data-d="out" onclick="GateSec.setDir(\'out\')">\u2B06 Vehicle out</button></div>' + (!rec && G._inside && G._inside.length ? '<div class="gs-group gs-outonly"><div class="gs-group-h">Vehicle already inside</div><select id="gs_inside" onchange="GateSec.insidePick()"><option value="">Pick the vehicle that gated in\u2026</option>' + G._inside.map((v, i) => '<option value="' + i + '">' + esc(v.vehicle_no) + (v.driver_name ? " \xB7 " + esc(v.driver_name) : "") + " \xB7 in " + esc(fmtWhen(v.movement_at)) + "</option>").join("") + '</select><div class="gs-hint" style="margin:8px 0 12px">Choosing it fills in the vehicle, driver and transporter from the gate-in. Add the container and commodity.</div></div>' : "") + '<div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("veh", "Vehicle number", r.vehicle_no, 'autocapitalize="characters" autocomplete="off" oninput="GateSec.vehTyped()"') + f("trl", "Trailer number", r.trailer_no, 'autocapitalize="characters" autocomplete="off"') + '</div><div class="fg gs-outonly"><label for="gs_tr">Transporter</label><input id="gs_tr" list="gs_trl" value="' + esc(r.transporter) + '" placeholder="Pick a transporter or type a new one" autocomplete="off"/><datalist id="gs_trl">' + tl + '</datalist></div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + driver + f("idn", "ID number", r.driver_id_number || (di > -1 ? P[di].id : ""), 'autocomplete="off"') + '</div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="fg" id="gs_cwrap"><label for="gs_con">Container number</label><input id="gs_con" value="' + esc(r.container_no) + '" autocapitalize="characters" autocomplete="off" placeholder="e.g. MSKU1234567" oninput="GateSec.conTyped()" onchange="GateSec.conTyped()"/></div><div class="gs-hint" id="gs_link" role="status" style="display:none;margin:-4px 0 12px"></div><div class="fg gs-outonly"><label for="gs_com">Commodity</label>' + comSel + '<input id="gs_comx" class="gs-manual' + (other ? "" : " gs-hidden") + '" value="' + (other ? esc(cv) : "") + '" placeholder="Type the commodity" autocomplete="off"/></div></div><div class="gs-group"><div class="gs-group-h">Gate record</div><div class="form-row-2"><div class="fg"><label for="gs_when">Date and time</label><input id="gs_when" type="datetime-local" value="' + localInput(r.movement_at ? new Date(r.movement_at) : /* @__PURE__ */ new Date()) + '"/></div>' + f("gp", "Gate pass number", r.gate_pass_no, 'autocomplete="off"') + '</div><div class="fg"><label id="gs_rellbl" for="gs_rel">' + officerLabel(dir) + '</label><input id="gs_rel" value="' + officer + '" autocomplete="off"/></div></div><div id="gs_err" class="gs-err" role="alert"></div><button class="submit-btn" id="gs_go" onclick="GateSec.save(' + (rec ? "'" + esc(rec.id) + "'" : "") + ')">' + (rec ? "Save changes" : "Save entry") + "</button></div>"
     );
     G.dirChanged();
     setTimeout(() => {
@@ -323,6 +325,7 @@
     }
     Array.prototype.forEach.call(document.querySelectorAll("#modalOverlay .gs-outonly"), (el) => el.classList.toggle("gs-hidden", d !== "out"));
     Array.prototype.forEach.call(document.querySelectorAll("#modalOverlay .gs-seg button"), (b) => b.classList.toggle("on", b.getAttribute("data-d") === d));
+    if (val("gs_con")) G.conTyped();
   };
   G.drvPick = function() {
     const sel = $("gs_drvsel"), man = $("gs_drv");
@@ -421,6 +424,80 @@
     const v = insideFor(val("gs_veh"));
     if (v) applyInside(v);
   };
+  let linkKey = "", linkSeq = 0, linkT = 0;
+  G.conTyped = function() {
+    clearTimeout(linkT);
+    linkT = setTimeout(async () => {
+      const GC = window.GargoContainer;
+      if (!GC || !$("gs_con")) return;
+      const list = GC.list(val("gs_con")), dir = val("gs_dir") === "out" ? "out" : "in", key = dir + ":" + list.join(",");
+      if (key === linkKey) return;
+      linkKey = key;
+      if (!list.length) return linkNote("");
+      const seq = ++linkSeq;
+      let info = null;
+      try {
+        info = await GC.find(list, dir);
+      } catch (e) {
+        console.warn("container link failed:", e && e.message);
+      }
+      if (seq !== linkSeq || !$("gs_con")) return;
+      linkApply(info, dir);
+    }, 250);
+  };
+  function linkNote(html, warn) {
+    const n = $("gs_link");
+    if (!n) return;
+    n.style.display = html ? "" : "none";
+    n.innerHTML = html;
+    n.style.color = warn ? "var(--amber)" : "var(--green)";
+  }
+  function linkApply(info, dir) {
+    if (!info) return linkNote("");
+    const done = [];
+    const put = (id, v, label) => {
+      const el = $(id);
+      v = String(v == null ? "" : v).trim();
+      if (el && v && !el.value.trim()) {
+        el.value = v;
+        done.push(label);
+      }
+    };
+    const mismatch = info.truck && val("gs_veh") && nkey(info.truck) !== nkey(val("gs_veh"));
+    if (!mismatch) put("gs_veh", info.truck, "vehicle");
+    put("gs_trl", info.trailer, "trailer");
+    put("gs_gp", info.gatePass, "gate pass");
+    if (dir === "out") put("gs_tr", info.transporter, "transporter");
+    const man = $("gs_drv"), sel = $("gs_drvsel");
+    if (!mismatch && info.driver && man && !man.value.trim() && !(sel && sel.value && sel.value !== "__manual")) {
+      const i = (G._pool || []).findIndex((d) => nkey(d.name) === nkey(info.driver));
+      man.value = info.driver;
+      if (sel) {
+        if (i > -1) {
+          sel.value = String(i);
+          man.classList.add("gs-hidden");
+        } else {
+          sel.value = "__manual";
+          man.classList.remove("gs-hidden");
+        }
+      } else man.classList.remove("gs-hidden");
+      done.push("driver");
+    }
+    if (!mismatch) put("gs_idn", info.driverId, "ID number");
+    if (dir === "out" && info.commodity && $("gs_com") && !comVal()) {
+      const m = COMMODITIES.find((c) => nkey(c) === nkey(info.commodity)), sel2 = $("gs_com");
+      if (m) sel2.value = m;
+      else {
+        sel2.value = "__other";
+        if ($("gs_comx")) $("gs_comx").value = info.commodity;
+      }
+      G.comPick();
+      done.push("commodity");
+    }
+    const src = esc(info.from.join(" + "));
+    if (mismatch) return linkNote("\u26A0 The system has this container on vehicle <b>" + esc(info.truck) + "</b> (" + src + "), not " + esc(val("gs_veh")) + ". Check before saving. Nothing was overwritten.", true);
+    linkNote(done.length ? "\u2714 Filled from the " + src + ": " + done.join(", ") + ". Check, then save." : "");
+  }
   G.add = async function(dir, pre) {
     if (!can()) return toast("You do not have access to Gate Processes", "error");
     dir = dir === "out" ? "out" : "in";
