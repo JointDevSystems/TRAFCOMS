@@ -22,7 +22,10 @@
     driverId: ['driverIdNumber', 'driverId', 'idNo', 'id_no'],
     preparedBy: ['preparedBy', 'compiledBy', 'createdByName', 'clerk', 'user'],
     releasingClerk: ['releasingClerk', 'loadingClerk', 'releasedBy'],
-    remarks: ['remarks', 'remark', 'notes', 'commodity'],
+    remarks: ['remarks', 'remark', 'notes'],
+    booking: ['bookingNo', 'bookingRef', 'booking', 'bookingNumber'],
+    shipperOrder: ['shippersOrderNo', 'shipperOrderNo', 'shipperOrder', 'shippersOrder'],
+    cargoType: ['outwardType', 'commodity', 'workType'],
     iso: ['iso', 'isoCode', 'isoType'],
     size: ['size', 'ctype', 'csize'],
     type: ['type_', 'cType', 'containerType', 'ctypeClass', 'cont_type'],
@@ -63,17 +66,26 @@
     return null;
   }
 
-  function gather(out) {
+  /* repat or shipper's (export) unit: from the cargo type on the record, else the caller's choice */
+  function kindOf(rec, force) {
+    if (force === 'repat' || force === 'export') return force;
+    const t = String(pick(rec, 'cargoType') + ' ' + (rec && rec.remarks || '')).toLowerCase();
+    return /shipper|export/.test(t) ? 'export' : 'repat';
+  }
+
+  function gather(out, force) {
     const sv = surveyOf(out) || {}, rr = reserveOf(out) || {};
     const merged = Object.assign({}, rr, out);          // gate-out record wins, reserve fills gaps
-    const g = k => pick(merged, k);
+    const kind = kindOf(merged, force), g = k => pick(merged, k);
     const s = k => pick(sv, k);
     const line = g('line');
     let lineName = line;
     try { const l = (state.db.shippingLines || []).find(x => x.id === line); if (l) lineName = l.name || l.code || line; } catch (e) {}
     const when = out.date || rr.date;
     return {
-      eir: g('eir'), shipper: g('shipper'), reference: g('reference') || g('releaseOrder'),
+      kind, refLabel: kind === 'export' ? "Shipper's order no." : 'Reference no',
+      eir: g('eir'), shipper: g('shipper'),
+      reference: kind === 'export' ? (g('shipperOrder') || g('releaseOrder') || g('reference')) : (g('reference') || g('releaseOrder')),
       date: fdate(when), time: ftime(when), container: norm(g('container')), line: lineName,
       destination: g('destination'), releaseOrder: g('releaseOrder'), releaseDate: fdate(g('releaseDate')),
       iso: s('iso') || g('iso'), size: (s('size') || g('size')).replace(/[^\d]/g, '').slice(0, 2), type: s('type') || g('type'),
@@ -82,7 +94,7 @@
       transporter: g('transporter'), truck: [g('truck'), g('trailer')].filter(Boolean).join('/'),
       driver: g('driver'), driverId: g('driverId'),
       prepared: g('preparedBy') || (state.profile && state.profile.name) || '', clerk: g('releasingClerk'),
-      remarks: g('remarks') || 'REPAT',
+      remarks: g('remarks') || (kind === 'export' ? g('booking') : 'REPAT'),
       inDate: fdate(sv.date), inEir: pick(sv, 'eir'), inVessel: s('vessel'), inVoyage: s('voyage'),
     };
   }
@@ -143,15 +155,15 @@
     '.bar button{padding:8px 20px;border:1px solid #b2830a;border-radius:8px;background:#b2830a;color:#fff;font:700 13px Arial;cursor:pointer}.bar button.g{background:transparent;color:#e5c766}' +
     '@media print{html,body{background:#fff}.bar{display:none}.gx-page{margin:0;width:auto;min-height:0;height:275mm;padding:0;overflow:hidden}}';
 
-  function html(rec) {
-    const d = gather(rec), lg = esc(logoUrl());
+  function html(rec, kind) {
+    const d = gather(rec, kind), lg = esc(logoUrl());
     const c = (l, v, cls) => '<div><label>' + l + '</label><div class="v ' + (cls || '') + '">' + esc(v) + '</div></div>';
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Outward EIR ' + esc(d.eir) + '</title><style>' + CSS + WM.css() + '</style></head><body>' +
+    return '<!doctype html><html><head><meta charset="utf-8"><title>' + (d.kind === 'export' ? 'Export' : 'Repat') + ' outward EIR ' + esc(d.eir) + '</title><style>' + CSS + WM.css() + '</style></head><body>' +
       '<div class="bar"><button onclick="print()">Print</button><button class="g" onclick="close()">Close</button></div>' +
       '<div class="gx-page">' + WM.html() +
       '<div class="hd"><img src="' + lg + '" alt=""><div><h1>' + COMPANY.name + '</h1><p>' + esc(COMPANY.addr) + '</p><p class="tl">Tel: ' + esc(COMPANY.tel) + ' &nbsp;|&nbsp; Email: ' + esc(COMPANY.mail) + '</p></div></div>' +
       '<div class="ti"><div>CONTAINER INTERCHANGE REPORT / RECEIPT</div><div class="no"><small>OUTWARD EIR NO.</small>' + esc(d.eir) + '</div></div>' +
-      '<div class="bx r1">' + c('Shipper name', d.shipper) + c('Reference no', d.reference) + c('Date', d.date) + c('Time', d.time) + '</div>' +
+      '<div class="bx r1">' + c('Shipper name', d.shipper) + c(d.refLabel, d.reference) + c('Date', d.date) + c('Time', d.time) + '</div>' +
       '<div class="bx r2">' + c('Container no.', d.container, 'big') + c('Agent / Line', d.line) + '</div>' +
       '<div class="bx r3">' + c('Final destination', d.destination) + c('Release order no.', d.releaseOrder) + c('R. order date', d.releaseDate) + '</div>' +
       '<div class="bx r4">' + c('ISO', d.iso) + c('Size', d.size) + c('Type', d.type) + c('Vessel name', d.vessel) + c('Voy no.', d.voyage) + c('MTWT (kg)', d.mtwt) + c('MGWT (kg)', d.mgwt) + c('CSC approval', d.csc) + '</div>' +
@@ -166,13 +178,14 @@
   }
 
   window.GargoOutwardEIR = {
-    html, gather,
-    open(idOrRec) {
+    html, gather, kindOf,
+    /* kind is optional: 'repat' | 'export'. Left out, it is read from the record. */
+    open(idOrRec, kind) {
       const rec = typeof idOrRec === 'object' ? idOrRec : (state.db.interchange || []).find(i => i.id === idOrRec);
       if (!rec) return toast('Outward record not found', 'error');
       const w = window.open('', '_blank');
       if (!w) return toast('Allow pop-ups to open the EIR', 'warning');
-      w.document.open(); w.document.write(html(rec)); w.document.close();
+      w.document.open(); w.document.write(html(rec, kind)); w.document.close();
     },
   };
 })();

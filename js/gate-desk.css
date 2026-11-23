@@ -19,12 +19,12 @@
 .gd-net{display:inline-flex;align-items:center;gap:6px;margin:0;padding:3px 10px;border-radius:999px;font:600 11px var(--font-ui);letter-spacing:.3px;border:1px solid var(--green);color:var(--green);background:var(--green-dim)}
 .gd-net::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .gd-net.off{border-color:var(--red);color:var(--red);background:var(--red-dim)}
-.gd-big{display:flex;gap:10px;flex:1 1 320px;max-width:520px}
-.gd-bigbtn{flex:1 1 0;min-height:64px;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 18px;border:1px solid;border-radius:14px;font:700 16px var(--font-ui);cursor:pointer;transition:box-shadow .15s,transform .1s}
-.gd-bigbtn svg{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.gd-big{display:flex;gap:8px;flex:0 1 300px;max-width:300px}
+.gd-bigbtn{flex:1 1 0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 12px;border:1px solid;border-radius:10px;font:700 13.5px var(--font-ui);cursor:pointer;transition:box-shadow .15s,transform .1s}
+.gd-bigbtn svg{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .gd-bigbtn.in{background:var(--blue-dim);color:var(--blue);border-color:var(--blue)}
 .gd-bigbtn.out{background:var(--gold-dim);color:var(--gold);border-color:var(--gold)}
-.gd-bigbtn:hover{box-shadow:0 0 0 3px var(--hover),0 6px 18px rgba(0,0,0,.18)}
+.gd-bigbtn:hover{box-shadow:0 0 0 2px var(--hover),0 4px 12px rgba(0,0,0,.16)}
 .gd-bigbtn:active{transform:scale(.98)}
 
 /* counters (base look comes from kpi-polish.css) */
@@ -106,6 +106,7 @@
 .gs-form .submit-btn{min-height:48px;margin-top:0;font-size:14px}
 
 @media(max-width:640px){
+  .gd-big{flex:1 1 100%;max-width:none}
   .gd-clock{font-size:28px}
   .gd-plate{font-size:21px}
   .gd-head{padding:14px}
