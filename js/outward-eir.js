@@ -93,7 +93,7 @@
     css() {
       return '.gx-wm{position:fixed;left:0;top:0;right:0;bottom:0;z-index:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;pointer-events:none;transform:rotate(-24deg);opacity:.085;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
         '.gx-wm img{width:300px;max-width:55%;height:auto}.gx-wm b{font:800 38px/1 Georgia,"Times New Roman",serif;letter-spacing:5px;color:#7a5c0c;white-space:nowrap}' +
-        '.gx-wm+*,.gx-page{position:relative;z-index:1}';
+        '.gx-wm~*{position:relative;z-index:1}';
     },
     html() { return '<div class="gx-wm" aria-hidden="true"><img src="' + esc(logoUrl()) + '" alt=""><b>GARGO HAVEN DEPOT LTD</b></div>'; },
     /* jsPDF: call on every page right after addPage()/at start, BEFORE drawing the content, so it sits behind it */
@@ -138,6 +138,7 @@
     '.nb{margin:12px 0 0;padding:9px 12px;border-left:4px solid #b2830a;background:#faf6e8;font:700 11px/1.5 Arial,sans-serif;color:#3a2f0b}' +
     '.sp{flex:1}.in{border:1px solid #14213d;display:grid;grid-template-columns:repeat(4,1fr);margin-top:14px}.in .h{grid-column:1/-1;background:#14213d;color:#fff;padding:5px 10px;font:700 10.5px Arial;letter-spacing:.6px}' +
     '.in div.c{padding:7px 10px;text-align:center;border-right:1px solid #cdb872;border-top:1px solid #cdb872}.in div.c:last-child{border-right:0}.in .c label{text-align:center}' +
+    '.gx-page .gx-wm{position:absolute;opacity:.14}.gx-page>*:not(.gx-wm){position:relative;z-index:1}' +
     '.ft{margin-top:8px;text-align:center;font-size:9.5px;color:#777}.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:8px;background:#14213d}' +
     '.bar button{padding:8px 20px;border:1px solid #b2830a;border-radius:8px;background:#b2830a;color:#fff;font:700 13px Arial;cursor:pointer}.bar button.g{background:transparent;color:#e5c766}' +
     '@media print{html,body{background:#fff}.bar{display:none}.gx-page{margin:0;width:auto;min-height:0;height:275mm;padding:0;overflow:hidden}}';
@@ -146,8 +147,8 @@
     const d = gather(rec), lg = esc(logoUrl());
     const c = (l, v, cls) => '<div><label>' + l + '</label><div class="v ' + (cls || '') + '">' + esc(v) + '</div></div>';
     return '<!doctype html><html><head><meta charset="utf-8"><title>Outward EIR ' + esc(d.eir) + '</title><style>' + CSS + WM.css() + '</style></head><body>' +
-      '<div class="bar"><button onclick="print()">Print</button><button class="g" onclick="close()">Close</button></div>' + WM.html() +
-      '<div class="gx-page">' +
+      '<div class="bar"><button onclick="print()">Print</button><button class="g" onclick="close()">Close</button></div>' +
+      '<div class="gx-page">' + WM.html() +
       '<div class="hd"><img src="' + lg + '" alt=""><div><h1>' + COMPANY.name + '</h1><p>' + esc(COMPANY.addr) + '</p><p class="tl">Tel: ' + esc(COMPANY.tel) + ' &nbsp;|&nbsp; Email: ' + esc(COMPANY.mail) + '</p></div></div>' +
       '<div class="ti"><div>CONTAINER INTERCHANGE REPORT / RECEIPT</div><div class="no"><small>OUTWARD EIR NO.</small>' + esc(d.eir) + '</div></div>' +
       '<div class="bx r1">' + c('Shipper name', d.shipper) + c('Reference no', d.reference) + c('Date', d.date) + c('Time', d.time) + '</div>' +
