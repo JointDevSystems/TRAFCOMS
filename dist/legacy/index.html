@@ -955,21 +955,10 @@
                     <!-- LOADING DESK (Part 2 of loading instructions; filled by js/loading-instructions.js) -->
                     <section class="section" id="sec-loadingdesk"></section>
 
-                    <!-- VESSEL PRESTAKING -->
+                    <!-- VESSEL PRESTAKING: step 1 arrivals at port, step 2 load to vessel (built by js/vessel-prestaking.js) -->
                     <section class="section" id="sec-prestaking">
-                        <div class="sec-toolbar">
-                            <div class="sec-title">Vessel Prestaking</div>
-                            <div class="filter-row">
-                                <button class="filter-btn active" onclick="filterPrestaking('staged',this)">Staged</button>
-                                <button class="filter-btn" onclick="filterPrestaking('loaded',this)">Loaded</button>
-                                <button class="filter-btn" onclick="filterPrestaking('shutout',this)">Shutout</button>
-                                <button class="filter-btn" onclick="filterPrestaking('cancelled',this)">Cancelled</button>
-                                <button class="filter-btn" onclick="filterPrestaking('all',this)">All</button>
-                                <button class="action-btn" onclick="showAddPrestakeModal()">+ Prestake Container</button>
-                            </div>
-                        </div>
-                        <div class="two-col-grid" id="prestakingKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
-                        <div id="prestakingList"></div>
+                        <div class="sec-toolbar"><div class="sec-title">Vessel Prestaking</div></div>
+                        <div id="psRoot"></div>
                     </section>
 
                     <section class="section" id="sec-repatreserve"></section>

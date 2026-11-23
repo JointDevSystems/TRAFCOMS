@@ -128,7 +128,7 @@
     shutout: "Containers turned away at the gate",
     gatesecurity: "Gate desk, loading instructions, loading desk and the vehicle register",
     loadingdesk: "Loading clerk: complete Part 2 of loading instructions",
-    prestaking: "Containers staged ahead of a vessel",
+    prestaking: "Containers arriving at port and loading onto vessels",
     repatreserve: "Hold empty containers for a shipping line's repat request",
     depotreport: "Inward and outward register",
     shippinglines: "Shipping lines, contacts and portal links",
