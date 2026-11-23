@@ -422,7 +422,6 @@
                                 <button class="pill" onclick="filterActivity('issue',this)">Issues</button>
                             </div>
                         </div>
-                        <div class="kpi-row" id="kpiRow"></div>
                         <div class="panel" id="gateCamPanel" style="display:none;margin:0 0 12px">
                             <div class="panel-head gc-head"><span class="panel-title">Live Gate Cameras</span><span class="panel-meta" id="gateCamMeta" style="margin-right:auto"></span></div>
                             <div class="gc-body">
@@ -943,7 +942,6 @@
                                 <button class="action-btn" id="gsAddOut" onclick="GateSec.add('out')">+ Vehicle Out</button>
                             </div>
                         </div>
-                        <div class="two-col-grid" id="gateSecKpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
                         <div class="gs-bar">
                             <input class="gs-q" id="gsQ" type="search" placeholder="Search vehicle, driver, ID, container, gate pass" oninput="GateSec.search()" autocomplete="off"/>
                             <label>From <input id="gsFrom" type="date" onchange="GateSec.search()"/></label>

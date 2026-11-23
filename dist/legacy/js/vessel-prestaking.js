@@ -180,11 +180,8 @@ function psEnsureRoot() {
 function renderPrestaking() {
   const root = psEnsureRoot();
   if (!root) return;
-  const queue = prestakingEligibleTrips().length, at = psAtPort().length;
-  const loadedToday = psList().filter((p) => p.status === "loaded" && psSameDay(p.resolvedAt)).length;
-  const shut = state.db.shutouts.filter((s) => s.status === "open").length;
   const can = canManagePrestaking();
-  root.innerHTML = '\n    <div class="ps-sum">\n      <div class="ps-stat"><b>'.concat(at, '</b><span>At port, waiting for a vessel</span></div>\n      <div class="ps-stat good"><b>').concat(loadedToday, '</b><span>Loaded on vessels today</span></div>\n      <div class="ps-stat ').concat(queue ? "warn" : "", '"><b>').concat(queue, '</b><span>Delivered, not yet recorded</span></div>\n      <div class="ps-stat ').concat(shut ? "bad" : "", '"><b>').concat(shut, '</b><span>Open shutouts</span></div>\n    </div>\n    <div class="gd-tabs">\n      <button type="button" class="gd-tab').concat(_psTab === "arrive" ? " on" : "", '" onclick="psTab(\'arrive\')">1 \xB7 Arrivals at port').concat(queue ? " (" + queue + " new)" : "", '</button>\n      <button type="button" class="gd-tab').concat(_psTab === "load" ? " on" : "", '" onclick="psTab(\'load\')">2 \xB7 Load to vessel (').concat(at, ')</button>\n    </div>\n    <div class="gs-bar">\n      <input class="gs-q" id="psSearch" type="search" autocomplete="off" placeholder="Search container, block, truck, line or vessel" value="').concat(esc(_psQ), '" oninput="psSearch(this.value)"/>\n      ').concat(_psTab === "arrive" && can ? '<button type="button" class="action-btn" onclick="showAddPrestakeModal()">+ Add container</button>' : "", '\n    </div>\n    <div id="psList"></div>');
+  root.innerHTML = '\n    <div class="gd-tabs">\n      <button type="button" class="gd-tab'.concat(_psTab === "arrive" ? " on" : "", '" onclick="psTab(\'arrive\')">1 \xB7 Arrivals at port</button>\n      <button type="button" class="gd-tab').concat(_psTab === "load" ? " on" : "", '" onclick="psTab(\'load\')">2 \xB7 Load to vessel</button>\n    </div>\n    <div class="gs-bar">\n      <input class="gs-q" id="psSearch" type="search" autocomplete="off" placeholder="Search container, block, truck, line or vessel" value="').concat(esc(_psQ), '" oninput="psSearch(this.value)"/>\n      ').concat(_psTab === "arrive" && can ? '<button type="button" class="action-btn" onclick="showAddPrestakeModal()">+ Add container</button>' : "", '\n    </div>\n    <div id="psList"></div>');
   psPaintList();
 }
 function psTab(t) {

@@ -157,20 +157,11 @@ function psEnsureRoot() {
 function renderPrestaking() {
   const root = psEnsureRoot();
   if (!root) return;
-  const queue = prestakingEligibleTrips().length, at = psAtPort().length;
-  const loadedToday = psList().filter(p => p.status === 'loaded' && psSameDay(p.resolvedAt)).length;
-  const shut = state.db.shutouts.filter(s => s.status === 'open').length;
   const can = canManagePrestaking();
   root.innerHTML = `
-    <div class="ps-sum">
-      <div class="ps-stat"><b>${at}</b><span>At port, waiting for a vessel</span></div>
-      <div class="ps-stat good"><b>${loadedToday}</b><span>Loaded on vessels today</span></div>
-      <div class="ps-stat ${queue ? 'warn' : ''}"><b>${queue}</b><span>Delivered, not yet recorded</span></div>
-      <div class="ps-stat ${shut ? 'bad' : ''}"><b>${shut}</b><span>Open shutouts</span></div>
-    </div>
     <div class="gd-tabs">
-      <button type="button" class="gd-tab${_psTab === 'arrive' ? ' on' : ''}" onclick="psTab('arrive')">1 · Arrivals at port${queue ? ' (' + queue + ' new)' : ''}</button>
-      <button type="button" class="gd-tab${_psTab === 'load' ? ' on' : ''}" onclick="psTab('load')">2 · Load to vessel (${at})</button>
+      <button type="button" class="gd-tab${_psTab === 'arrive' ? ' on' : ''}" onclick="psTab('arrive')">1 · Arrivals at port</button>
+      <button type="button" class="gd-tab${_psTab === 'load' ? ' on' : ''}" onclick="psTab('load')">2 · Load to vessel</button>
     </div>
     <div class="gs-bar">
       <input class="gs-q" id="psSearch" type="search" autocomplete="off" placeholder="Search container, block, truck, line or vessel" value="${esc(_psQ)}" oninput="psSearch(this.value)"/>

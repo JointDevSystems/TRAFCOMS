@@ -89,7 +89,6 @@
   function paintShell(host) {
     host.innerHTML = '<div class="gd-head"><div><div class="gd-clock" id="gdClock">--:--</div><div class="gd-date"><span id="gdDate"></span><span class="gd-net" id="gdNet">Online</span></div></div>' +
       '<div class="gd-big"><button type="button" class="gd-bigbtn in" onclick="GateSec.add(\'in\')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v13M6 12l6 6 6-6M5 21h14"/></svg> Vehicle in</button><button type="button" class="gd-bigbtn out" onclick="GateSec.add(\'out\')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V7M6 12l6-6 6 6M5 3h14"/></svg> Vehicle out</button></div></div>' +
-      '<div class="gd-kpis" id="gdKpis"></div>' +
       '<div class="gd-searchwrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input class="gd-search" id="gdQ" type="search" placeholder="Type a truck plate, driver ID or slip number to find its loading instruction" autocomplete="off" autocapitalize="characters" inputmode="text" oninput="GateDesk.search()"/></div>' +
       '<div class="gd-chips" id="gdChips"></div><div id="gdList"></div>';
     const tick = () => { const n = new Date(); const c = $('gdClock'); if (!c) return clearInterval(tick.t); c.textContent = n.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }); $('gdDate').textContent = n.toLocaleDateString('en-KE', { weekday: 'long', day: '2-digit', month: 'long' }); const nt = $('gdNet'); if (nt) { nt.textContent = navigator.onLine ? 'Online' : 'Offline'; nt.className = 'gd-net' + (navigator.onLine ? '' : ' off'); } };
@@ -108,7 +107,7 @@
     const todo = rows.filter(r => state_(r) === 'todo' && r.status === 'issued');
     const ok = rows.filter(r => r.verify_result === 'verified' && String(r.verified_at || '').slice(0, 10) >= td);
     const rej = rows.filter(r => r.verify_result === 'rejected' && String(r.verified_at || '').slice(0, 10) >= td);
-    kp.innerHTML = '<div class="gd-kpi warn"><b>' + todo.length + '</b><span>To verify</span></div><div class="gd-kpi good"><b>' + ok.length + '</b><span>Verified today</span></div><div class="gd-kpi bad"><b>' + rej.length + '</b><span>Rejected today</span></div>' +
+    if (kp) kp.innerHTML = '<div class="gd-kpi warn"><b>' + todo.length + '</b><span>To verify</span></div><div class="gd-kpi good"><b>' + ok.length + '</b><span>Verified today</span></div><div class="gd-kpi bad"><b>' + rej.length + '</b><span>Rejected today</span></div>' +
       '<div class="gd-kpi"><b>' + S.inN + '</b><span>Vehicles in today</span></div><div class="gd-kpi"><b>' + S.outN + '</b><span>Vehicles out today</span></div>';
     const C = [['todo', 'To verify (' + todo.length + ')'], ['ok', 'Verified'], ['rej', 'Rejected'], ['all', 'All (' + rows.length + ')']];
     chips.innerHTML = C.map(c => '<button type="button" class="gd-chip' + (S.f === c[0] ? ' on' : '') + '" onclick="GateDesk.filter(\'' + c[0] + '\')">' + c[1] + '</button>').join('');
