@@ -1516,7 +1516,7 @@ async function openSurveyModal(bookingId) {
 
     <div class="fg"><label>Survey Photos <span class="label-optional">(up to 10)</span></label><input type="file" id="sv_images" accept="image/*" multiple onchange="onSurveyImagesSelected(event)"><div id="sv_images_preview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></div>
     <div class="fg"><label>Guarantee Form <span class="label-optional">(optional, image or PDF)</span></label><input type="file" id="sv_guarantee_file" accept="image/*,.pdf" onchange="onSurveyGuaranteePicked(event)"><div id="sv_guarantee_label" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div></div>
-    <div class="fg"><label>Remarks / Notes</label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(svRemarks)}</textarea></div>
+    <div class="fg"><label>Remarks / Notes <span style="color:var(--red)">*</span></label><textarea id="sv_remarks" rows="3" placeholder="Damage notes, discrepancies, etc.">${sanitize(svRemarks)}</textarea></div>
     <button class="submit-btn" onclick="saveSurvey('${bookingId}')">${ic ? 'Save Survey &amp; Complete Depot-In' : 'Save Survey'} →</button>
   `);
   const svContEl = document.getElementById('sv_container');
@@ -1589,6 +1589,11 @@ async function saveSurvey(bookingId) {
   if (need(_surveyImages.length < (Number(cg('survey.minPhotos')) || 0), `At least ${cg('survey.minPhotos')} survey photo${Number(cg('survey.minPhotos')) === 1 ? '' : 's'} required`)) return;
   if (window.GargoForms) { const formErr = GargoForms.validate('survey'); if (formErr) { toast(formErr, 'error'); return; } }   // Form Designer rules
   const repairItems = repairItemsFor('sv');
+  // A survey cannot be saved without remarks and priced repair tariff items.
+  if (!val('sv_remarks')) { toast('Remarks / Notes are required before saving the survey', 'error'); const r = document.getElementById('sv_remarks'); if (r) r.focus(); return; }
+  if (!repairItems.length) { toast('Add at least one repair tariff item before saving the survey', 'error'); return; }
+  const unpriced = repairItems.find(r => !(Number(r.hours) > 0) && !(Number(r.material) > 0));
+  if (unpriced) { toast(`Repair item "${unpriced.code || unpriced.item}" has no rate (hours or material). Enter its rate first.`, 'error', 6000); return; }
   const sourceIc = state.db.interchange.find(i => i.bookingId === bookingId);
   if (container) {
     const avail = await checkContainerAvailable(container, { bookingId, icId: sourceIc ? sourceIc.id : null });
