@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '6.3.0';
+const CACHE_VERSION = '6.4.0';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -44,6 +44,7 @@ const SHELL_FILES = [
   './js/admin-ui-shell.js',
   './js/nav-compat.js',
   './js/repat-reserve.js',
+  './js/outward-eir.js',
   './js/navigation.js',
   './js/nav-shell.js',
   './js/bootstrap.js',
