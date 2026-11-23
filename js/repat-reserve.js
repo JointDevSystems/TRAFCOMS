@@ -296,8 +296,8 @@
       </div><div>
         <div class="rr-counts"><div class="rr-count"><b>${n}</b><span>Total</span></div><div class="rr-count ok"><b>${nCleared}</b><span>Cleared</span></div><div class="rr-count wait"><b>${n - nCleared}</b><span>Balance</span></div></div>
         ${!ro && h.agent && !al ? '<p class="rr-note">This agent is not in the shipping lines list, so containers cannot be checked against its line.</p>' : ''}
-        ${ro ? '' : `<div class="rr-tools"><button class="action-btn" onclick="RepatReserve.openPicker()">+ Add from yard</button><button class="action-btn ghost" onclick="RepatReserve.openPaste()">Paste a list</button></div><div id="rrPicker"></div>`}
-        ${n ? `<div style="overflow:auto;max-height:420px"><table class="data-table"><thead><tr><th>In EIR</th><th>Container</th><th>Size</th><th>Cleared</th>${ro ? '' : '<th></th>'}${E.id && !E.closed && canDispatchRepat() ? '<th></th>' : ''}</tr></thead><tbody>${E.items.map((i, k) => `<tr><td>${esc(i.in_eir || '')}</td><td>${esc(i.container_no)}${otherLine(i, h.agent) && !i._ok ? ' <span class="rr-b rr-amb" title="Belongs to another shipping line">other line</span>' : ''}</td><td>${esc(i.size || '')}</td><td>${E.id && i.id && canWrite() ? `<input type="checkbox" ${i.cleared ? 'checked' : ''} onchange="RepatReserve.clearOne(${k},this.checked)">` : (i.cleared ? 'Yes' : '')}</td>${ro ? '' : `<td>${i.cleared ? '' : `<button class="action-btn ghost" onclick="RepatReserve.drop(${k})">Remove</button>`}</td>`}${E.id && !E.closed && canDispatchRepat() ? `<td>${i.cleared || !i.id ? '' : `<button class="action-btn" onclick="RepatReserve.dispatchFrom(${k})">Dispatch</button>`}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="empty-state-label">No containers on this reserve yet.</div></div>'}
+        ${ro ? '' : `<div class="rr-tools"><button class="action-btn" onclick="RepatReserve.openPicker()">+ Add from yard</button><button class="action-btn ghost" onclick="RepatReserve.openPaste()">Paste a list (any container)</button></div><div id="rrPicker"></div>`}
+        ${n ? `<div style="overflow:auto;max-height:420px"><table class="data-table"><thead><tr><th>In EIR</th><th>Container</th><th>Size</th><th>Cleared</th>${ro ? '' : '<th></th>'}${E.id && !E.closed && canDispatchRepat() ? '<th></th>' : ''}</tr></thead><tbody>${E.items.map((i, k) => `<tr><td>${esc(i.in_eir || '')}</td><td>${esc(i.container_no)}${i.not_in_system ? ' <span class="rr-b rr-amb" title="' + esc(i.not_in_system_note || 'Added by hand: the system does not show this container in the yard') + '">' + (i.reconciled_at ? 'not in system (reconciled)' : 'not in system') + '</span>' : ''}${otherLine(i, h.agent) && !i._ok ? ' <span class="rr-b rr-amb" title="Belongs to another shipping line">other line</span>' : ''}</td><td>${esc(i.size || '')}</td><td>${E.id && i.id && canWrite() ? `<input type="checkbox" ${i.cleared ? 'checked' : ''} onchange="RepatReserve.clearOne(${k},this.checked)">` : (i.cleared ? 'Yes' : '')}</td>${ro ? '' : `<td>${i.cleared ? '' : `<button class="action-btn ghost" onclick="RepatReserve.drop(${k})">Remove</button>`}</td>`}${E.id && !E.closed && canDispatchRepat() ? `<td>${i.cleared || !i.id ? '' : `<button class="action-btn" onclick="RepatReserve.dispatchFrom(${k})">Dispatch</button>`}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="empty-state-label">No containers on this reserve yet.</div></div>'}
       </div></div></div>`;
     const form = root.querySelector('.rr-form'); if (form && !ro) form.addEventListener('input', markDirty);
     if (S.pick) paintPicker();
@@ -350,7 +350,7 @@
         if (!confirm(odd.length + ' container' + (odd.length === 1 ? ' belongs' : 's belong') + ' to a different shipping line than ' + h.agent + ':\n' + odd.slice(0, 6).map(i => i.container_no).join(', ') + (odd.length > 6 ? ' …' : '') + '\n\nSave anyway?')) return lock(false);
         odd.forEach(i => { i._ok = true; });
       }
-      const { data, error } = await supabase.rpc('repat_reserve_save', { p_id: E.id, p_head: h, p_items: E.items.map(i => ({ container_no: i.container_no, in_eir: i.in_eir || '', size: i.size || '' })) });
+      const { data, error } = await supabase.rpc('repat_reserve_save', { p_id: E.id, p_head: h, p_items: E.items.map(i => ({ container_no: i.container_no, in_eir: i.in_eir || '', size: i.size || '', not_in_system: !!i.not_in_system, not_in_system_note: i.not_in_system_note || '' })) });
       if (error) throw error;
       if (!data || !data.id) throw new Error('The server did not confirm the save. Check the reserve list before trying again.');
       audit('Repat reserve saved', (data.reserve_ref || data.reserve_no) + ' · ' + E.items.length + ' containers · ' + h.agent);
@@ -445,6 +445,8 @@
     container_no: String(ic.container || '').trim().toUpperCase(), in_eir: ic.eirNumber || '', size: sizeOf(ic.ctype), type: ic.ctype || '', _line: ic.line || '',
     survey: ic.surveyStatus || '', dmg: (ic.repairs && ic.repairs.length) || 0, days: Math.max(0, Math.floor((Date.now() - new Date(ic.date).getTime()) / 864e5)),
   });
+  /* a container the system cannot find in the yard: added by hand and flagged so it can be reconciled later */
+  const manualInfo = (k, why) => ({ container_no: k, in_eir: '', size: '', type: '', _line: '', survey: '', dmg: 0, days: 0, not_in_system: true, not_in_system_note: why });
   const waitingSurvey = c => c.survey === 'awaiting_survey' || c.survey === 'escalated';
 
   RR.openPicker = () => { readHead(); S.pick = { mode: 'yard', q: '', items: [], total: 0, sel: new Map(), busy: false }; paintPicker(); loadPick(true); };
@@ -462,7 +464,7 @@
     if (P.mode === 'paste') {
       host.innerHTML = `<div class="panel" style="padding:12px"><div class="panel-title" style="margin-bottom:6px">Paste container numbers</div>
         <textarea id="rrPaste" rows="5" style="width:100%" placeholder="One per line, or separated by spaces or commas">${esc(P.left || '')}</textarea>
-        <p class="rr-note">Each number is checked against the yard. Containers that are not in the yard, or are held by another open reserve, are listed with the reason and skipped. Skipped numbers stay in the box so you can fix them.</p>
+        <p class="rr-note">Each number is checked against the yard. Containers the system does not show in the yard are still added and marked “not in system” so they can be reconciled later. Numbers held by another open reserve, or that are not a valid container number, are listed with the reason and skipped. Skipped numbers stay in the box so you can fix them.</p>
         <div class="rr-err" id="rrPasteMsg">${esc(P.msg || '')}</div>
         ${P.report && P.report.length ? `<ul class="rr-report">${P.report.map(x => '<li>' + esc(x) + '</li>').join('')}</ul>` : ''}
         <div class="rr-tools"><button class="action-btn" id="rrPasteGo" onclick="RepatReserve.addPasted()">Check and add</button><button class="action-btn ghost" onclick="RepatReserve.closePicker()">Cancel</button></div></div>`;
@@ -492,7 +494,7 @@
     P.items.forEach(c => { const k = norm(c.container_no); if (!S.taken.has(k) && !have.has(k)) P.sel.set(k, c); });
     paintPicker();
   };
-  const toItem = (c, ok) => ({ container_no: c.container_no, in_eir: c.in_eir, size: c.size, cleared: false, _line: c._line, _ok: !!ok });
+  const toItem = (c, ok) => ({ container_no: c.container_no, in_eir: c.in_eir, size: c.size, cleared: false, _line: c._line, _ok: !!ok, not_in_system: !!c.not_in_system, not_in_system_note: c.not_in_system_note || '' });
   RR.addPicked = () => {
     const P = S.pick; if (!P || !P.sel.size) return toast('Tick the containers to add', 'info');
     readHead();
@@ -538,10 +540,11 @@
             if (window.ICR && ICR.enabled) rows = await ICR.byContainer(k);
             else rows = ((state.db.interchange) || []).filter(r => norm(r.container) === k);
           } catch (e) { return skipped.push([k, 'could not be checked (' + fail(e) + ')']); }
-          if (!rows.length) return skipped.push([k, 'not found. Check the number']);
+          if (!/^[A-Z]{4}\d{7}$/.test(k)) return skipped.push([k, 'does not look like a container number (4 letters + 7 digits)']);
+          if (!rows.length) return added.push(manualInfo(k, 'not found in the system when added'));
           const live = rows.filter(r => r.type === 'Gate-In' || r.type === 'Depot-In').filter(r => r._inYard !== undefined ? r._inYard : window.icInYard(r, idx))
             .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-          if (!live) return skipped.push([k, 'not in the yard (already left)']);
+          if (!live) return added.push(manualInfo(k, 'system shows it as already left the yard when added'));
           added.push(rowInfo(live));
         } finally { done++; if (msg && done % 5 === 0) msg.textContent = 'Checked ' + done + ' of ' + nums.length + '…'; }
       }));
@@ -549,10 +552,11 @@
     const agent = S.E.head.agent, odd = added.filter(c => otherLine(c, agent));
     let allowOdd = true;
     if (odd.length && !confirm(odd.length + ' of the containers belong to a different shipping line than ' + agent + ':\n' + odd.slice(0, 6).map(c => c.container_no + ' (' + (lineCode(c._line) || '?') + ')').join(', ') + (odd.length > 6 ? ' …' : '') + '\n\nAdd them anyway?')) allowOdd = false;
+    const nf = added.filter(c => c.not_in_system).length;
     let n = 0;
     added.forEach(c => { if (otherLine(c, agent) && !allowOdd) return skipped.push([c.container_no, 'other shipping line (not added)']); S.E.items.push(toItem(c, true)); n++; });
     if (n) markDirty();
-    if (!skipped.length) { S.pick = null; renderEditor(); toast(n + ' container' + (n === 1 ? '' : 's') + ' added', 'success'); return; }
+    if (!skipped.length) { S.pick = null; renderEditor(); toast(n + ' container' + (n === 1 ? '' : 's') + ' added' + (nf ? ' (' + nf + ' marked not in system)' : ''), 'success', nf ? 5000 : undefined); return; }
     S.pick = { mode: 'paste', msg: n + ' added, ' + skipped.length + ' skipped:', left: skipped.map(x => x[0]).join('\n'), report: skipped.map(x => x[0] + ': ' + x[1]) };
     renderEditor();
     toast(n + ' added, ' + skipped.length + ' skipped', 'info', 5000);
