@@ -26,7 +26,7 @@
       tabs.className = "gd-tabs";
       const T = (id, label) => '<button type="button" class="gd-tab' + (id === "desk" ? " on" : "") + '" data-t="' + id + '" onclick="GateDesk.tab(\'' + id + "')\">" + label + "</button>";
       const LIc = window.GargoLI && GargoLI.can;
-      tabs.innerHTML = T("desk", "Gate desk") + (LIc && LIc.view() ? T("li", "Loading instructions") : "") + (LIc && LIc.complete() ? T("ld", "Loading desk") : "") + T("register", "Register");
+      tabs.innerHTML = T("desk", "Gate desk") + (LIc && LIc.view() ? T("li", "Loading instructions") : "") + (LIc && LIc.complete() ? T("ld", "Loading desk") : "") + T("register", "Register") + (window.GateRecords ? T("rec", "Records") : "");
       const desk = document.createElement("div");
       desk.id = "gsDesk";
       const li = document.createElement("div");
@@ -35,6 +35,10 @@
       const ld = document.createElement("div");
       ld.id = "gsLDHost";
       ld.style.display = "none";
+      const rc = document.createElement("div");
+      rc.id = "gsRecHost";
+      rc.style.display = "none";
+      sec.insertBefore(rc, sec.firstChild);
       sec.insertBefore(ld, sec.firstChild);
       sec.insertBefore(li, sec.firstChild);
       sec.insertBefore(desk, sec.firstChild);
@@ -48,7 +52,7 @@
     if (!sec) return;
     Array.prototype.forEach.call(sec.children, (ch) => {
       if (ch.id === "gsTabs") return;
-      const own = { gsDesk: "desk", gsLIHost: "li", gsLDHost: "ld" }[ch.id];
+      const own = { gsDesk: "desk", gsLIHost: "li", gsLDHost: "ld", gsRecHost: "rec" }[ch.id];
       ch.style.display = own ? S.tab === own ? "" : "none" : S.tab === "register" ? "" : "none";
     });
     Array.prototype.forEach.call(document.querySelectorAll("#gsTabs .gd-tab"), (b) => b.classList.toggle("on", b.getAttribute("data-t") === S.tab));
@@ -61,6 +65,8 @@
       if (window.GargoLI) GargoLI.open("gsLIHost");
     } else if (t === "ld") {
       if (window.GargoLI) GargoLI.renderDesk("gsLDHost");
+    } else if (t === "rec") {
+      if (window.GateRecords) GateRecords.open("gsRecHost");
     } else if (window.GateSec) GateSec.render();
   };
   async function load() {
@@ -120,6 +126,10 @@
     }
     if (S.tab === "ld") {
       if (window.GargoLI) GargoLI.renderDesk("gsLDHost");
+      return;
+    }
+    if (S.tab === "rec") {
+      if (window.GateRecords) GateRecords.open("gsRecHost");
       return;
     }
     if (S.tab !== "desk") return;

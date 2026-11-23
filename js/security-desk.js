@@ -1,12 +1,5 @@
 'use strict';
-/* Gargo Gate Processes desk (was the guard desk). Loads AFTER gate-security.js and loading-instructions.js.
-   The Gate Processes section has four tabs: Gate desk, Loading instructions (Part 1 form + register), Loading desk (Part 2) and Register.
-   Original description:
-   The Gate Processes section gets two tabs:
-     "Gate desk"  - big, touch-friendly: Vehicle In / Vehicle Out, search by plate, and one card per loading instruction
-                    (expected trucks) with Verify, View slip and Record out.
-     "Register"   - the existing gate register (unchanged).
-   Data: loading_instructions (read) and the li_verify() database function (write). Everything is checked again by the database. */
+
 (function () {
   const SEC = 'gatesecurity';
   const $ = id => document.getElementById(id);
@@ -26,11 +19,12 @@
       const tabs = document.createElement('div'); tabs.id = 'gsTabs'; tabs.className = 'gd-tabs';
       const T = (id, label) => '<button type=\"button\" class=\"gd-tab' + (id === 'desk' ? ' on' : '') + '\" data-t=\"' + id + '\" onclick=\"GateDesk.tab(\'' + id + '\')\">' + label + '</button>';
       const LIc = window.GargoLI && GargoLI.can;
-      tabs.innerHTML = T('desk', 'Gate desk') + (LIc && LIc.view() ? T('li', 'Loading instructions') : '') + (LIc && LIc.complete() ? T('ld', 'Loading desk') : '') + T('register', 'Register');
+      tabs.innerHTML = T('desk', 'Gate desk') + (LIc && LIc.view() ? T('li', 'Loading instructions') : '') + (LIc && LIc.complete() ? T('ld', 'Loading desk') : '') + T('register', 'Register') + (window.GateRecords ? T('rec', 'Records') : '');
       const desk = document.createElement('div'); desk.id = 'gsDesk';
       const li = document.createElement('div'); li.id = 'gsLIHost'; li.style.display = 'none';
       const ld = document.createElement('div'); ld.id = 'gsLDHost'; ld.style.display = 'none';
-      sec.insertBefore(ld, sec.firstChild); sec.insertBefore(li, sec.firstChild); sec.insertBefore(desk, sec.firstChild); sec.insertBefore(tabs, sec.firstChild);
+      const rc = document.createElement('div'); rc.id = 'gsRecHost'; rc.style.display = 'none';
+      sec.insertBefore(rc, sec.firstChild); sec.insertBefore(ld, sec.firstChild); sec.insertBefore(li, sec.firstChild); sec.insertBefore(desk, sec.firstChild); sec.insertBefore(tabs, sec.firstChild);
       S.mounted = true;
     }
     applyTab();
@@ -39,7 +33,7 @@
     const sec = $('sec-' + SEC); if (!sec) return;
     Array.prototype.forEach.call(sec.children, ch => {
       if (ch.id === 'gsTabs') return;
-      const own = { gsDesk: 'desk', gsLIHost: 'li', gsLDHost: 'ld' }[ch.id];
+      const own = { gsDesk: 'desk', gsLIHost: 'li', gsLDHost: 'ld', gsRecHost: 'rec' }[ch.id];
       ch.style.display = own ? (S.tab === own ? '' : 'none') : (S.tab === 'register' ? '' : 'none');
     });
     Array.prototype.forEach.call(document.querySelectorAll('#gsTabs .gd-tab'), b => b.classList.toggle('on', b.getAttribute('data-t') === S.tab));
@@ -49,6 +43,7 @@
     if (t === 'desk') D.render();
     else if (t === 'li') { if (window.GargoLI) GargoLI.open('gsLIHost'); }
     else if (t === 'ld') { if (window.GargoLI) GargoLI.renderDesk('gsLDHost'); }
+    else if (t === 'rec') { if (window.GateRecords) GateRecords.open('gsRecHost'); }
     else if (window.GateSec) GateSec.render();
   };
 
@@ -79,6 +74,7 @@
     css(); D.mount();
     if (S.tab === 'li') { if (window.GargoLI) GargoLI.open('gsLIHost'); return; }
     if (S.tab === 'ld') { if (window.GargoLI) GargoLI.renderDesk('gsLDHost'); return; }
+    if (S.tab === 'rec') { if (window.GateRecords) GateRecords.open('gsRecHost'); return; }
     if (S.tab !== 'desk') return;
     const host = $('gsDesk'); if (!host) return;
     if (!host.dataset.built) { host.dataset.built = '1'; paintShell(host); }

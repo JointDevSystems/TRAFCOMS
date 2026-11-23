@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "6.0.1";
+const CACHE_VERSION = "6.7.0";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -150,6 +150,7 @@ const SHELL_FILES = [
   "./js/finance.js",
   "./js/form-designer.js",
   "./js/form-guard.js",
+  "./js/gate-records.js",
   "./js/gate-security.js",
   "./js/ghd-tariff-schedule.js",
   "./js/hr-records.js",
