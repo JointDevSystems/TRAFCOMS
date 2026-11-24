@@ -263,7 +263,10 @@ async function ensureOutwardInterchange(t) {
     const eirNumber = sanitize(t.eirNumber || '') || await nextEirNumber('Gate-Out', line);
     const rec = {
       id, container: cont, type: 'Gate-Out', ctype: t.ctype || (inw && inw.ctype) || '', line, condition: outStatus || 'Good',
-      truck: t.truckId || '', driver: t.driverId || '', truckRegText: '', driverNameText: '', driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
+      truck: t.truckId || '', driver: t.driverId || '',
+      truckRegText: (() => { const x = (state.db.trucks || []).find(v => v.id === t.truckId); return x ? sanitize(x.reg || '') : ''; })(),
+      driverNameText: (() => { const x = (state.db.drivers || []).find(v => v.id === t.driverId); return x ? sanitize(x.name || '') : ''; })(),
+      driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
       transporter: sanitize((t.custom && t.custom.transporter) || ''), trailerNo: sanitize((t.custom && t.custom.trailer_no) || ''),   // dispatch-form fields feed the interchange's own columns
       eirNumber, blNumber: (inw && inw.blNumber) || '', guaranteeNo: (inw && inw.guaranteeNo) || '', clerkName: (state.profile && state.profile.name) || '',
       vessel: t.vessel || (inw && inw.vessel) || '', voyage: t.voyage || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
@@ -275,6 +278,21 @@ async function ensureOutwardInterchange(t) {
     };
     const saved = await persistNewInterchange(rec);
     if (!saved.ok) return { error: saved.message };
+    /* Boxes the interchange record does not carry: from the repat reserve if the container is on one (port of dispatch = final destination,
+       outward date = release order date, shipper), else the dispatch's own destination. A failure here never blocks the EIR. */
+    try {
+      if (navigator.onLine) {
+        const q = await supabase.from('repat_reserve_items').select('reserve:repat_reserves(outward_date,port_of_dispatch,shipper_name,release_order_no)').ilike('container_no', cont).limit(1);
+        const rv = q.data && q.data[0] && q.data[0].reserve;
+        const patch = {};
+        const dest = (rv && rv.port_of_dispatch) || (t.dest && t.dest !== '—' ? t.dest : '');
+        if (dest) patch.final_destination = sanitize(dest);
+        if (rv && rv.outward_date) patch.release_order_date = rv.outward_date;
+        if (!rec.receivingParty && rv && rv.shipper_name) { patch.receiving_party = sanitize(rv.shipper_name); rec.receivingParty = patch.receiving_party; }
+        if (!rec.releaseOrderNo && rv && rv.release_order_no) { patch.release_order_no = sanitize(rv.release_order_no); rec.releaseOrderNo = patch.release_order_no; }
+        if (Object.keys(patch).length) await supabase.from('interchange').update(patch).eq('id', id);
+      }
+    } catch (e) { console.warn('outward EIR extras:', e && e.message); }
     addAudit(state.profile.username, 'Outward Interchange Auto-Issued', `${cont} · ${eirNumber}`);
     try { buildBadges(); } catch (e) {}
     return { created: rec };

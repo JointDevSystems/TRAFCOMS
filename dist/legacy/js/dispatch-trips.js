@@ -384,8 +384,14 @@ async function ensureOutwardInterchange(t) {
       condition: outStatus || "Good",
       truck: t.truckId || "",
       driver: t.driverId || "",
-      truckRegText: "",
-      driverNameText: "",
+      truckRegText: (() => {
+        const x = (state.db.trucks || []).find((v) => v.id === t.truckId);
+        return x ? sanitize(x.reg || "") : "";
+      })(),
+      driverNameText: (() => {
+        const x = (state.db.drivers || []).find((v) => v.id === t.driverId);
+        return x ? sanitize(x.name || "") : "";
+      })(),
       driverIdNumber: (() => {
         const d = (state.db.drivers || []).find((x) => x.id === t.driverId);
         return d ? sanitize(d.idNo || d.id_no || "") : "";
@@ -417,6 +423,27 @@ async function ensureOutwardInterchange(t) {
     };
     const saved = await persistNewInterchange(rec);
     if (!saved.ok) return { error: saved.message };
+    try {
+      if (navigator.onLine) {
+        const q = await supabase.from("repat_reserve_items").select("reserve:repat_reserves(outward_date,port_of_dispatch,shipper_name,release_order_no)").ilike("container_no", cont).limit(1);
+        const rv = q.data && q.data[0] && q.data[0].reserve;
+        const patch = {};
+        const dest = rv && rv.port_of_dispatch || (t.dest && t.dest !== "\u2014" ? t.dest : "");
+        if (dest) patch.final_destination = sanitize(dest);
+        if (rv && rv.outward_date) patch.release_order_date = rv.outward_date;
+        if (!rec.receivingParty && rv && rv.shipper_name) {
+          patch.receiving_party = sanitize(rv.shipper_name);
+          rec.receivingParty = patch.receiving_party;
+        }
+        if (!rec.releaseOrderNo && rv && rv.release_order_no) {
+          patch.release_order_no = sanitize(rv.release_order_no);
+          rec.releaseOrderNo = patch.release_order_no;
+        }
+        if (Object.keys(patch).length) await supabase.from("interchange").update(patch).eq("id", id);
+      }
+    } catch (e) {
+      console.warn("outward EIR extras:", e && e.message);
+    }
     addAudit(state.profile.username, "Outward Interchange Auto-Issued", "".concat(cont, " \xB7 ").concat(eirNumber));
     try {
       buildBadges();

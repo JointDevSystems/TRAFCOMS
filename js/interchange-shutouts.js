@@ -861,11 +861,37 @@ async function icSlipPrefetch(ic) {
   const ins = Array.from(seen.values()).filter(i => isInwardMovement(i.type) && !icAwaitingSurvey(i)).sort((a, b) => new Date(b.date) - new Date(a.date));
   S.inward = ins.find(i => i.eirNumber && new Date(i.date).getTime() <= outAt) || ins.find(i => i.eirNumber) || ins[0] || null;
 
+  S.names = {};
   if (!navigator.onLine || typeof supabase === 'undefined') return;
   try {
     const { data, error } = await supabase.from('interchange').select('release_order_date,final_destination,csc_approval').eq('id', ic.id).maybeSingle();
     if (!error && data) S.extra = data;                    // error = migration not run yet: boxes stay blank
   } catch (e) { /* ignore */ }
+  /* Line, truck and driver are stored as ids. If this device's lists do not hold them (older copy, partial load), ask the database,
+     so the slip prints a name and never a raw id. */
+  try {
+    if (ic.line && !(state.db.shippingLines || []).some(l => l.id === ic.line)) {
+      const r = await supabase.from('shipping_lines').select('code,name').eq('id', ic.line).maybeSingle();
+      if (r.data) S.names.line = r.data.name || r.data.code || '';
+    }
+    if (ic.truck && !ic.truckRegText && !(state.db.trucks || []).some(t => t.id === ic.truck)) {
+      const r = await supabase.from('trucks').select('reg').eq('id', ic.truck).maybeSingle();
+      if (r.data) S.names.truck = r.data.reg || '';
+    }
+    if (ic.driver && (!ic.driverNameText || !ic.driverIdNumber) && !(state.db.drivers || []).some(d => d.id === ic.driver)) {
+      const r = await supabase.from('drivers').select('name,id_no').eq('id', ic.driver).maybeSingle();
+      if (r.data) { S.names.driver = r.data.name || ''; S.names.driverId = r.data.id_no || ''; }
+    }
+  } catch (e) { /* the slip prints what it has */ }
+  /* No inward interchange for this container? Use its inward movement in the Gate Processes records, if one was logged. */
+  if (!S.inward) {
+    try {
+      const pat = '%' + String(ic.container || '').toUpperCase().replace(/[^A-Z0-9]/g, '').split('').join('%') + '%';   // matches any spacing / dashes
+      const g = await supabase.from('gate_records').select('direction,record_date,time_at,eir_no,line,size_ft,truck_no,trailer_no,driver_name,id_no,company')
+        .ilike('container_no', pat).eq('direction', 'in').order('record_date', { ascending: false }).limit(1);
+      if (!g.error && g.data && g.data[0]) S.gate = g.data[0];
+    } catch (e) { /* gate records are optional */ }
+  }
   if (S.inward && S.inward.surveyId) {
     try {
       let r = await supabase.from('depot_surveys').select('tare_weight,mgwt,iso_code,csc_approval').eq('id', S.inward.surveyId).maybeSingle();
@@ -883,11 +909,13 @@ function icBuildOutwardSlip(ic, doc, opts) {
   const M = 14, W = 182, LINE = IC_PAL.HAIR, INK = 20, VAL = 30, P = IC_PAL;
 
   // ── data ──────────────────────────────────────────────────────────────────────────────
+  const N = S.names || {}, G = S.gate || null;
   const lineRec = (state.db.shippingLines || []).find(l => l.id === ic.line);
-  const agent = lineRec ? (lineRec.code || lineRec.name) : (ic.line ? lineName(ic.line) : '');
-  const sz = ic.ctype ? decomposeCtype(ic.ctype) : { size: '', type: '' };
+  const agent = lineRec ? (lineRec.name || lineRec.code || '') : (N.line || '');           // a name, never the id
+  const sz = ic.ctype ? decomposeCtype(ic.ctype) : (G && G.size_ft ? { size: String(G.size_ft), type: '' } : { size: '', type: '' });
   const drv = ic.driver ? (state.db.drivers || []).find(d => d.id === ic.driver) : null;
-  const truckReg = ic.truck ? String(truckName(ic.truck)).split(' · ')[0] : (ic.truckRegText || '');
+  const trk = ic.truck ? (state.db.trucks || []).find(t => t.id === ic.truck) : null;
+  const truckReg = ic.truckRegText || (trk && trk.reg) || N.truck || '';
   const tripRef = trip && trip.ref && !/^REF-\d+$/.test(trip.ref) ? trip.ref : '';
   const rmk = String(ic.notes || '').trim();
   const userRemark = /^(Auto-issued|Booking\s)/.test(rmk) ? '' : rmk;     // system notes are internal: never printed
@@ -907,11 +935,11 @@ function icBuildOutwardSlip(ic, doc, opts) {
     csc: X.csc_approval || sv.csc_approval || '',
     transporter: ic.transporter || '',
     lorry: [truckReg, ic.trailerNo].filter(Boolean).join('/'),
-    driver: ic.driver ? driverName(ic.driver) : (ic.driverNameText || ''),
-    driverId: ic.driverIdNumber || (drv && (drv.idNo || drv.id_no)) || '',
+    driver: ic.driverNameText || (drv && drv.name) || N.driver || '',
+    driverId: ic.driverIdNumber || (drv && (drv.idNo || drv.id_no)) || N.driverId || '',
     preparedBy: opts.printedBy || '', clerk: ic.clerkName || '',
     remarks: [ic.condition, userRemark].filter(Boolean).join(' — '),
-    inDate: inw ? icFmtDMY(inw.date) : '', inEir: inw ? inw.eirNumber || '' : '', inVessel: inw ? inw.vessel || '' : '', inVoyage: inw ? inw.voyage || '' : '',
+    inDate: inw ? icFmtDMY(inw.date) : (G ? icFmtDMY(G.record_date) : ''), inEir: inw ? inw.eirNumber || '' : (G ? G.eir_no || '' : ''), inVessel: inw ? inw.vessel || '' : '', inVoyage: inw ? inw.voyage || '' : '',
   };
 
   // ── drawing helpers (mm, A4) ────────────────────────────────────────────────────────────
