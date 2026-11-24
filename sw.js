@@ -77,6 +77,7 @@ const SHELL_FILES = [
   './js/form-guard.js',
   './js/access-control.js',
   './js/gate-records.js',
+  './js/unit-reserve.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
