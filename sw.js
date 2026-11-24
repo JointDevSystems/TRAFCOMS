@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '6.4.1';
+const CACHE_VERSION = '6.4.3';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
