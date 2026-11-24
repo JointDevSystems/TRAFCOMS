@@ -82,6 +82,7 @@
 .gs-dir::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .gs-dir.in{color:var(--blue);background:var(--blue-dim);border-color:var(--blue)}
 .gs-dir.out{color:var(--gold);background:var(--gold-dim);border-color:var(--gold)}
+.gs-dir.in_out{color:var(--purple);background:rgba(167,139,250,.12);border-color:var(--purple)}
 .gs-mono{font-family:var(--font-mono,monospace);font-weight:600;color:var(--text)}
 .gs-dim{color:var(--text-3)}
 .gs-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--text-3);font-weight:400}

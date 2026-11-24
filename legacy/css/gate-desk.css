@@ -467,6 +467,11 @@
   background: var(--gold-dim);
   border-color: var(--gold);
 }
+.gs-dir.in_out {
+  color: var(--purple);
+  background: rgba(167, 139, 250, .12);
+  border-color: var(--purple);
+}
 .gs-mono {
   font-family: var(--font-mono,monospace);
   font-weight: 600;
