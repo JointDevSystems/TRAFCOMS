@@ -1,13 +1,5 @@
 'use strict';
-/* Gargo Reserve Sale Units + Reserve Shippers Units.
-   Same behaviour as Reserve Repat (repat-reserve.js): an administrator holds containers for a sale or a shipper's booking,
-   they are drawn from that list when dispatched, and each one is marked cleared automatically when it gates out.
-   One code path builds both pages. Load this AFTER repat-reserve.js. Needs sql/unit-reserve.sql run once in Supabase.
 
-   Settings keys (all optional):
-     reserve.sale.enforce / reserve.shipper.enforce = true   a Sale unit / Shipper outward must come from its reserve list (OFF unless set to true)
-     reserve.sale.autoClear / reserve.shipper.autoClear = false   stop marking containers cleared at gate-out
-   Repat's own rule (repat.enforce) is untouched. */
 (function () {
   const $ = id => document.getElementById(id);
   if (typeof ROLE_SIDEBAR === 'undefined' || typeof ALL_SIDEBAR_SECTIONS === 'undefined') return console.error('unit-reserve.js needs admin-ui-shell.js first');
@@ -803,28 +795,40 @@
     } catch (e) {}
   }, 15000);
 
-  /* Dispatch Console: choosing Sale unit / Shipper locks the form to the reserved list (only when that rule is switched on) */
+  /* Dispatch Console: choosing Sale unit / Shipper always offers "Pick from reserved list", the same as Repat.
+     The form is only LOCKED to that list (work type fixed, container typed-in disabled) when reserve.<kind>.enforce = true. */
   function syncDispatchForm() {
     const st = $('d_outwardtype'), wt = $('d_worktype'), c = $('d_container'); if (!st || !wt || !c) return;
     const A = forType(st.value), on = !!(A && A.enforced());
-    APIS.forEach(a => { const b = $('d_' + a.kind.p + '_box'); if (b && !(on && a === A)) b.style.display = 'none'; });
-    if (on) {
-      let box = $('d_' + A.kind.p + '_box');
-      if (!box) {
-        box = document.createElement('div'); box.id = 'd_' + A.kind.p + '_box'; box.className = 'ops-notice';
-        box.style.cssText = 'display:none;margin-bottom:12px;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap';
-        const row = $('d_outwardtype_row'); if (row && row.parentNode) row.parentNode.insertBefore(box, row.nextSibling);
-      }
-      if (c.dataset.rsPh === undefined) c.dataset.rsPh = c.placeholder || '';
-      wt.value = 'Depot → Port'; wt.disabled = true; c.readOnly = true; c.placeholder = 'Pick from the ' + A.kind.nav + ' list';
-      box.style.display = 'flex';
-      box.innerHTML = '<span>' + esc(A.kind.short) + ' containers must come from the <b>' + esc(A.kind.nav) + '</b> list. Work type is fixed to Depot → Port.</span><button type="button" class="action-btn" onclick="' + A.api + '.pickForDispatch()">Pick from reserved list</button>';
-      A.ensureLoaded();
-    } else if (c.dataset.rsPh !== undefined) {      // only undo what this file locked; Repat manages its own
+    APIS.forEach(a => { const b = $('d_' + a.kind.p + '_box'); if (b && a !== A) b.style.display = 'none'; });
+    /* undo only what this file locked (Repat manages its own lock) */
+    const unlock = () => {
       const repatOn = (() => { try { return !!(window.RepatReserve && RepatReserve.enforced() && st.value === 'Repatriation to Port'); } catch (e) { return false; } })();
       if (!repatOn) { wt.disabled = false; c.readOnly = false; }
-      c.placeholder = c.dataset.rsPh; delete c.dataset.rsPh;
+      if (c.dataset.rsPh !== undefined) { c.placeholder = c.dataset.rsPh; delete c.dataset.rsPh; }
+    };
+    if (!A) { if (c.dataset.rsPh !== undefined) unlock(); return; }
+    const p = A.kind.p;
+    let box = $('d_' + p + '_box');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'd_' + p + '_box'; box.className = 'ops-notice';
+      box.style.cssText = 'display:none;margin-bottom:12px;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap';
+      const row = $('d_outwardtype_row'); if (row && row.parentNode) row.parentNode.insertBefore(box, row.nextSibling);
     }
+    if (on) {
+      if (c.dataset.rsPh === undefined) c.dataset.rsPh = c.placeholder || '';
+      wt.value = 'Depot → Port'; wt.disabled = true; c.readOnly = true; c.placeholder = 'Pick from the ' + A.kind.nav + ' list';
+    } else if (c.dataset.rsPh !== undefined) unlock();
+    const intro = on
+      ? esc(A.kind.short) + ' containers must come from the <b>' + esc(A.kind.nav) + '</b> list. Work type is fixed to Depot → Port.'
+      : 'Take the container from the <b>' + esc(A.kind.nav) + '</b> list. It fills the line, destination, vessel and release order.';
+    const paint = () => {
+      let n = 0; try { n = A.available().length; } catch (e) {}
+      const count = A.loaded() ? '<span id="d_' + p + '_n" style="display:block;margin-top:2px;font-size:11px;color:var(--text-3)">' + n + ' reserved container' + (n === 1 ? '' : 's') + ' waiting</span>' : '';
+      box.innerHTML = '<span>' + intro + count + '</span><button type="button" class="action-btn" onclick="' + A.api + '.pickForDispatch()">Pick from reserved list</button>';
+    };
+    box.style.display = 'flex'; paint();
+    A.ensureLoaded().then(() => { if ($('d_outwardtype') && $('d_outwardtype').value === A.type) paint(); }).catch(() => {});
   }
 
   /* DepOps manual outward: offer the reserved containers and fill the shipping line */

@@ -1322,27 +1322,9 @@
     const A = forType(st.value), on = !!(A && A.enforced());
     APIS.forEach((a) => {
       const b = $("d_" + a.kind.p + "_box");
-      if (b && !(on && a === A)) b.style.display = "none";
+      if (b && a !== A) b.style.display = "none";
     });
-    if (on) {
-      let box = $("d_" + A.kind.p + "_box");
-      if (!box) {
-        box = document.createElement("div");
-        box.id = "d_" + A.kind.p + "_box";
-        box.className = "ops-notice";
-        box.style.cssText = "display:none;margin-bottom:12px;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap";
-        const row = $("d_outwardtype_row");
-        if (row && row.parentNode) row.parentNode.insertBefore(box, row.nextSibling);
-      }
-      if (c.dataset.rsPh === void 0) c.dataset.rsPh = c.placeholder || "";
-      wt.value = "Depot \u2192 Port";
-      wt.disabled = true;
-      c.readOnly = true;
-      c.placeholder = "Pick from the " + A.kind.nav + " list";
-      box.style.display = "flex";
-      box.innerHTML = "<span>" + esc(A.kind.short) + " containers must come from the <b>" + esc(A.kind.nav) + '</b> list. Work type is fixed to Depot \u2192 Port.</span><button type="button" class="action-btn" onclick="' + A.api + '.pickForDispatch()">Pick from reserved list</button>';
-      A.ensureLoaded();
-    } else if (c.dataset.rsPh !== void 0) {
+    const unlock = () => {
       const repatOn = (() => {
         try {
           return !!(window.RepatReserve && RepatReserve.enforced() && st.value === "Repatriation to Port");
@@ -1354,9 +1336,48 @@
         wt.disabled = false;
         c.readOnly = false;
       }
-      c.placeholder = c.dataset.rsPh;
-      delete c.dataset.rsPh;
+      if (c.dataset.rsPh !== void 0) {
+        c.placeholder = c.dataset.rsPh;
+        delete c.dataset.rsPh;
+      }
+    };
+    if (!A) {
+      if (c.dataset.rsPh !== void 0) unlock();
+      return;
     }
+    const p = A.kind.p;
+    let box = $("d_" + p + "_box");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "d_" + p + "_box";
+      box.className = "ops-notice";
+      box.style.cssText = "display:none;margin-bottom:12px;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap";
+      const row = $("d_outwardtype_row");
+      if (row && row.parentNode) row.parentNode.insertBefore(box, row.nextSibling);
+    }
+    if (on) {
+      if (c.dataset.rsPh === void 0) c.dataset.rsPh = c.placeholder || "";
+      wt.value = "Depot \u2192 Port";
+      wt.disabled = true;
+      c.readOnly = true;
+      c.placeholder = "Pick from the " + A.kind.nav + " list";
+    } else if (c.dataset.rsPh !== void 0) unlock();
+    const intro = on ? esc(A.kind.short) + " containers must come from the <b>" + esc(A.kind.nav) + "</b> list. Work type is fixed to Depot \u2192 Port." : "Take the container from the <b>" + esc(A.kind.nav) + "</b> list. It fills the line, destination, vessel and release order.";
+    const paint = () => {
+      let n = 0;
+      try {
+        n = A.available().length;
+      } catch (e) {
+      }
+      const count = A.loaded() ? '<span id="d_' + p + '_n" style="display:block;margin-top:2px;font-size:11px;color:var(--text-3)">' + n + " reserved container" + (n === 1 ? "" : "s") + " waiting</span>" : "";
+      box.innerHTML = "<span>" + intro + count + '</span><button type="button" class="action-btn" onclick="' + A.api + '.pickForDispatch()">Pick from reserved list</button>';
+    };
+    box.style.display = "flex";
+    paint();
+    A.ensureLoaded().then(() => {
+      if ($("d_outwardtype") && $("d_outwardtype").value === A.type) paint();
+    }).catch(() => {
+    });
   }
   function syncManual() {
     const st = $("depopsManualOutwardType"), c = $("depopsManualContainer");
