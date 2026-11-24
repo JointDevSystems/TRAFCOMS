@@ -697,12 +697,14 @@
   window.addEventListener('load', () => setTimeout(watchPickers, 0));
 
   /* ── REPAT OUTWARD RULE ────────────────────────────────────────────────────────────────────────────
-     A container going out as Repat (Dispatch Console single or bulk, DepOps outward) must be on an OPEN reserve and not yet cleared.
+     A container going out as Repat (Dispatch Console single, DepOps outward) must be on an OPEN reserve and not yet cleared.
+     EXCEPTION: the Dispatch Console BULK UPLOAD is exempt, so records that are not on a reserve can still be uploaded in bulk (Settings key repat.bulkExempt = false puts the check back).
      Containers are drawn from this list, never typed in. Switch the rule off for everyone: Settings key repat.enforce = false.
      Shipper and Sale Unit are not affected yet. */
   const REPAT = 'Repatriation to Port';
   const isRepat = v => v === REPAT;
   const enforceOn = () => { try { return !(window.cfgGet && window.cfgGet('repat.enforce') === false); } catch (e) { return true; } };
+  const bulkExempt = () => { try { return !(window.cfgGet && window.cfgGet('repat.bulkExempt') === false); } catch (e) { return true; } };
   function canDispatchRepat() { try { return isAdmin() || ['ops', 'dispatch', 'clerk'].indexOf(currentRole()) >= 0; } catch (e) { return false; } }
   RR.enforced = enforceOn;
   RR.canDispatch = canDispatchRepat;
@@ -882,13 +884,13 @@
       };
       w._rr = true; window.depOpsCreateManualOutward = w;
     }
-    /* Dispatch Console bulk upload: stop the whole file if any Repat row is not on a reserve (rows are re-checked against the live list) */
+    /* Dispatch Console bulk upload: EXEMPT from the reserve rule by default. Only when repat.bulkExempt = false does it stop the whole file if any Repat row is not on a reserve. */
     const fk = window.processBulkDispatch;
     if (typeof fk === 'function' && !fk._rr) {
       const OUT = { depotport: 1, depottoport: 1, outward: 1, out: 1, dispatch: 1 }, INN = { portdepot: 1, porttodepot: 1, inward: 1, 'in': 1 };
       const TYPES = { repatriationtoport: 1, repatriation: 1, repat: 1, shippersexport: 0, 'export': 0, shippers: 0, shipper: 0, saleunits: 0, sale: 0 };
       const w = async function () {
-        if (enforceOn()) {
+        if (enforceOn() && !bulkExempt()) {      // bulk upload is exempt unless repat.bulkExempt = false
           try {
             const prev = $('bulkDispatchPreview'); let rows = []; try { rows = JSON.parse((prev && prev.dataset.rows) || '[]'); } catch (e) {}
             const dir = (($('bd_bulk_direction') || {}).value === 'in') ? 'in' : 'out', batchType = (($('bd_bulk_outwardtype') || {}).value) || REPAT;
