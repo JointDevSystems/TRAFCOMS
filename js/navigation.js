@@ -286,6 +286,9 @@
     tripreports: ['reportcentre', 'reports', 'usermgmt', 'settings'],
     livetracking: ['trucks', 'trips', 'drivers'], finance: ['approvals', 'invoicing', 'requisitions', 'hr', 'reportcentre'], approvals: ['finance', 'requisitions', 'hr'],
     hr: ['people', 'finance', 'drivers', 'reportcentre'], people: ['hr', 'drivers', 'usermgmt'], usermgmt: ['people', 'settings', 'hr'], settings: ['usermgmt', 'reports', 'reportcentre'],
+    repatreserve: ['salereserve', 'shipperreserve', 'dispatch', 'prestaking', 'interchange', 'shippinglines'],
+    salereserve: ['repatreserve', 'shipperreserve', 'dispatch', 'interchange', 'invoicing', 'shippinglines'],
+    shipperreserve: ['repatreserve', 'salereserve', 'dispatch', 'prestaking', 'interchange', 'shippinglines'],
     publicbookings: ['depops', 'inward', 'invoicing', 'shippinglines'], depops: ['inward', 'interchange', 'allocation', 'publicbookings', 'depotreport', 'shutout', 'prestaking'],
   };
 

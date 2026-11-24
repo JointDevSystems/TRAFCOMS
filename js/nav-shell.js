@@ -39,7 +39,7 @@
   const AREAS = [
     { id: 'home', label: 'Home', short: 'Home', blurb: 'Where you start', hue: '#D9B23A', icon: IC.home, groups: [['', ['dashboard']]] },
     { id: 'depot', label: 'Depot', short: 'Depot', blurb: 'Gate, yard and shipping lines', hue: '#D9B23A', icon: IC.depot,
-      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout', 'gatesecurity', 'loadingdesk']], ['Vessels and lines', ['prestaking', 'repatreserve', 'depotreport', 'shippinglines']]] },
+      groups: [['Gate and yard', ['depops', 'inward', 'publicbookings', 'interchange', 'shutout', 'gatesecurity', 'loadingdesk']], ['Vessels and lines', ['prestaking', 'repatreserve', 'salereserve', 'shipperreserve', 'depotreport', 'shippinglines']]] },
     { id: 'fleet', label: 'Fleet', short: 'Fleet', blurb: 'Trucks, drivers and trips', hue: '#38BDF8', icon: IC.fleet,
       groups: [['Movement', ['dispatch', 'trips', 'livetracking']], ['Assets', ['trucks', 'drivers', 'maintenance', 'fuel']]] },
     { id: 'compliance', label: 'Compliance', short: 'Compliance', blurb: 'Requests and workshop jobs', hue: '#2DD4BF', icon: IC.compliance,
@@ -64,6 +64,8 @@
     loadingdesk: 'Loading clerk: complete Part 2 of loading instructions',
     prestaking: 'Containers arriving at port and loading onto vessels',
     repatreserve: 'Hold empty containers for a shipping line\'s repat request',
+    salereserve: 'Hold containers for a sale until the buyer collects them',
+    shipperreserve: 'Hold containers for a shipper\'s booking and vessel run',
     depotreport: 'Inward and outward register',
     shippinglines: 'Shipping lines, contacts and portal links',
     dispatch: 'Assign trucks and drivers to waiting jobs',
@@ -89,6 +91,7 @@
     settings: 'System settings and thresholds',
   };
   const KW = {
+    repatreserve: 'repatriation empty hold reserve', salereserve: 'sale units buyer hold reserve', shipperreserve: 'shippers export units vessel voyage hold reserve',
     interchange: 'gate in out eir receipt', gatesecurity: 'guard vehicle truck trailer driver register gate pass log receiving releasing officer loading instruction verify gate processes', loadingdesk: 'loading clerk field marshal part 2 containers loaded releasing instruction', inward: 'receive arrival gate in', shutout: 'refused rejected', trips: 'journey haulage',
     livetracking: 'map gps position wialon', finance: 'receipts bills expenses suppliers money', hr: 'leave payroll attendance staff',
     people: 'employees staff', invoicing: 'billing rates customers', approvals: 'inbox pending authorise', trucks: 'vehicles fleet',
