@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "6.4.4";
+const CACHE_VERSION = "6.4.5";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -182,6 +182,7 @@ const SHELL_FILES = [
   "./js/tablet.js",
   "./js/tracking.js",
   "./js/trucks-drivers.js",
+  "./js/unit-reserve.js",
   "./js/vessel-prestaking.js",
   "./manifest.json",
   "../icons/icon-192.png",
