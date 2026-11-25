@@ -381,10 +381,24 @@ function flagIfImplausibleDate(dt, issueTags, flagged, label) {
 }
 
 
+/* Dates outside this window are treated as bad data (e.g. an Excel serial read as a year) and never saved. */
+function isSaneDate(d) { const y = d instanceof Date ? d.getFullYear() : NaN; return y >= 1990 && y <= 2100; }
+/* value -> ISO string the database accepts, or `fallback` when the value is missing / not a believable date */
+function safeIso(v, fallback) {
+  if (v == null || v === '') return fallback === undefined ? null : fallback;
+  const d = v instanceof Date ? v : new Date(v);
+  return (!isNaN(d.getTime()) && isSaneDate(d)) ? d.toISOString() : (fallback === undefined ? null : fallback);
+}
 function parseFlexibleDate(raw) {
   if (raw == null || raw === '') return null;
-  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
+  if (raw instanceof Date) return (isNaN(raw.getTime()) || !isSaneDate(raw)) ? null : raw;
   const s = String(raw).trim();
+  /* Excel serial number (e.g. 46348 = 21 Nov 2026): new Date('46348') would read it as the YEAR 46348 */
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    if (n >= 25569 && n <= 73415) { const e = new Date(Math.round((n - 25569) * 86400000)); return new Date(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate(), e.getUTCHours(), e.getUTCMinutes(), e.getUTCSeconds()); }
+    return null;
+  }
   const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m) {
     let [, d, mo, y, h, mi, se] = m;
@@ -394,11 +408,11 @@ function parseFlexibleDate(raw) {
     if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const dt = new Date(y, mo - 1, d, parseInt(h || 0, 10), parseInt(mi || 0, 10), parseInt(se || 0, 10));
-      if (!isNaN(dt.getTime())) return dt;
+      if (!isNaN(dt.getTime()) && isSaneDate(dt)) return dt;
     }
   }
   const dt = new Date(s);
-  return isNaN(dt.getTime()) ? null : dt;
+  return (isNaN(dt.getTime()) || !isSaneDate(dt)) ? null : dt;
 }
 
 function fillDatalist(id, arr, mapFn) {

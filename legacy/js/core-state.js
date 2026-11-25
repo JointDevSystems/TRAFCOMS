@@ -396,10 +396,27 @@ function flagIfImplausibleDate(dt, issueTags, flagged, label) {
     if (flagged) flagged.push("".concat(label, ": ").concat(msg));
   }
 }
+function isSaneDate(d) {
+  const y = d instanceof Date ? d.getFullYear() : NaN;
+  return y >= 1990 && y <= 2100;
+}
+function safeIso(v, fallback) {
+  if (v == null || v === "") return fallback === void 0 ? null : fallback;
+  const d = v instanceof Date ? v : new Date(v);
+  return !isNaN(d.getTime()) && isSaneDate(d) ? d.toISOString() : fallback === void 0 ? null : fallback;
+}
 function parseFlexibleDate(raw) {
   if (raw == null || raw === "") return null;
-  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
+  if (raw instanceof Date) return isNaN(raw.getTime()) || !isSaneDate(raw) ? null : raw;
   const s = String(raw).trim();
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    if (n >= 25569 && n <= 73415) {
+      const e = new Date(Math.round((n - 25569) * 864e5));
+      return new Date(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate(), e.getUTCHours(), e.getUTCMinutes(), e.getUTCSeconds());
+    }
+    return null;
+  }
   const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m) {
     let [, d, mo, y, h, mi, se] = m;
@@ -414,11 +431,11 @@ function parseFlexibleDate(raw) {
     }
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const dt2 = new Date(y, mo - 1, d, parseInt(h || 0, 10), parseInt(mi || 0, 10), parseInt(se || 0, 10));
-      if (!isNaN(dt2.getTime())) return dt2;
+      if (!isNaN(dt2.getTime()) && isSaneDate(dt2)) return dt2;
     }
   }
   const dt = new Date(s);
-  return isNaN(dt.getTime()) ? null : dt;
+  return isNaN(dt.getTime()) || !isSaneDate(dt) ? null : dt;
 }
 function fillDatalist(id, arr, mapFn) {
   const el = document.getElementById(id);
