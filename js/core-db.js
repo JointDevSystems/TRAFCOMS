@@ -152,11 +152,13 @@ async function saveDirty(table, rows, toRowFn) {
      set aside only the rows the server refuses, and report which ones they were. */
   if (failure && table === 'interchange' && dirty.length > 1 && !/fetch|network|timeout|failed to|load failed/i.test(failure.error?.message || '')) {
     const failedIds = []; let firstErr = null;
-    for (const r of dirty) {
-      const row = toRowFn(r); dropped.forEach(d => delete row[d]);
-      const f = await upsertRowsChunked(table, [row]);
-      if (f) { r._saveFailed = (f.error && f.error.message) || 'refused'; failedIds.push(r.id); if (!firstErr) firstErr = f.error; }
-      else delete r._dirty;
+    for (let i = 0; i < dirty.length; i += 10) {
+      await Promise.all(dirty.slice(i, i + 10).map(async r => {
+        const row = toRowFn(r); dropped.forEach(d => delete row[d]);
+        const f = await upsertRowsChunked(table, [row]);
+        if (f) { r._saveFailed = (f.error && f.error.message) || 'refused'; failedIds.push(r.id); if (!firstErr) firstErr = f.error; }
+        else delete r._dirty;
+      }));
     }
     if (failedIds.length) {
       console.warn(`interchange: ${failedIds.length} record(s) refused by the server and set aside:`, dirty.filter(r => r._saveFailed).map(r => r.container + ' - ' + r._saveFailed).slice(0, 20));

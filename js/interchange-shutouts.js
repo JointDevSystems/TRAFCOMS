@@ -51,11 +51,20 @@ async function checkContainerAvailable(container, opts) {
 
 async function persistNewInterchange(rec) {
   state.db.interchange.push(rec);
+  const undo = () => { const idx = state.db.interchange.indexOf(rec); if (idx > -1) state.db.interchange.splice(idx, 1); };
+  /* Online: save THIS record on its own, so unrelated unsaved rows (imports, other tables) can never block or delay a Gate-In.
+     Everything else is saved in the background. Offline: keep the old path, which the offline layer already handles. */
+  if (navigator.onLine !== false && typeof saveDirty === 'function') {
+    let fail = null;
+    try { fail = await saveDirty('interchange', [rec], icToRow); } catch (e) { fail = { error: e }; }
+    if (fail) { undo(); return { ok: false, message: (fail.error && fail.error.message) || 'The server refused the record' }; }
+    try { scheduleSave(); } catch (e) {}
+    return { ok: true };
+  }
   const res = await saveNowAwaited();
   const fail = ((res && res.failures) || []).find(x => x && x.table === 'interchange');
-  if (fail && (!fail.failedIds || fail.failedIds.indexOf(rec.id) > -1)) {   // only fail the Gate-In if THIS record was refused
-    const idx = state.db.interchange.indexOf(rec);
-    if (idx > -1) state.db.interchange.splice(idx, 1);
+  if (fail && (!fail.failedIds || fail.failedIds.indexOf(rec.id) > -1)) {
+    undo();
     return { ok: false, message: (fail.error && fail.error.message) || 'The server refused the record' };
   }
   return { ok: true };

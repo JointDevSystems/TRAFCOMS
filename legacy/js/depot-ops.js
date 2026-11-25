@@ -161,11 +161,21 @@ function markInwardSurveyed(id) {
 let _inwardSaving = false;
 let _inwardBooking = null;
 async function createInwardEntry() {
-  if (_inwardSaving) return;
+  if (_inwardSaving) {
+    toast("Still saving the previous Gate-In \u2014 please wait a moment\u2026", "info", 3e3);
+    return;
+  }
   _inwardSaving = true;
+  const unlock = setTimeout(() => {
+    _inwardSaving = false;
+  }, 45e3);
   try {
     await _createInwardEntryInner();
+  } catch (e) {
+    console.error("Gate-In failed:", e);
+    toast("Gate-In failed: " + (e && e.message || "unexpected error"), "error", 8e3);
   } finally {
+    clearTimeout(unlock);
     _inwardSaving = false;
   }
 }

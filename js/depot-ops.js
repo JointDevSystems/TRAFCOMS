@@ -208,9 +208,12 @@ function markInwardSurveyed(id) {
 let _inwardSaving = false;
 let _inwardBooking = null;   // the confirmed website/account booking being gated in (null = ordinary entry)
 async function createInwardEntry() {
-  if (_inwardSaving) return;
+  if (_inwardSaving) { toast('Still saving the previous Gate-In \u2014 please wait a moment\u2026', 'info', 3000); return; }
   _inwardSaving = true;
-  try { await _createInwardEntryInner(); } finally { _inwardSaving = false; }
+  const unlock = setTimeout(() => { _inwardSaving = false; }, 45000);   // never leave the button locked
+  try { await _createInwardEntryInner(); }
+  catch (e) { console.error('Gate-In failed:', e); toast('Gate-In failed: ' + ((e && e.message) || 'unexpected error'), 'error', 8000); }
+  finally { clearTimeout(unlock); _inwardSaving = false; }
 }
 /* ── STEP 1 of 2: Gate-In ────────────────────────────────────────────
    The gate records only what it can see: container, size/type, shipping line,

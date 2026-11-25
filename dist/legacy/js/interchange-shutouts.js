@@ -101,11 +101,31 @@ async function checkContainerAvailable(container, opts) {
 }
 async function persistNewInterchange(rec) {
   state.db.interchange.push(rec);
+  const undo = () => {
+    const idx = state.db.interchange.indexOf(rec);
+    if (idx > -1) state.db.interchange.splice(idx, 1);
+  };
+  if (navigator.onLine !== false && typeof saveDirty === "function") {
+    let fail2 = null;
+    try {
+      fail2 = await saveDirty("interchange", [rec], icToRow);
+    } catch (e) {
+      fail2 = { error: e };
+    }
+    if (fail2) {
+      undo();
+      return { ok: false, message: fail2.error && fail2.error.message || "The server refused the record" };
+    }
+    try {
+      scheduleSave();
+    } catch (e) {
+    }
+    return { ok: true };
+  }
   const res = await saveNowAwaited();
   const fail = (res && res.failures || []).find((x) => x && x.table === "interchange");
   if (fail && (!fail.failedIds || fail.failedIds.indexOf(rec.id) > -1)) {
-    const idx = state.db.interchange.indexOf(rec);
-    if (idx > -1) state.db.interchange.splice(idx, 1);
+    undo();
     return { ok: false, message: fail.error && fail.error.message || "The server refused the record" };
   }
   return { ok: true };
