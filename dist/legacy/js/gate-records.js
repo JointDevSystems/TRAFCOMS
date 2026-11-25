@@ -449,7 +449,7 @@
       return;
     }
     const dash = '<span class="gs-dim">\u2014</span>';
-    list.innerHTML = warn + '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Move</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Container</th><th>Notes</th><th></th></tr></thead><tbody>' + S.rows.map((r) => "<tr" + (r.needs_check ? ' class="gr-flag"' : "") + '><td style="white-space:nowrap">' + esc(fmtDay(r.record_date)) + (r.time_at ? " " + esc(r.time_at) : "") + (r.shift ? '<span class="gs-sub">' + esc(r.shift) + "</span>" : "") + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + dirLabel(r.direction) + '</span></td><td><span class="gs-mono">' + (esc(r.truck_no) || dash) + "</span>" + (r.trailer_no ? '<span class="gs-sub">Trailer ' + esc(r.trailer_no) + "</span>" : "") + "</td><td>" + (esc(r.driver_name) || dash) + (r.phone || r.id_no ? '<span class="gs-sub">' + [r.phone, r.id_no ? "ID " + r.id_no : ""].filter(Boolean).map(esc).join(" \xB7 ") + "</span>" : "") + "</td><td>" + (esc(r.company) || dash) + (r.line || r.eir_no ? '<span class="gs-sub">' + [r.line, r.eir_no ? "EIR " + r.eir_no : ""].filter(Boolean).map(esc).join(" \xB7 ") + "</span>" : "") + '</td><td class="gs-mono">' + (esc(fmtCont(r.container_no || "")) || dash) + (r.size_ft ? '<span class="gs-sub">' + esc(r.size_ft) + " ft</span>" : "") + "</td><td>" + (r.needs_check ? '<span class="gs-tag">Check</span> ' : "") + esc(r.notes || "") + '</td><td style="white-space:nowrap"><button type="button" class="tbl-btn" onclick="GateRecords.details(\'' + esc(r.id) + "')\">Details</button>" + (canFix() ? ' <button type="button" class="tbl-btn" onclick="GateRecords.remove(\'' + esc(r.id) + "')\">Delete</button>" : "") + "</td></tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateRecords.more()">Show more (' + (S.total - S.rows.length).toLocaleString() + " left)</button></div>" : "");
+    list.innerHTML = warn + '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date &amp; time</th><th>Move</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Container</th><th>Notes</th><th></th></tr></thead><tbody>' + S.rows.map((r) => "<tr" + (r.needs_check ? ' class="gr-flag"' : "") + '><td style="white-space:nowrap">' + esc(fmtDay(r.record_date)) + (r.time_at ? " " + esc(r.time_at) : "") + (r.shift ? '<span class="gs-sub">' + esc(r.shift) + "</span>" : "") + '</td><td><span class="gs-dir ' + esc(r.direction) + '">' + dirLabel(r.direction) + '</span></td><td><span class="gs-mono">' + (esc(r.truck_no) || dash) + "</span>" + (r.trailer_no ? '<span class="gs-sub">Trailer ' + esc(r.trailer_no) + "</span>" : "") + "</td><td>" + (esc(r.driver_name) || dash) + (r.phone || r.id_no ? '<span class="gs-sub">' + [r.phone, r.id_no ? "ID " + r.id_no : ""].filter(Boolean).map(esc).join(" \xB7 ") + "</span>" : "") + "</td><td>" + (esc(r.company) || dash) + (r.line || r.eir_no ? '<span class="gs-sub">' + [r.line, r.eir_no ? "EIR " + r.eir_no : ""].filter(Boolean).map(esc).join(" \xB7 ") + "</span>" : "") + '</td><td class="gs-mono">' + (esc(fmtCont(r.container_no || "")) || dash) + (r.size_ft ? '<span class="gs-sub">' + esc(r.size_ft) + " ft</span>" : "") + "</td><td>" + (r.needs_check ? '<span class="gs-tag">Check</span> ' : "") + esc(r.notes || "") + '</td><td style="white-space:nowrap"><button type="button" class="tbl-btn" onclick="GateRecords.details(\'' + esc(r.id) + "')\">Details</button>" + (canFix() ? ' <button type="button" class="tbl-btn" onclick="GateRecords.edit(\'' + esc(r.id) + '\')">Edit</button> <button type="button" class="tbl-btn" onclick="GateRecords.remove(\'' + esc(r.id) + "')\">Delete</button>" : "") + "</td></tr>").join("") + "</tbody></table></div>" + (S.rows.length < S.total ? '<div class="gs-more"><button type="button" class="action-btn ghost" onclick="GateRecords.more()">Show more (' + (S.total - S.rows.length).toLocaleString() + " left)</button></div>" : "");
   };
   let tm = 0;
   R.search = function() {
@@ -482,7 +482,101 @@
     if (!r) return;
     const row = (k, v) => v ? '<tr><td style="color:var(--text-3);padding:4px 14px 4px 0;white-space:nowrap">' + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
     const ex = r.extra && typeof r.extra === "object" ? Object.keys(r.extra).map((k) => row(k, r.extra[k])).join("") : "";
-    openModal("Gate record", '<table style="font-size:13px;line-height:1.5">' + row("Date", fmtDay(r.record_date)) + row("Time", r.time_at) + row("Shift", r.shift) + row("Movement", dirLabel(r.direction)) + row("Truck", r.truck_no) + row("Trailer", r.trailer_no) + row("Driver", r.driver_name) + row("Phone", r.phone) + row("ID number", r.id_no) + row("Company", r.company) + row("Company (as written)", r.company_raw) + row("Container", fmtCont(r.container_no || "")) + row("EIR", r.eir_no) + row("Line", r.line) + row("Size", r.size_ft ? r.size_ft + " ft" : "") + row("Needs check", r.needs_check ? "Yes" : "") + row("Notes", r.notes) + row("Source", r.source_ref) + "</table>" + (ex ? '<div style="margin:14px 0 6px;font:600 12px var(--font-ui);color:var(--text-2)">Other columns from the file</div><table style="font-size:13px;line-height:1.5">' + ex + "</table>" : ""));
+    openModal("Gate record", '<table style="font-size:13px;line-height:1.5">' + row("Date", fmtDay(r.record_date)) + row("Time", r.time_at) + row("Shift", r.shift) + row("Movement", dirLabel(r.direction)) + row("Truck", r.truck_no) + row("Trailer", r.trailer_no) + row("Driver", r.driver_name) + row("Phone", r.phone) + row("ID number", r.id_no) + row("Company", r.company) + row("Company (as written)", r.company_raw) + row("Container", fmtCont(r.container_no || "")) + row("EIR", r.eir_no) + row("Line", r.line) + row("Size", r.size_ft ? r.size_ft + " ft" : "") + row("Needs check", r.needs_check ? "Yes" : "") + row("Notes", r.notes) + row("Source", r.source_ref) + "</table>" + (ex ? '<div style="margin:14px 0 6px;font:600 12px var(--font-ui);color:var(--text-2)">Other columns from the file</div><table style="font-size:13px;line-height:1.5">' + ex + "</table>" : "") + (canFix() ? '<div style="margin-top:14px"><button type="button" class="action-btn" onclick="GateRecords.edit(\'' + esc(r.id) + "')\">Edit this record</button></div>" : ""));
+  };
+  R.edit = function(id) {
+    if (!canFix()) return toast("Only an administrator can edit a record", "error");
+    const r = S.rows.find((x) => x.id === id);
+    if (!r) return;
+    const f = (k, l, v, ex) => '<div class="fg"><label for="ge_' + k + '">' + l + '</label><input id="ge_' + k + '" value="' + esc(v == null ? "" : v) + '" autocomplete="off" ' + (ex || "") + "/></div>";
+    const opt = (v, l, cur) => '<option value="' + esc(v) + '"' + (cur === v ? " selected" : "") + ">" + esc(l) + "</option>";
+    const shifts = ["Day", "Night"].concat(r.shift && ["Day", "Night"].indexOf(r.shift) < 0 ? [r.shift] : []);
+    openModal(
+      "Edit gate record",
+      '<div class="gs-form"><div class="form-row-2">' + f("date", "Date", r.record_date, 'type="date"') + f("time", "Time (HH:MM)", r.time_at, 'placeholder="e.g. 14:35"') + '</div><div class="form-row-2"><div class="fg"><label for="ge_dir">Movement</label><select id="ge_dir">' + opt("in", "In", r.direction) + opt("out", "Out", r.direction) + opt("in_out", "In & Out", r.direction) + '</select></div><div class="fg"><label for="ge_shift">Shift</label><select id="ge_shift"><option value="">\u2014</option>' + shifts.map((x) => opt(x, x, r.shift)).join("") + '</select></div></div><div class="gs-group"><div class="gs-group-h">Vehicle</div><div class="form-row-2">' + f("truck", "Truck / vehicle no.", r.truck_no, 'autocapitalize="characters"') + f("trailer", "Trailer no.", r.trailer_no, 'autocapitalize="characters"') + '</div></div><div class="gs-group"><div class="gs-group-h">Driver</div>' + f("driver", "Driver's name", r.driver_name) + '<div class="form-row-2">' + f("phone", "Phone", r.phone) + f("idno", "ID number", r.id_no) + '</div></div><div class="gs-group"><div class="gs-group-h">Cargo</div><div class="form-row-2">' + f("company", "Company / transporter", r.company) + f("container", "Container no.", r.container_no, 'autocapitalize="characters"') + '</div><div class="form-row-2">' + f("eir", "EIR no.", r.eir_no) + f("line", "Shipping line", r.line) + "</div>" + f("size", "Size (ft)", r.size_ft, 'inputmode="numeric"') + "</div>" + f("notes", "Notes", r.notes) + '<label class="gs-chk" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-2)"><input type="checkbox" id="ge_flag" style="width:auto;min-height:0"' + (r.needs_check ? " checked" : "") + '/> Needs a check</label><div id="ge_err" class="gs-err" role="alert"></div><button class="submit-btn" id="ge_go" onclick="GateRecords.saveEdit(\'' + esc(r.id) + "')\">Save changes</button></div>"
+    );
+  };
+  R.saveEdit = async function(id) {
+    const r = S.rows.find((x) => x.id === id), err = $("ge_err"), go = $("ge_go");
+    if (!r || !err) return;
+    if (!canFix()) {
+      err.textContent = "Only an administrator can edit a record.";
+      return;
+    }
+    const v = (k) => ($("ge_" + k) ? $("ge_" + k).value : "").trim();
+    const date = parseDate(v("date"), true);
+    if (!date) {
+      err.textContent = "Check the date.";
+      return;
+    }
+    const time = v("time") ? parseTime(v("time")) : null;
+    if (v("time") && !time) {
+      err.textContent = "Time must look like 14:35.";
+      return;
+    }
+    const truck = fmtPlate(v("truck")) || null, trailer = fmtPlate(v("trailer")) || null, cont = alnum(v("container")) || null, driver = str(v("driver")) || null;
+    if (!truck && !cont && !driver) {
+      err.textContent = "Enter at least a truck, a container or a driver.";
+      return;
+    }
+    const eir = str(v("eir")) || null, sz = parseInt(v("size").replace(/[^\d]/g, ""), 10);
+    const rec = {
+      record_date: date,
+      time_at: time,
+      shift: v("shift") || null,
+      direction: v("dir") || r.direction,
+      driver_name: driver,
+      phone: phoneOf(v("phone")) || null,
+      id_no: idOf(v("idno")) || null,
+      truck_no: truck,
+      trailer_no: trailer,
+      company: str(v("company")) || null,
+      container_no: cont,
+      eir_no: eir,
+      line: str(v("line")).toUpperCase() || null,
+      size_ft: isFinite(sz) ? sz : null,
+      notes: str(v("notes")) || null,
+      needs_check: !!($("ge_flag") && $("ge_flag").checked)
+    };
+    rec.search_key = [rec.truck_no, rec.trailer_no, rec.container_no, rec.eir_no, rec.id_no, rec.phone, rec.driver_name, rec.company, r.company_raw, rec.line].map(alnum).join("|").toLowerCase();
+    if ((r.truck_no || "") !== (rec.truck_no || "") && r.truck_no) {
+      const ex = Object.assign({}, r.extra && typeof r.extra === "object" ? r.extra : {});
+      if (!ex["Plate (as read)"]) ex["Plate (as read)"] = r.truck_no;
+      rec.extra = ex;
+    }
+    go.disabled = true;
+    err.textContent = "";
+    try {
+      let key = [date, time || "", alnum(truck), cont || ""].join("|");
+      if (!cont) key += "|" + nk(driver) + "|" + alnum(eir);
+      if (String(r.row_key || "").replace(/#\d+$/, "") !== key) {
+        const q = await sb().from(TABLE).select("row_key").neq("id", id).like("row_key", key + "%").limit(200);
+        if (q.error) throw q.error;
+        const used = {};
+        (q.data || []).forEach((x) => {
+          used[x.row_key] = 1;
+        });
+        let k = key;
+        for (let n = 2; used[k]; n++) k = key + "#" + n;
+        rec.row_key = k;
+      }
+      const res = await sb().from(TABLE).update(rec).eq("id", id).select("id");
+      if (res.error) throw res.error;
+      if (!res.data || !res.data.length) throw new Error("Nothing was saved. Your account is not allowed to edit gate records.");
+      try {
+        addAudit(state.profile && state.profile.username || "system", "Gate Record Edited", (r.truck_no || r.container_no || "record") + (rec.truck_no !== r.truck_no ? " \u2192 " + (rec.truck_no || "") : "") + " \xB7 " + fmtDay(r.record_date));
+      } catch (e) {
+      }
+      closeModal();
+      toast("Record updated", "success");
+      await load();
+      R.paint();
+    } catch (e) {
+      console.warn("Gate record edit failed:", e);
+      err.textContent = "Could not save: " + (e && e.message || "error");
+    } finally {
+      if ($("ge_go")) $("ge_go").disabled = false;
+    }
   };
   R.remove = async function(id) {
     if (!canFix()) return toast("Only an administrator can delete a record", "error");
