@@ -136,6 +136,17 @@ async function saveDirty(table, rows, toRowFn) {
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.total_paid; return row; }));
   }
   
+  if (failure && table === 'trips') {                      // trips.trailer_no / trips.transporter are new: save without them until the migration is run
+    const tcols = ['trailer_no', 'transporter'], tdrop = [];
+    while (failure) {
+      const msg = failure.error?.message || '';
+      const col = tcols.find(cn => tdrop.indexOf(cn) === -1 && new RegExp('\\b' + cn + '\\b', 'i').test(msg));
+      if (!col) break;
+      tdrop.push(col);
+      console.warn('trips.' + col + ' column not found - saving without it. Run supabase_trips_vehicle_fields.sql.');
+      failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); tdrop.forEach(d => delete row[d]); return row; }));
+    }
+  }
   const dropped = [];
   const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date', 'clerk_name', 'storage_zone', 'storage_block', 'storage_slot'];
   if (failure && table === 'interchange') {

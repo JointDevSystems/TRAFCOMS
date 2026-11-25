@@ -5,9 +5,9 @@
 function gxTripCustomOut(t) { try { return (window.GargoForms && GargoForms.tripOut) ? GargoForms.tripOut(t && t.custom) : {}; } catch (e) { return {}; } }
 function gxTripCustomIn(r)  { try { return (window.GargoForms && GargoForms.tripIn) ? GargoForms.tripIn(r) : {}; } catch (e) { return {}; } }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null, ...gxTripCustomOut(t) }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, trailer_no:t.trailerNo||null, transporter:t.transporter||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null, ...gxTripCustomOut(t) }; }
 
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, custom: gxTripCustomIn(r) }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, trailerNo:r.trailer_no||'', transporter:r.transporter||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, custom: gxTripCustomIn(r) }; }
 
 function isOutwardWorkType(workType) { return workType === 'Depot → Port'; }
 
@@ -258,6 +258,7 @@ async function ensureOutwardInterchange(t) {
     if (findDuplicateInterchange(cont, 'Gate-Out', date)) return { exists: true, manual: true };   // a clerk already logged this exit by hand
     const photos = (t.containerImages || []).slice(0, GX_MAX_PHOTOS);
     const inw = await gxInwardEirFor(cont);                   // the container's inward EIR, if it has one
+    let rsv = null; try { if (window.GargoReserve) rsv = await GargoReserve.forContainer(cont); } catch (e) { /* the reserve is a convenience */ }   // vessel, voyage, shipper... as reserved
     const line = t.shippingLine || (inw && inw.line) || '';
     const outStatus = outwardTypeLabel(t.outwardType);        // Repat / Sale / Shipper
     const eirNumber = sanitize(t.eirNumber || '') || await nextEirNumber('Gate-Out', line);
@@ -267,9 +268,9 @@ async function ensureOutwardInterchange(t) {
       truckRegText: (() => { const x = (state.db.trucks || []).find(v => v.id === t.truckId); return x ? sanitize(x.reg || '') : ''; })(),
       driverNameText: (() => { const x = (state.db.drivers || []).find(v => v.id === t.driverId); return x ? sanitize(x.name || '') : ''; })(),
       driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
-      transporter: sanitize((t.custom && t.custom.transporter) || ''), trailerNo: sanitize((t.custom && t.custom.trailer_no) || ''),   // dispatch-form fields feed the interchange's own columns
+      transporter: sanitize(t.transporter || (t.custom && t.custom.transporter) || ''), trailerNo: sanitize(t.trailerNo || (t.custom && t.custom.trailer_no) || ''),   // dispatch-form fields feed the interchange's own columns
       eirNumber, blNumber: (inw && inw.blNumber) || '', guaranteeNo: (inw && inw.guaranteeNo) || '', clerkName: (state.profile && state.profile.name) || '',
-      vessel: t.vessel || (inw && inw.vessel) || '', voyage: t.voyage || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || '', releaseOrderNo: t.releaseOrderNo || '',
+      vessel: t.vessel || (rsv && rsv.vessel) || (inw && inw.vessel) || '', voyage: t.voyage || (rsv && rsv.voyage) || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || (rsv && rsv.shipper_name) || '', releaseOrderNo: t.releaseOrderNo || (rsv && rsv.release_order_no) || '',
       isoCode: (inw && inw.isoCode) || '', grossWeight: (inw && inw.grossWeight) || '', manufactureDate: (inw && inw.manufactureDate) || '', cargoStatus: (inw && inw.cargoStatus) || '',
       repairs: [], repairTotal: 0,
       notes: `Auto-issued when outward dispatch ${t.ref || String(t.id).slice(0, 8)} (${t.origin || '—'} → ${t.dest || '—'}) was completed.${outStatus ? ' Status: ' + outStatus + '.' : ''}${inw ? ' Inward EIR ' + inw.eirNumber + (inw.condition ? ' (' + inw.condition + ')' : '') + '.' : ''}${t.notes ? ' ' + t.notes : ''}`,
@@ -677,7 +678,45 @@ function populateDispatchSelects() {
   fillSelect('d_driver', avlDrivers, d=>[d.id, d.name]);
   fillSelect('d_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
   populateSizeTypeSelects('d_size', 'd_type');
+  dispatchEnsureVehicleFields();
 }
+
+/* Dispatch console: Trailer No., Transporter and a read-only Driver ID / Phone line sit under Truck + Driver.
+   They are created here so index.html does not need to change. Trailer and transporter travel with the trip and
+   are copied onto the outward interchange (and so onto the Outward EIR). */
+function dispatchEnsureVehicleFields() {
+  const drv = document.getElementById('d_driver'); if (!drv || document.getElementById('d_trailer')) return;
+  const row = drv.closest('.form-row-2') || drv.parentNode.parentNode; if (!row || !row.parentNode) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'd_vehicle_extra';
+  wrap.innerHTML = '<div class="form-row-2">' +
+      '<div class="fg"><label>Trailer No.</label><input id="d_trailer" placeholder="e.g. ZD502" autocomplete="off" style="text-transform:uppercase" /></div>' +
+      '<div class="fg"><label>Transporter</label><input id="d_transporter" placeholder="Haulage company" autocomplete="off" /></div>' +
+    '</div>' +
+    '<div id="d_driver_info" class="ops-notice" style="display:none;margin-bottom:12px;font-size:12px;line-height:1.6"></div>';
+  row.parentNode.insertBefore(wrap, row.nextSibling);
+}
+/* show the chosen driver's ID number and phone; pick the driver's own truck when none is chosen yet */
+function dispatchDriverInfo(fromDriver) {
+  const dv = document.getElementById('d_driver'), tk = document.getElementById('d_truck'), box = document.getElementById('d_driver_info'); if (!dv) return;
+  const d = (state.db.drivers || []).find(x => x.id === dv.value);
+  if (fromDriver && d && tk && !tk.value && d.truckId && [...tk.options].some(o => o.value === d.truckId)) tk.value = d.truckId;
+  if (!fromDriver && tk && tk.value && !dv.value) {                       // truck chosen first: use the driver assigned to it
+    const a = (state.db.drivers || []).find(x => x.truckId === tk.value && [...dv.options].some(o => o.value === x.id));
+    if (a) { dv.value = a.id; return dispatchDriverInfo(false); }
+  }
+  if (!box) return;
+  if (!d) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const idNo = d.idNo || d.id_no || '', ph = d.phone || '';
+  box.style.display = '';
+  box.innerHTML = '<b>' + esc(d.name) + '</b> &nbsp;·&nbsp; ID / Driving no.: <b>' + (idNo ? esc(idNo) : '<span style="color:var(--red)">not on file</span>') + '</b> &nbsp;·&nbsp; Phone: <b>' + (ph ? esc(ph) : '<span style="color:var(--red)">not on file</span>') + '</b>' +
+    ((!idNo || !ph) ? '<div style="color:var(--text-3)">Add the missing detail under Fleet → Drivers → Edit so it prints on the Outward EIR.</div>' : '');
+}
+document.addEventListener('change', ev => {
+  const id = ev.target && ev.target.id;
+  if (id === 'd_driver') dispatchDriverInfo(true);
+  else if (id === 'd_truck') dispatchDriverInfo(false);
+}, true);
 
 function renderDispatchQueue() {
   const pending = state.db.trips.filter(t=>t.status==='active').slice(-8).reverse();
@@ -758,6 +797,7 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_release_no').value = t.releaseOrderNo || '';
   document.getElementById('d_vessel').value     = t.vessel || '';
   document.getElementById('d_voyage').value     = t.voyage || '';
+  { const tr = document.getElementById('d_trailer'), tp = document.getElementById('d_transporter'); if (tr) tr.value = t.trailerNo || (t.custom && t.custom.trailer_no) || ''; if (tp) tp.value = t.transporter || (t.custom && t.custom.transporter) || ''; try { dispatchDriverInfo(false); } catch (e) {} }
   const dateOutEl = document.getElementById('d_dateout'); if (dateOutEl) dateOutEl.value = '';
   if (window.GargoForms) { try { GargoForms.decorate('dispatch'); GargoForms.fill('dispatch', t.custom); } catch (e) {} }   // Form Designer fields
 
@@ -776,7 +816,7 @@ function cancelDispatchEdit() {
   _dispatchEditingTripId = null;
   clearContainerImgs();
   clearDispatchReleaseFile();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeSel = document.getElementById('d_outwardtype');
   if (outwardTypeSel) outwardTypeSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
@@ -838,6 +878,8 @@ async function createDispatch() {
   const releaseOrderNo = sanitize(document.getElementById('d_release_no').value.trim());
   const vessel          = sanitize(document.getElementById('d_vessel').value.trim());
   const voyage           = sanitize(document.getElementById('d_voyage').value.trim());
+  const trailerNo        = sanitize(((document.getElementById('d_trailer') || {}).value || '').trim().toUpperCase());
+  const transporter      = sanitize(((document.getElementById('d_transporter') || {}).value || '').trim());
   const dateOutInput    = document.getElementById('d_dateout').value;
   const dateOut         = dateOutInput ? new Date(dateOutInput).toISOString() : new Date().toISOString();
   const releaseFile     = _dispatchReleaseFile;
@@ -874,7 +916,7 @@ async function createDispatch() {
       }
     }
 
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, custom: Object.assign({}, t.custom, custom) });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, custom: Object.assign({}, t.custom, custom) });
     t._dirty = true;
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
@@ -900,7 +942,7 @@ async function createDispatch() {
       ctype, workType, outwardType, origin, dest, shippingLine: line,
       status: 'active', startTime: new Date().toISOString(),
       eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
-      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, custom,
+      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, custom,
       _dirty: true,
     };
     state.db.trips.push(trip);
@@ -933,7 +975,7 @@ async function createDispatch() {
 
   clearContainerImgs();
   clearDispatchReleaseFile();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   const outwardTypeResetSel = document.getElementById('d_outwardtype');
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }

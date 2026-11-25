@@ -617,6 +617,8 @@
 
   /* ── links to the rest of the system ──────────────────────────────────────────────────────────────── */
   RR.lookup = key => { const t = S.taken.get(norm(key)); return t ? { id: t.id, no: t.no, agent: t.agent || '' } : null; };
+  /* the whole reserve a container is held on (vessel, voyage, shipper, release order...) for the dispatch form and the Outward EIR */
+  RR.header = key => { const t = S.taken.get(norm(key)); if (!t) return null; const r = (S.byId && S.byId.get(t.id)) || {}; return Object.assign({}, r, { reserve_no: t.no, agent: t.agent || r.agent || '', cleared: !!t.cleared, in_eir: t.in_eir || '', size: t.size || '' }); };
   RR.ensureLoaded = async () => {
     if (S.reserves && S.at && Date.now() - S.at.getTime() < 60000) return;
     if (!S.reserves) { const c = readCache(); if (c) { S.reserves = c.reserves; S.taken = new Map(c.taken || []); S.at = new Date(c.at); S.stale = true; } }
@@ -804,6 +806,7 @@
     set('d_origin', 'Depot', true);
     set('d_dest', r.destination || r.port_of_dispatch);
     set('d_release_no', r.release_order_no); set('d_vessel', r.vessel); set('d_voyage', r.voyage);
+    set('d_receiving', r.shipper_name, true);
     set('d_ref', rn(r), true);
     try { dispatchPrefillFromEir(); } catch (e) {}
     try { toast(String(t.container_no).toUpperCase() + ' taken from reserve ' + t.no, 'success', 3500); } catch (e) {}

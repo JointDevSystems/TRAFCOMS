@@ -411,6 +411,12 @@
       const t = S.taken.get(norm(key));
       return t ? { id: t.id, no: t.no, agent: t.agent || "" } : null;
     };
+    RR.header = (key) => {
+      const t = S.taken.get(norm(key));
+      if (!t) return null;
+      const r = S.byId && S.byId.get(t.id) || {};
+      return Object.assign({}, r, { reserve_no: t.no, agent: t.agent || r.agent || "", cleared: !!t.cleared, in_eir: t.in_eir || "", size: t.size || "" });
+    };
     RR.check = (key) => {
       const t = S.taken.get(norm(key));
       if (!t) return { ok: false, why: "is not on any open " + K.what };
@@ -1169,6 +1175,7 @@
       set("d_release_no", r.release_order_no);
       set("d_vessel", r.vessel);
       set("d_voyage", r.voyage);
+      set("d_receiving", r.shipper_name, true);
       set("d_ref", rn(r), true);
       try {
         dispatchPrefillFromEir();

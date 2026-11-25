@@ -120,7 +120,7 @@ async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
   return null;
 }
 async function saveDirty(table, rows, toRowFn) {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f, _g;
   const dirty = (rows || []).filter((r) => r._dirty && !r._saveFailed);
   if (!dirty.length) return null;
   let failure = await upsertRowsChunked(table, dirty.map(toRowFn));
@@ -158,11 +158,26 @@ async function saveDirty(table, rows, toRowFn) {
       return row;
     }));
   }
+  if (failure && table === "trips") {
+    const tcols = ["trailer_no", "transporter"], tdrop = [];
+    while (failure) {
+      const msg = ((_e = failure.error) == null ? void 0 : _e.message) || "";
+      const col = tcols.find((cn) => tdrop.indexOf(cn) === -1 && new RegExp("\\b" + cn + "\\b", "i").test(msg));
+      if (!col) break;
+      tdrop.push(col);
+      console.warn("trips." + col + " column not found - saving without it. Run supabase_trips_vehicle_fields.sql.");
+      failure = await upsertRowsChunked(table, dirty.map((r) => {
+        const row = toRowFn(r);
+        tdrop.forEach((d) => delete row[d]);
+        return row;
+      }));
+    }
+  }
   const dropped = [];
   const optionalCols = ["iso_code", "trailer_no", "gross_weight", "manufacture_date", "clerk_name", "storage_zone", "storage_block", "storage_slot"];
   if (failure && table === "interchange") {
     while (failure) {
-      const msg = ((_e = failure.error) == null ? void 0 : _e.message) || "";
+      const msg = ((_f = failure.error) == null ? void 0 : _f.message) || "";
       const col = optionalCols.find((cn) => dropped.indexOf(cn) === -1 && new RegExp("\\b".concat(cn, "\\b"), "i").test(msg));
       if (!col) break;
       dropped.push(col);
@@ -174,7 +189,7 @@ async function saveDirty(table, rows, toRowFn) {
       }));
     }
   }
-  if (failure && table === "interchange" && dirty.length > 1 && !/fetch|network|timeout|failed to|load failed/i.test(((_f = failure.error) == null ? void 0 : _f.message) || "")) {
+  if (failure && table === "interchange" && dirty.length > 1 && !/fetch|network|timeout|failed to|load failed/i.test(((_g = failure.error) == null ? void 0 : _g.message) || "")) {
     const failedIds = [];
     let firstErr = null;
     for (let i = 0; i < dirty.length; i += 10) {
