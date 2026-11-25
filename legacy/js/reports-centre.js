@@ -345,6 +345,10 @@
     if (numOk(f.minDays) && o.days != null && o.days < Number(f.minDays)) return false;
     if (numOk(f.maxDays) && o.days != null && o.days > Number(f.maxDays)) return false;
     const ic = o.ic;
+    if (f.bulk === "exclude" || f.bulk === "only") {
+      const bulk = !!(ic ? ic.importBatchId : o.synth && o.trip && o.trip.importBatchId);
+      if (f.bulk === "exclude" === bulk) return false;
+    }
     if (ic) {
       if (f.flagged === "only" && !(ic.flaggedForReview || ic.duplicateOfId)) return false;
       if (f.flagged === "exclude" && (ic.flaggedForReview || ic.duplicateOfId)) return false;
@@ -1112,7 +1116,8 @@
     label: "Daily Container Report \u2014 IN",
     desc: "Containers received, grouped by size and type (as the previous system prints it).",
     needs: "range",
-    filters: BASE.concat(ADV_IC, ["yard", "survey", "cond", "minor", "minDays", "maxDays"]),
+    filters: BASE.concat(ADV_IC, ["bulk", "yard", "survey", "cond", "minor", "minDays", "maxDays"]),
+    defs: { bulk: "exclude" },
     cols: IN_COLS,
     sorts: SORT_OPTS,
     groups: grpOpts(["sizetype", "none", "line", "date", "vessel", "transporter", "party"]),
@@ -1124,7 +1129,8 @@
     label: "Daily Container Report \u2014 OUT",
     desc: "Containers released, with release order, destination and the matching gate-in.",
     needs: "all",
-    filters: BASE.concat(ADV_IC, ["minDays", "maxDays"]),
+    filters: BASE.concat(ADV_IC, ["bulk", "minDays", "maxDays"]),
+    defs: { bulk: "exclude" },
     cols: OUT_COLS,
     sorts: SORT_OPTS,
     groups: grpOpts(["sizetype", "none", "line", "date", "vessel", "transporter", "party"]),
@@ -1387,6 +1393,7 @@
     cond: { l: "Condition class", k: "multi", o: COND, all: "All classes" },
     survey: { l: "Survey", k: "select", o: [["all", "Any"], ["awaiting", "Awaiting survey"], ["done", "Surveyed"]] },
     flagged: { l: "Flagged / duplicate", k: "select", o: [["all", "Include all"], ["only", "Flagged only"], ["exclude", "Exclude flagged"]] },
+    bulk: { l: "Bulk uploads", k: "select", o: [["all", "Include bulk uploads"], ["exclude", "Live entries only (no bulk uploads)"], ["only", "Bulk uploads only"]] },
     minDays: { l: "Days in yard: at least", k: "number" },
     maxDays: { l: "Days in yard: at most", k: "number" },
     lift: { l: "Lift Type", k: "select", o: [["on", "LIFT ON (out)"], ["off", "LIFT OFF (in)"], ["both", "Both on and off"]] },
@@ -1402,6 +1409,7 @@
   };
   const optsOf = (d) => typeof d.o === "function" ? d.o() : d.o || [];
   const defOf = (d) => d.k === "multi" ? [] : d.k === "select" ? (optsOf(d)[0] || [""])[0] : d.def != null ? d.def : "";
+  const repDef = (rep, k) => rep && rep.defs && rep.defs[k] !== void 0 ? rep.defs[k] : defOf(F[k]);
   const optLabel = (d, v) => {
     const o = optsOf(d).find((x) => String(x[0]) === String(v));
     return o ? o[1] : v;
@@ -2284,7 +2292,7 @@
   function fieldHtml(k, S, rep) {
     const d = F[k];
     if (!d) return "";
-    const v = S[k] !== void 0 ? S[k] : defOf(d), id = "rc_" + k;
+    const v = S[k] !== void 0 ? S[k] : repDef(rep, k), id = "rc_" + k;
     let inner = "";
     if (d.k === "multi") {
       const sel = Array.isArray(v) ? v.map(String) : [];
@@ -2342,7 +2350,7 @@
       const d = F[k];
       if (!d) return;
       if (d.k === "multi") f[k] = multiRead(k);
-      else if (!$("rc_" + k)) f[k] = defOf(d);
+      else if (!$("rc_" + k)) f[k] = repDef(rep, k);
       else if (d.k === "number") {
         const v = V("rc_" + k);
         f[k] = v === "" ? "" : Number(v);
@@ -2485,7 +2493,7 @@
     const f = Object.assign({ from: todayIso(), to: todayIso(), group: defGroupOf(rep), sort: rep.defSort, dir: rep.defDir }, filters || {});
     if (rep.asAt) f.from = f.to;
     Object.keys(F).forEach((k) => {
-      if (f[k] === void 0) f[k] = defOf(F[k]);
+      if (f[k] === void 0) f[k] = repDef(rep, k);
     });
     f._tok = tokens(f);
     const res = await rep.build(f, rep.noCtx ? null : makeCtx());

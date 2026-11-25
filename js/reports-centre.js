@@ -208,6 +208,10 @@
     if (numOk(f.minDays) && o.days != null && o.days < Number(f.minDays)) return false;
     if (numOk(f.maxDays) && o.days != null && o.days > Number(f.maxDays)) return false;
     const ic = o.ic;
+    if (f.bulk === 'exclude' || f.bulk === 'only') {
+      const bulk = !!(ic ? ic.importBatchId : (o.synth && o.trip && o.trip.importBatchId));
+      if ((f.bulk === 'exclude') === bulk) return false;
+    }
     if (ic) {
       if (f.flagged === 'only' && !(ic.flaggedForReview || ic.duplicateOfId)) return false;
       if (f.flagged === 'exclude' && (ic.flaggedForReview || ic.duplicateOfId)) return false;
@@ -591,9 +595,9 @@
   const REP = {};
   const def = (id, o) => { o.id = id; REP[id] = o; };
   def('daily_in', { g: 'Depot registers', label: 'Daily Container Report — IN', desc: 'Containers received, grouped by size and type (as the previous system prints it).', needs: 'range',
-    filters: BASE.concat(ADV_IC, ['yard', 'survey', 'cond', 'minor', 'minDays', 'maxDays']), cols: IN_COLS, sorts: SORT_OPTS, groups: grpOpts(['sizetype', 'none', 'line', 'date', 'vessel', 'transporter', 'party']), defGroup: 'sizetype', build: dailyBuild(true) });
+    filters: BASE.concat(ADV_IC, ['bulk', 'yard', 'survey', 'cond', 'minor', 'minDays', 'maxDays']), defs: { bulk: 'exclude' }, cols: IN_COLS, sorts: SORT_OPTS, groups: grpOpts(['sizetype', 'none', 'line', 'date', 'vessel', 'transporter', 'party']), defGroup: 'sizetype', build: dailyBuild(true) });
   def('daily_out', { g: 'Depot registers', label: 'Daily Container Report — OUT', desc: 'Containers released, with release order, destination and the matching gate-in.', needs: 'all',
-    filters: BASE.concat(ADV_IC, ['minDays', 'maxDays']), cols: OUT_COLS, sorts: SORT_OPTS, groups: grpOpts(['sizetype', 'none', 'line', 'date', 'vessel', 'transporter', 'party']), defGroup: 'sizetype', build: dailyBuild(false) });
+    filters: BASE.concat(ADV_IC, ['bulk', 'minDays', 'maxDays']), defs: { bulk: 'exclude' }, cols: OUT_COLS, sorts: SORT_OPTS, groups: grpOpts(['sizetype', 'none', 'line', 'date', 'vessel', 'transporter', 'party']), defGroup: 'sizetype', build: dailyBuild(false) });
   def('lift', { g: 'Depot registers', label: 'Lift On / Lift Off Report', desc: 'Lifts per container with the amount from the line\'s rates, totalled per size.', needs: 'all',
     filters: BASE.concat(['lift', 'basis', 'eir', 'vessel', 'voyage', 'party', 'transporter', 'lorry', 'driver', 'ref', 'move', 'flagged']), cols: LIFT_COLS('on'), colsFn: f => LIFT_COLS(f.lift || 'on'), sorts: SORT_OPTS, groups: grpOpts(['size', 'none', 'sizetype', 'line', 'date', 'vessel']), defGroup: 'size', build: liftBuild });
   def('stock', { g: 'Depot registers', label: 'Stock Advising Report', desc: 'Opening stock, received, released, balance by type and size, then WASH / SWASH / MINOR / MAJOR.', needs: 'all',
@@ -669,6 +673,7 @@
     cond: { l: 'Condition class', k: 'multi', o: COND, all: 'All classes' },
     survey: { l: 'Survey', k: 'select', o: [['all', 'Any'], ['awaiting', 'Awaiting survey'], ['done', 'Surveyed']] },
     flagged: { l: 'Flagged / duplicate', k: 'select', o: [['all', 'Include all'], ['only', 'Flagged only'], ['exclude', 'Exclude flagged']] },
+    bulk: { l: 'Bulk uploads', k: 'select', o: [['all', 'Include bulk uploads'], ['exclude', 'Live entries only (no bulk uploads)'], ['only', 'Bulk uploads only']] },
     minDays: { l: 'Days in yard: at least', k: 'number' }, maxDays: { l: 'Days in yard: at most', k: 'number' },
     lift: { l: 'Lift Type', k: 'select', o: [['on', 'LIFT ON (out)'], ['off', 'LIFT OFF (in)'], ['both', 'Both on and off']] },
     basis: { l: 'Amount per container uses', k: 'select', o: [['lolo', 'LOLO (lift on / off)'], ['serviceCharge', 'Service charge'], ['loloBatch6', 'Batch of 6 moves'], ['transport', 'Transport'], ['reefer', 'Reefer handling']] },
@@ -681,6 +686,7 @@
   };
   const optsOf = d => (typeof d.o === 'function' ? d.o() : d.o || []);
   const defOf = d => (d.k === 'multi' ? [] : (d.k === 'select' ? (optsOf(d)[0] || [''])[0] : (d.def != null ? d.def : '')));
+  const repDef = (rep, k) => (rep && rep.defs && rep.defs[k] !== undefined ? rep.defs[k] : defOf(F[k]));   // a report can start a filter on a different value (Daily IN / OUT start with bulk uploads left out)
   const optLabel = (d, v) => { const o = optsOf(d).find(x => String(x[0]) === String(v)); return o ? o[1] : v; };
   /* ═══════════════════════════════════════════════════════════════════════════════════════
      DATA HUB: whole-system reports (fleet, drivers, trips, maintenance, fuel, finance, HR).
@@ -1138,7 +1144,7 @@
 
   function fieldHtml(k, S, rep) {
     const d = F[k]; if (!d) return '';
-    const v = S[k] !== undefined ? S[k] : defOf(d), id = 'rc_' + k;
+    const v = S[k] !== undefined ? S[k] : repDef(rep, k), id = 'rc_' + k;
     let inner = '';
     if (d.k === 'multi') {
       const sel = Array.isArray(v) ? v.map(String) : [];
@@ -1193,7 +1199,7 @@
   function multiRead(k) { const w = document.querySelector('#rcRoot .rc-ms[data-k="' + k + '"]'); return w ? [...w.querySelectorAll('input:checked')].map(i => i.value) : []; }
   function readForm(rep) {
     const f = {}, keys = rep.filters.concat(['no', 'cc', 'dfmt', 'orient']);
-    keys.forEach(k => { const d = F[k]; if (!d) return; if (d.k === 'multi') f[k] = multiRead(k); else if (!$('rc_' + k)) f[k] = defOf(d); else if (d.k === 'number') { const v = V('rc_' + k); f[k] = v === '' ? '' : Number(v); } else f[k] = V('rc_' + k).trim(); });
+    keys.forEach(k => { const d = F[k]; if (!d) return; if (d.k === 'multi') f[k] = multiRead(k); else if (!$('rc_' + k)) f[k] = repDef(rep, k); else if (d.k === 'number') { const v = V('rc_' + k); f[k] = v === '' ? '' : Number(v); } else f[k] = V('rc_' + k).trim(); });
     f.from = V('rc_from') || todayIso(); f.to = V('rc_to') || f.from; f.preset = RC.S.preset || 'custom';
     if (rep.asAt) f.from = f.to;
     f.sort = V('rc_sort'); f.dir = V('rc_dir'); f.group = V('rc_group') || defGroupOf(rep); f._tok = tokens(f);
@@ -1321,7 +1327,7 @@
   RC.compute = async function (id, filters) {                       // headless: build a report with given filters, no screen needed
     const rep = REP[id]; if (!rep) throw new Error('Unknown report ' + id);
     const f = Object.assign({ from: todayIso(), to: todayIso(), group: defGroupOf(rep), sort: rep.defSort, dir: rep.defDir }, filters || {}); if (rep.asAt) f.from = f.to;
-    Object.keys(F).forEach(k => { if (f[k] === undefined) f[k] = defOf(F[k]); }); f._tok = tokens(f);
+    Object.keys(F).forEach(k => { if (f[k] === undefined) f[k] = repDef(rep, k); }); f._tok = tokens(f);
     const res = await rep.build(f, rep.noCtx ? null : makeCtx()); res.rep = rep; return { rep, f, res, html: renderRes(res, f, 0), aoa: aoaOf(res, f) };
   };
   async function run(after) {
