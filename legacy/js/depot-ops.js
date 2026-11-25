@@ -829,6 +829,17 @@ async function processBulkInward() {
   let created = 0;
   const flagged = [];
   const seenInBatch = /* @__PURE__ */ new Set();
+  const seenEir = new Set((state.db.interchange || []).map((i) => String(i.eirNumber || "").trim().toUpperCase()).filter(Boolean));
+  const takeEir = (v, tags) => {
+    const k = String(v || "").trim().toUpperCase();
+    if (!k) return "";
+    if (seenEir.has(k)) {
+      tags.push("duplicate EIR number " + v + " \u2014 left blank");
+      return "";
+    }
+    seenEir.add(k);
+    return v;
+  };
   const importBatchId = "INW-".concat((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), "-").concat(Date.now().toString(36).toUpperCase());
   rows.forEach((r, idx) => {
     const contRaw = pickField(r, ["container", "containerno", "containernumber", "containernrno"]);
@@ -921,7 +932,7 @@ async function processBulkInward() {
       driver: driver ? driver.id : "",
       truckRegText: truck ? "" : sanitize(truckVal),
       driverNameText: driver ? "" : sanitize(driverVal),
-      eirNumber: sanitize(pickField(r, ["eir", "eirnumber", "eirno", "ineirno", "outeirno", "outeir", "refinno", "refoutno", "inwardno"])),
+      eirNumber: takeEir(sanitize(pickField(r, ["eir", "eirnumber", "eirno", "ineirno", "outeirno", "outeir", "refinno", "refoutno", "inwardno"])), issueTags),
       blNumber: guaranteeBlVal,
       vessel: sanitize(vesselVal),
       voyage: sanitize(pickField(r, ["voyage", "voy"])),

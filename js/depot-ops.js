@@ -737,6 +737,9 @@ async function processBulkInward() {
   let created = 0;
   const flagged = []; // rows still created, but tagged for later cleanup
   const seenInBatch = new Set();
+  /* EIR numbers must be unique in the database: a repeated one (in the file, or already in the system) is left blank and flagged, not allowed to block the save */
+  const seenEir = new Set((state.db.interchange || []).map(i => String(i.eirNumber || '').trim().toUpperCase()).filter(Boolean));
+  const takeEir = (v, tags) => { const k = String(v || '').trim().toUpperCase(); if (!k) return ''; if (seenEir.has(k)) { tags.push('duplicate EIR number ' + v + ' \u2014 left blank'); return ''; } seenEir.add(k); return v; };
   const importBatchId = `INW-${new Date().toISOString().slice(0,10)}-${Date.now().toString(36).toUpperCase()}`;
 
   rows.forEach((r, idx) => {
@@ -824,7 +827,7 @@ async function processBulkInward() {
       truck: truck ? truck.id : '', driver: driver ? driver.id : '',
       truckRegText: truck ? '' : sanitize(truckVal),
       driverNameText: driver ? '' : sanitize(driverVal),
-      eirNumber: sanitize(pickField(r, ['eir','eirnumber','eirno','ineirno','outeirno','outeir','refinno','refoutno','inwardno'])),
+      eirNumber: takeEir(sanitize(pickField(r, ['eir','eirnumber','eirno','ineirno','outeirno','outeir','refinno','refoutno','inwardno'])), issueTags),
       blNumber:  guaranteeBlVal,
       vessel:    sanitize(vesselVal),
       voyage:    sanitize(pickField(r, ['voyage','voy'])),

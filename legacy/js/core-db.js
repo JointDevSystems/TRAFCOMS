@@ -120,8 +120,8 @@ async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
   return null;
 }
 async function saveDirty(table, rows, toRowFn) {
-  var _a, _b, _c, _d, _e;
-  const dirty = (rows || []).filter((r) => r._dirty);
+  var _a, _b, _c, _d, _e, _f;
+  const dirty = (rows || []).filter((r) => r._dirty && !r._saveFailed);
   if (!dirty.length) return null;
   let failure = await upsertRowsChunked(table, dirty.map(toRowFn));
   if (failure && table === "invoices" && /line_items/i.test(((_a = failure.error) == null ? void 0 : _a.message) || "")) {
@@ -158,9 +158,9 @@ async function saveDirty(table, rows, toRowFn) {
       return row;
     }));
   }
+  const dropped = [];
+  const optionalCols = ["iso_code", "trailer_no", "gross_weight", "manufacture_date", "clerk_name", "storage_zone", "storage_block", "storage_slot"];
   if (failure && table === "interchange") {
-    const optionalCols = ["iso_code", "trailer_no", "gross_weight", "manufacture_date", "clerk_name", "storage_zone", "storage_block", "storage_slot"];
-    const dropped = [];
     while (failure) {
       const msg = ((_e = failure.error) == null ? void 0 : _e.message) || "";
       const col = optionalCols.find((cn) => dropped.indexOf(cn) === -1 && new RegExp("\\b".concat(cn, "\\b"), "i").test(msg));
@@ -173,6 +173,29 @@ async function saveDirty(table, rows, toRowFn) {
         return row;
       }));
     }
+  }
+  if (failure && table === "interchange" && dirty.length > 1 && !/fetch|network|timeout|failed to|load failed/i.test(((_f = failure.error) == null ? void 0 : _f.message) || "")) {
+    const failedIds = [];
+    let firstErr = null;
+    for (const r of dirty) {
+      const row = toRowFn(r);
+      dropped.forEach((d) => delete row[d]);
+      const f = await upsertRowsChunked(table, [row]);
+      if (f) {
+        r._saveFailed = f.error && f.error.message || "refused";
+        failedIds.push(r.id);
+        if (!firstErr) firstErr = f.error;
+      } else delete r._dirty;
+    }
+    if (failedIds.length) {
+      console.warn("interchange: ".concat(failedIds.length, " record(s) refused by the server and set aside:"), dirty.filter((r) => r._saveFailed).map((r) => r.container + " - " + r._saveFailed).slice(0, 20));
+      try {
+        if (typeof toast === "function") toast("".concat(failedIds.length, " imported record(s) could not be saved (").concat(String(firstErr && firstErr.message || "").slice(0, 90), "). Other records were saved."), "warning", 9e3);
+      } catch (e) {
+      }
+      return { table, error: firstErr, failedIds };
+    }
+    return null;
   }
   if (failure) return failure;
   dirty.forEach((r) => {

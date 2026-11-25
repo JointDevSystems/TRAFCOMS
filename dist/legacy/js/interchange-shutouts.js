@@ -103,7 +103,7 @@ async function persistNewInterchange(rec) {
   state.db.interchange.push(rec);
   const res = await saveNowAwaited();
   const fail = (res && res.failures || []).find((x) => x && x.table === "interchange");
-  if (fail) {
+  if (fail && (!fail.failedIds || fail.failedIds.indexOf(rec.id) > -1)) {
     const idx = state.db.interchange.indexOf(rec);
     if (idx > -1) state.db.interchange.splice(idx, 1);
     return { ok: false, message: fail.error && fail.error.message || "The server refused the record" };

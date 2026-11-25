@@ -110,7 +110,7 @@ async function upsertRowsChunked(table, rows, opts, chunkSize = 500) {
 
 
 async function saveDirty(table, rows, toRowFn) {
-  const dirty = (rows || []).filter(r => r._dirty);
+  const dirty = (rows || []).filter(r => r._dirty && !r._saveFailed);   // rows the server already refused are set aside until reload
   if (!dirty.length) return null;
   let failure = await upsertRowsChunked(table, dirty.map(toRowFn));
 
@@ -136,9 +136,9 @@ async function saveDirty(table, rows, toRowFn) {
     failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); delete row.total_paid; return row; }));
   }
   
+  const dropped = [];
+  const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date', 'clerk_name', 'storage_zone', 'storage_block', 'storage_slot'];
   if (failure && table === 'interchange') {
-    const optionalCols = ['iso_code', 'trailer_no', 'gross_weight', 'manufacture_date', 'clerk_name', 'storage_zone', 'storage_block', 'storage_slot'];
-    const dropped = [];
     while (failure) {
       const msg = failure.error?.message || '';
       const col = optionalCols.find(cn => dropped.indexOf(cn) === -1 && new RegExp(`\\b${cn}\\b`, 'i').test(msg));
@@ -147,6 +147,23 @@ async function saveDirty(table, rows, toRowFn) {
       console.warn(`interchange.${col} column not found — saving without it. Run supabase_interchange_eir_migration.sql.`);
       failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); dropped.forEach(d => delete row[d]); return row; }));
     }
+  }
+  /* One bad record (e.g. a duplicate EIR number from an import) must not block the others: save row by row,
+     set aside only the rows the server refuses, and report which ones they were. */
+  if (failure && table === 'interchange' && dirty.length > 1 && !/fetch|network|timeout|failed to|load failed/i.test(failure.error?.message || '')) {
+    const failedIds = []; let firstErr = null;
+    for (const r of dirty) {
+      const row = toRowFn(r); dropped.forEach(d => delete row[d]);
+      const f = await upsertRowsChunked(table, [row]);
+      if (f) { r._saveFailed = (f.error && f.error.message) || 'refused'; failedIds.push(r.id); if (!firstErr) firstErr = f.error; }
+      else delete r._dirty;
+    }
+    if (failedIds.length) {
+      console.warn(`interchange: ${failedIds.length} record(s) refused by the server and set aside:`, dirty.filter(r => r._saveFailed).map(r => r.container + ' - ' + r._saveFailed).slice(0, 20));
+      try { if (typeof toast === 'function') toast(`${failedIds.length} imported record(s) could not be saved (${String(firstErr && firstErr.message || '').slice(0, 90)}). Other records were saved.`, 'warning', 9000); } catch (e) {}
+      return { table, error: firstErr, failedIds };
+    }
+    return null;
   }
   if (failure) return failure;
   dirty.forEach(r => { delete r._dirty; });
