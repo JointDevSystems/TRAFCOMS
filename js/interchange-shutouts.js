@@ -57,6 +57,10 @@ async function persistNewInterchange(rec) {
   if (navigator.onLine !== false && typeof saveDirty === 'function') {
     let fail = null;
     try { fail = await saveDirty('interchange', [rec], icToRow); } catch (e) { fail = { error: e }; }
+    if (fail && /fetch|network|timeout|load failed|abort/i.test(String((fail.error && fail.error.message) || ''))) {
+      /* the reply may simply have been lost: if the server already has this record, it IS saved (retrying would create a duplicate) */
+      try { const { data } = await supabase.from('interchange').select('id').eq('id', rec.id).maybeSingle(); if (data && data.id) { delete rec._dirty; fail = null; } } catch (e) {}
+    }
     if (fail) { undo(); return { ok: false, message: (fail.error && fail.error.message) || 'The server refused the record' }; }
     try { scheduleSave(); } catch (e) {}
     return { ok: true };
@@ -449,7 +453,7 @@ function eirInwardScheme(lineId) {
 }
 
 async function nextSchemeEirNumber(sc, lineId) {
-  const re = new RegExp('^(\\d+)' + sc.suffix + '$');
+  const re = new RegExp('^(\\d+)I?' + sc.suffix + '$');   // the database issues "<number>I<suffix>" (e.g. 4639ICOSL); older records have no "I"
   try {                                                    // normal path: the database issues the number
     const { data, error } = await supabase.rpc('next_inward_eir_number', { p_line_id: lineId });
     if (!error && typeof data === 'string' && re.test(data)) { _eirIssued[sc.suffix] = parseInt(re.exec(data)[1], 10); return data; }
@@ -459,7 +463,7 @@ async function nextSchemeEirNumber(sc, lineId) {
   let n = Math.max(sc.start, (_eirIssued[sc.suffix] || 0) + 1);
   while (used.has(n)) n++;
   _eirIssued[sc.suffix] = n;
-  return n + sc.suffix;
+  return n + 'I' + sc.suffix;   // same format the database issues
 }
 
 async function nextEirNumber(movementType, lineId) {

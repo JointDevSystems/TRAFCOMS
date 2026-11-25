@@ -112,6 +112,16 @@ async function persistNewInterchange(rec) {
     } catch (e) {
       fail2 = { error: e };
     }
+    if (fail2 && /fetch|network|timeout|load failed|abort/i.test(String(fail2.error && fail2.error.message || ""))) {
+      try {
+        const { data } = await supabase.from("interchange").select("id").eq("id", rec.id).maybeSingle();
+        if (data && data.id) {
+          delete rec._dirty;
+          fail2 = null;
+        }
+      } catch (e) {
+      }
+    }
     if (fail2) {
       undo();
       return { ok: false, message: fail2.error && fail2.error.message || "The server refused the record" };
@@ -528,7 +538,7 @@ function eirInwardScheme(lineId) {
   return EIR_INWARD_SCHEME[String(l.code || "").trim().toUpperCase()] || null;
 }
 async function nextSchemeEirNumber(sc, lineId) {
-  const re = new RegExp("^(\\d+)" + sc.suffix + "$");
+  const re = new RegExp("^(\\d+)I?" + sc.suffix + "$");
   try {
     const { data, error } = await supabase.rpc("next_inward_eir_number", { p_line_id: lineId });
     if (!error && typeof data === "string" && re.test(data)) {
@@ -545,7 +555,7 @@ async function nextSchemeEirNumber(sc, lineId) {
   let n = Math.max(sc.start, (_eirIssued[sc.suffix] || 0) + 1);
   while (used.has(n)) n++;
   _eirIssued[sc.suffix] = n;
-  return n + sc.suffix;
+  return n + "I" + sc.suffix;
 }
 async function nextEirNumber(movementType, lineId) {
   if (isInwardMovement(movementType)) {
