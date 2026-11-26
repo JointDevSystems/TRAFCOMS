@@ -1,7 +1,7 @@
 'use strict';
 
 
-const CACHE_VERSION = '10.5';
+const CACHE_VERSION = '10.6';
 const SHELL_CACHE = 'gargo-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'gargo-runtime-v1';
 const TILE_CACHE = 'gargo-tiles-v1';
@@ -78,6 +78,7 @@ const SHELL_FILES = [
   './js/access-control.js',
   './js/gate-records.js',
   './js/unit-reserve.js',
+  './js/outward-details.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
