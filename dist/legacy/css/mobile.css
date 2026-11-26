@@ -144,3 +144,7 @@ summary {
     overflow: hidden;
   }
 }
+#syncStatus,
+.sync-status {
+  display: none !important;
+}

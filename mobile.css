@@ -46,3 +46,6 @@ button,a,.nav-item,[onclick],select,summary{touch-action:manipulation}
   .table-wrap{overscroll-behavior-y:auto}
   body.sidebar-open{overflow:hidden}              /* page is locked ONLY while the menu drawer is open */
 }
+
+/* Sync pill ("N unsaved" / "Synced") in the top bar is hidden on request. */
+#syncStatus,.sync-status{display:none!important}
