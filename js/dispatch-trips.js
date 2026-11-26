@@ -5,9 +5,10 @@
 function gxTripCustomOut(t) { try { return (window.GargoForms && GargoForms.tripOut) ? GargoForms.tripOut(t && t.custom) : {}; } catch (e) { return {}; } }
 function gxTripCustomIn(r)  { try { return (window.GargoForms && GargoForms.tripIn) ? GargoForms.tripIn(r) : {}; } catch (e) { return {}; } }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, trailer_no:t.trailerNo||null, transporter:t.transporter||null, flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null, ...gxTripCustomOut(t) }; }
+function gxKgOut(v) { return (v === '' || v == null || !isFinite(Number(v)) || Number(v) <= 0) ? null : Number(v); }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, outward_type:t.outwardType||null, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased, eir_number:t.eirNumber||null, receiving_party:t.receivingParty||null, release_order_no:t.releaseOrderNo||null, vessel:t.vessel||null, voyage:t.voyage||null, date_out:t.dateOut||null, trailer_no:t.trailerNo||null, transporter:t.transporter||null, driver_name_text:t.driverNameText||null, driver_id_no:t.driverIdNo||null, driver_phone:t.driverPhone||null, mgw_kg:gxKgOut(t.mgwKg), tare_kg:gxKgOut(t.tareKg), flagged_for_review:!!t.flaggedForReview, flag_reasons:JSON.stringify(t.flagReasons||[]), duplicate_of_id:t.duplicateOfId||null, import_batch_id:t.importBatchId||null, ...gxTripCustomOut(t) }; }
 
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, trailerNo:r.trailer_no||'', transporter:r.transporter||'', flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, custom: gxTripCustomIn(r) }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } let flagReasons=[]; try{ flagReasons = r.flag_reasons ? (typeof r.flag_reasons==='string' ? JSON.parse(r.flag_reasons) : r.flag_reasons) : []; }catch(e){ flagReasons=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, outwardType:r.outward_type||null, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released, eirNumber:r.eir_number||'', receivingParty:r.receiving_party||'', releaseOrderNo:r.release_order_no||'', vessel:r.vessel||'', voyage:r.voyage||'', dateOut:r.date_out||null, trailerNo:r.trailer_no||'', transporter:r.transporter||'', driverNameText:r.driver_name_text||'', driverIdNo:r.driver_id_no||'', driverPhone:r.driver_phone||'', mgwKg:(r.mgw_kg==null?'':r.mgw_kg), tareKg:(r.tare_kg==null?'':r.tare_kg), flaggedForReview:!!r.flagged_for_review, flagReasons, duplicateOfId:r.duplicate_of_id||null, importBatchId:r.import_batch_id||null, custom: gxTripCustomIn(r) }; }
 
 function isOutwardWorkType(workType) { return workType === 'Depot → Port'; }
 
@@ -168,6 +169,8 @@ async function dispatchPrefillFromEir(soft) {
   const ic = await gxInwardEirFor(cont);
   if (input.value.trim().toUpperCase() !== cont) return;           // the clerk kept typing while we looked it up
   input.dataset.eirFor = cont;
+  try { await dispatchAutofillWeights(false, ic, soft === true); } catch (e) { console.warn('weights autofill:', e && e.message); }   // MGW / tare: inward survey, EIR or an earlier dispatch
+  if (input.value.trim().toUpperCase() !== cont) return;
   if (!ic) { clear(); return; }
   const empty = id => { const e = el(id); return !!e && !String(e.value || '').trim(); };
   const setIf = (id, val) => { const e = el(id); if (e && val && (soft !== true || empty(id))) e.value = val; };
@@ -266,12 +269,12 @@ async function ensureOutwardInterchange(t) {
       id, container: cont, type: 'Gate-Out', ctype: t.ctype || (inw && inw.ctype) || '', line, condition: outStatus || 'Good',
       truck: t.truckId || '', driver: t.driverId || '',
       truckRegText: (() => { const x = (state.db.trucks || []).find(v => v.id === t.truckId); return x ? sanitize(x.reg || '') : ''; })(),
-      driverNameText: (() => { const x = (state.db.drivers || []).find(v => v.id === t.driverId); return x ? sanitize(x.name || '') : ''; })(),
-      driverIdNumber: (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
+      driverNameText: sanitize(t.driverNameText || '') || (() => { const x = (state.db.drivers || []).find(v => v.id === t.driverId); return x ? sanitize(x.name || '') : ''; })(),
+      driverIdNumber: sanitize(t.driverIdNo || '') || (() => { const d = (state.db.drivers || []).find(x => x.id === t.driverId); return d ? sanitize(d.idNo || d.id_no || '') : ''; })(),
       transporter: sanitize(t.transporter || (t.custom && t.custom.transporter) || ''), trailerNo: sanitize(t.trailerNo || (t.custom && t.custom.trailer_no) || ''),   // dispatch-form fields feed the interchange's own columns
       eirNumber, blNumber: (inw && inw.blNumber) || '', guaranteeNo: (inw && inw.guaranteeNo) || '', clerkName: (state.profile && state.profile.name) || '',
       vessel: t.vessel || (rsv && rsv.vessel) || (inw && inw.vessel) || '', voyage: t.voyage || (rsv && rsv.voyage) || (inw && inw.voyage) || '', deliveringParty: (inw && inw.deliveringParty) || '', receivingParty: t.receivingParty || (rsv && rsv.shipper_name) || '', releaseOrderNo: t.releaseOrderNo || (rsv && rsv.release_order_no) || '',
-      isoCode: (inw && inw.isoCode) || '', grossWeight: (inw && inw.grossWeight) || '', manufactureDate: (inw && inw.manufactureDate) || '', cargoStatus: (inw && inw.cargoStatus) || '',
+      isoCode: (inw && inw.isoCode) || '', grossWeight: (Number(t.mgwKg) > 0 ? t.mgwKg : '') || (inw && inw.grossWeight) || '', manufactureDate: (inw && inw.manufactureDate) || '', cargoStatus: (inw && inw.cargoStatus) || '',
       repairs: [], repairTotal: 0,
       notes: `Auto-issued when outward dispatch ${t.ref || String(t.id).slice(0, 8)} (${t.origin || '—'} → ${t.dest || '—'}) was completed.${outStatus ? ' Status: ' + outStatus + '.' : ''}${inw ? ' Inward EIR ' + inw.eirNumber + (inw.condition ? ' (' + inw.condition + ')' : '') + '.' : ''}${t.notes ? ' ' + t.notes : ''}`,
       date, status: 'pending', img: photos[0] || '', photos,
@@ -681,42 +684,155 @@ function populateDispatchSelects() {
   dispatchEnsureVehicleFields();
 }
 
-/* Dispatch console: Trailer No., Transporter and a read-only Driver ID / Phone line sit under Truck + Driver.
-   They are created here so index.html does not need to change. Trailer and transporter travel with the trip and
-   are copied onto the outward interchange (and so onto the Outward EIR). */
+/* Dispatch console: the Driver box is a combined text input + drop-down (the real <select id="d_driver"> stays in the page, hidden,
+   because the rest of the app reads its value). Under Truck + Driver this adds Trailer No., Transporter, Driver ID / Driving No.,
+   Driver Phone, Max Gross Weight (MGW) and Tare Weight. They are created here so index.html does not need to change.
+   Trailer, transporter, driver and weights travel with the trip and are copied onto the outward interchange (and so the Outward EIR). */
 function dispatchEnsureVehicleFields() {
-  const drv = document.getElementById('d_driver'); if (!drv || document.getElementById('d_trailer')) return;
-  const row = drv.closest('.form-row-2') || drv.parentNode.parentNode; if (!row || !row.parentNode) return;
-  const wrap = document.createElement('div');
-  wrap.id = 'd_vehicle_extra';
-  wrap.innerHTML = '<div class="form-row-2">' +
-      '<div class="fg"><label>Trailer No.</label><input id="d_trailer" placeholder="e.g. ZD502" autocomplete="off" style="text-transform:uppercase" /></div>' +
-      '<div class="fg"><label>Transporter</label><input id="d_transporter" placeholder="Haulage company" autocomplete="off" /></div>' +
-    '</div>' +
-    '<div id="d_driver_info" class="ops-notice" style="display:none;margin-bottom:12px;font-size:12px;line-height:1.6"></div>';
-  row.parentNode.insertBefore(wrap, row.nextSibling);
+  const drv = document.getElementById('d_driver'); if (!drv) return;
+  if (!document.getElementById('d_trailer')) {
+    const row = drv.closest('.form-row-2') || drv.parentNode.parentNode;
+    if (row && row.parentNode) {
+      const wrap = document.createElement('div');
+      wrap.id = 'd_vehicle_extra';
+      wrap.innerHTML = '<div class="form-row-2">' +
+          '<div class="fg"><label>Trailer No.</label><input id="d_trailer" placeholder="e.g. ZD502" autocomplete="off" style="text-transform:uppercase" /></div>' +
+          '<div class="fg"><label>Transporter</label><input id="d_transporter" placeholder="Haulage company" autocomplete="off" /></div>' +
+        '</div>' +
+        '<div class="form-row-2">' +
+          '<div class="fg"><label>Driver ID / Driving No.</label><input id="d_driver_idno" placeholder="e.g. 24347667" autocomplete="off" inputmode="text" /></div>' +
+          '<div class="fg"><label>Driver Phone</label><input id="d_driver_phone" type="tel" placeholder="e.g. 0712 345 678" autocomplete="off" inputmode="tel" /></div>' +
+        '</div>' +
+        '<div id="d_driver_info" class="ops-notice" style="display:none;margin-bottom:12px;font-size:12px;line-height:1.6"></div>' +
+        '<div class="form-row-2">' +
+          '<div class="fg"><label>Max Gross Weight — MGW (kg)</label><input id="d_mgw" type="number" min="0" step="1" inputmode="numeric" placeholder="e.g. 32500" /></div>' +
+          '<div class="fg"><label>Tare Weight (kg)</label><input id="d_tare" type="number" min="0" step="1" inputmode="numeric" placeholder="e.g. 2180" /></div>' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-4px 0 12px">' +
+          '<button type="button" class="action-btn ghost" onclick="dispatchAutofillWeights(true)">Autofill weights from inward EIR</button>' +
+          '<span id="d_weight_info" style="font-size:11.5px;color:var(--text-3);line-height:1.5"></span>' +
+        '</div>';
+      row.parentNode.insertBefore(wrap, row.nextSibling);
+    }
+  }
+  dispatchEnsureDriverCombo();
+  dispatchRefreshDriverList();
+  { const tx = document.getElementById('d_driver_text');           // the select was just rebuilt (empty): re-select the driver whose name is typed
+    if (tx && tx.value.trim() && !drv.value) { const h = (state.db.drivers || []).find(d => d.status === 'available' && String(d.name || '').trim().toLowerCase() === tx.value.trim().toLowerCase()); if (h) drv.value = h.id; } }
 }
-/* show the chosen driver's ID number and phone; pick the driver's own truck when none is chosen yet */
-function dispatchDriverInfo(fromDriver) {
+/* Driver name = text box with a drop-down list of the available drivers (type to filter, or type a name that is not on file) */
+function dispatchEnsureDriverCombo() {
+  const dv = document.getElementById('d_driver'); if (!dv || document.getElementById('d_driver_text')) return;
+  const fg = dv.closest('.fg') || dv.parentNode;
+  const lb = fg.querySelector('label'); if (lb) lb.innerHTML = 'Driver <span class="label-optional">(pick from the list or type a name)</span>';
+  const inp = document.createElement('input');
+  inp.id = 'd_driver_text'; inp.setAttribute('list', 'd_driver_list'); inp.setAttribute('autocomplete', 'off'); inp.placeholder = 'Select or type driver name';
+  const dl = document.createElement('datalist'); dl.id = 'd_driver_list';
+  dv.style.display = 'none';
+  dv.parentNode.insertBefore(inp, dv); dv.parentNode.insertBefore(dl, dv);
+}
+function dispatchRefreshDriverList() {
+  const dl = document.getElementById('d_driver_list'); if (!dl) return;
+  dl.innerHTML = (state.db.drivers || []).filter(d => d.status === 'available').map(d =>
+    '<option value="' + esc(d.name) + '">' + esc([d.phone, d.idNo || d.id_no].filter(Boolean).join(' · ')) + '</option>').join('');
+}
+/* the text box now names a driver on file (-> select it and fill ID / phone) or someone who is not (-> free text, ID / phone typed by hand) */
+function dispatchDriverTyped() {
+  const tx = document.getElementById('d_driver_text'), dv = document.getElementById('d_driver'); if (!tx || !dv) return;
+  const v = tx.value.trim().toLowerCase();
+  const hit = v ? (state.db.drivers || []).find(d => d.status === 'available' && String(d.name || '').trim().toLowerCase() === v) : null;
+  if (hit) { if (dv.value !== hit.id) { dv.value = hit.id; dispatchDriverInfo(true, true); } }
+  else if (dv.value) {                                    // typed something else: no longer a driver on file
+    dv.value = '';
+    ['d_driver_idno', 'd_driver_phone'].forEach(id => { const e = document.getElementById(id); if (e && e.dataset.auto === '1') { e.value = ''; delete e.dataset.auto; } });
+    dispatchDriverInfo(false, true);
+  }
+}
+/* fromDriver: the driver was just chosen (fill ID / phone, pick the driver's own truck). Otherwise only empty boxes are filled.
+   keepText: do not rewrite the name box (the user is typing in it). */
+function dispatchDriverInfo(fromDriver, keepText) {
   const dv = document.getElementById('d_driver'), tk = document.getElementById('d_truck'), box = document.getElementById('d_driver_info'); if (!dv) return;
   const d = (state.db.drivers || []).find(x => x.id === dv.value);
   if (fromDriver && d && tk && !tk.value && d.truckId && [...tk.options].some(o => o.value === d.truckId)) tk.value = d.truckId;
-  if (!fromDriver && tk && tk.value && !dv.value) {                       // truck chosen first: use the driver assigned to it
+  if (!fromDriver && tk && tk.value && !dv.value && !String((document.getElementById('d_driver_text') || {}).value || '').trim()) {   // truck chosen first: use the driver assigned to it
     const a = (state.db.drivers || []).find(x => x.truckId === tk.value && [...dv.options].some(o => o.value === x.id));
-    if (a) { dv.value = a.id; return dispatchDriverInfo(false); }
+    if (a) { dv.value = a.id; return dispatchDriverInfo(true); }
+  }
+  const tx = document.getElementById('d_driver_text'), idE = document.getElementById('d_driver_idno'), phE = document.getElementById('d_driver_phone');
+  if (d) {
+    if (tx && !keepText) tx.value = d.name || '';
+    const idNo = d.idNo || d.id_no || '', ph = d.phone || '';
+    const put = (e, val) => { if (e && val && (fromDriver || !String(e.value || '').trim())) { e.value = val; e.dataset.auto = '1'; } };
+    put(idE, idNo); put(phE, ph);
+    if (fromDriver) {                                     // a different driver: do not keep the previous one's details
+      if (idE && !idNo && idE.dataset.auto === '1') { idE.value = ''; delete idE.dataset.auto; }
+      if (phE && !ph && phE.dataset.auto === '1') { phE.value = ''; delete phE.dataset.auto; }
+    }
   }
   if (!box) return;
   if (!d) { box.style.display = 'none'; box.innerHTML = ''; return; }
-  const idNo = d.idNo || d.id_no || '', ph = d.phone || '';
+  const missing = [!(d.idNo || d.id_no) && 'ID / driving no.', !d.phone && 'phone'].filter(Boolean);
+  if (!missing.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.style.display = '';
-  box.innerHTML = '<b>' + esc(d.name) + '</b> &nbsp;·&nbsp; ID / Driving no.: <b>' + (idNo ? esc(idNo) : '<span style="color:var(--red)">not on file</span>') + '</b> &nbsp;·&nbsp; Phone: <b>' + (ph ? esc(ph) : '<span style="color:var(--red)">not on file</span>') + '</b>' +
-    ((!idNo || !ph) ? '<div style="color:var(--text-3)">Add the missing detail under Fleet → Drivers → Edit so it prints on the Outward EIR.</div>' : '');
+  box.innerHTML = '<b>' + esc(d.name) + '</b> has no ' + missing.join(' and ') + ' on file. Type it above for this trip; add it under Fleet → Drivers → Edit to have it fill in next time.';
 }
 document.addEventListener('change', ev => {
   const id = ev.target && ev.target.id;
   if (id === 'd_driver') dispatchDriverInfo(true);
   else if (id === 'd_truck') dispatchDriverInfo(false);
+  else if (id === 'd_driver_text') dispatchDriverTyped();
 }, true);
+document.addEventListener('input', ev => {
+  const e = ev.target, id = e && e.id;
+  if (id === 'd_driver_text') dispatchDriverTyped();       // a pick from the list also arrives as an input event
+  else if (id === 'd_driver_idno' || id === 'd_driver_phone' || id === 'd_mgw' || id === 'd_tare') { if (e.dataset) delete e.dataset.auto; }   // typed by hand: no longer "auto"
+}, true);
+
+/* ── Max gross / tare weight ──────────────────────────────────────────────────────────────────────────────
+   Looked up in this order, per field: the inward survey linked to the inward EIR → the newest survey of this container →
+   the gross weight on the inward interchange (MGW only) → an earlier dispatch of the same container. */
+async function gxInwardWeightsFor(cont, ic) {
+  const out = { mgw: '', tare: '', src: [] };
+  const take = (f, v, src) => { v = Number(v); if (!out[f] && isFinite(v) && v > 0) { out[f] = String(v); if (out.src.indexOf(src) < 0) out.src.push(src); } };
+  const online = navigator.onLine !== false && typeof supabase !== 'undefined';
+  const askSurvey = async q => { try { const r = await q; return (!r.error && r.data) ? r.data : null; } catch (e) { return null; } };
+  if (online && ic && ic.surveyId) {
+    const sv = await askSurvey(supabase.from('depot_surveys').select('tare_weight,mgwt').eq('id', ic.surveyId).maybeSingle());
+    if (sv) { take('mgw', sv.mgwt, 'inward survey'); take('tare', sv.tare_weight, 'inward survey'); }
+  }
+  if (online && (!out.mgw || !out.tare)) {
+    const sv = await askSurvey(supabase.from('depot_surveys').select('tare_weight,mgwt').eq('container', cont).order('surveyed_at', { ascending: false }).limit(1).maybeSingle());
+    if (sv) { take('mgw', sv.mgwt, 'latest survey'); take('tare', sv.tare_weight, 'latest survey'); }
+  }
+  if (ic) take('mgw', ic.grossWeight, 'inward EIR');
+  if (!out.mgw || !out.tare) {
+    const key = normContainerKey(cont);
+    const prev = (state.db.trips || []).filter(t => normContainerKey(t.container) === key && (Number(t.mgwKg) > 0 || Number(t.tareKg) > 0)).sort((a, b) => new Date(b.startTime) - new Date(a.startTime))[0];
+    if (prev) { take('mgw', prev.mgwKg, 'earlier dispatch'); take('tare', prev.tareKg, 'earlier dispatch'); }
+  }
+  return (out.mgw || out.tare) ? out : null;
+}
+/* manual = the clerk pressed the button: look it up again and replace what is there. Otherwise only empty (or earlier auto-filled) boxes are touched. */
+async function dispatchAutofillWeights(manual, ic, soft) {
+  const cEl = document.getElementById('d_container'), mE = document.getElementById('d_mgw'), tE = document.getElementById('d_tare'), info = document.getElementById('d_weight_info');
+  if (!cEl || !mE || !tE) return;
+  const cont = cEl.value.trim().toUpperCase();
+  if (cont.length < 10) { if (manual === true) toast('Enter the container number first', 'warning'); return; }
+  if (manual === true) { try { ic = await gxInwardEirFor(cont); } catch (e) { ic = null; } }
+  let w = null; try { w = await gxInwardWeightsFor(cont, ic || null); } catch (e) { console.warn('weights lookup:', e && e.message); }
+  if (cEl.value.trim().toUpperCase() !== cont) return;      // the clerk moved on to another container while we looked
+  const mayFill = e => manual === true || !String(e.value || '').trim() || (soft !== true && e.dataset.auto === '1');
+  if (!w) {
+    if (soft !== true) [mE, tE].forEach(e => { if (e.dataset.auto === '1') { e.value = ''; delete e.dataset.auto; } });
+    if (info) info.textContent = 'No weights on record for this container. Type them from the CSC plate.';
+    if (manual === true) toast('No inward EIR or survey weights found. Enter them by hand.', 'info', 4500);
+    return;
+  }
+  if (w.mgw && mayFill(mE)) { mE.value = w.mgw; mE.dataset.auto = '1'; }
+  if (w.tare && mayFill(tE)) { tE.value = w.tare; tE.dataset.auto = '1'; }
+  if (info) info.textContent = 'Filled from ' + w.src.join(' + ') + (w.mgw && w.tare ? '.' : ' (' + (w.mgw ? 'tare' : 'MGW') + ' not found, type it in).') + ' You can edit them.';
+  if (manual === true) toast('Weights filled in', 'success', 2500);
+}
 
 function renderDispatchQueue() {
   const pending = state.db.trips.filter(t=>t.status==='active').slice(-8).reverse();
@@ -726,7 +842,7 @@ function renderDispatchQueue() {
 }
 
 function awaitingDispatchTrips() {
-  return state.db.trips.filter(t => isTripLive(t) && (!t.truckId || !t.driverId));
+  return state.db.trips.filter(t => isTripLive(t) && (!t.truckId || (!t.driverId && !String(t.driverNameText || '').trim())));
 }
 
 function refreshAwaitingDispatchUI() {
@@ -797,7 +913,12 @@ function loadTripIntoDispatchForm(tripId) {
   document.getElementById('d_release_no').value = t.releaseOrderNo || '';
   document.getElementById('d_vessel').value     = t.vessel || '';
   document.getElementById('d_voyage').value     = t.voyage || '';
-  { const tr = document.getElementById('d_trailer'), tp = document.getElementById('d_transporter'); if (tr) tr.value = t.trailerNo || (t.custom && t.custom.trailer_no) || ''; if (tp) tp.value = t.transporter || (t.custom && t.custom.transporter) || ''; try { dispatchDriverInfo(false); } catch (e) {} }
+  { const tr = document.getElementById('d_trailer'), tp = document.getElementById('d_transporter'); if (tr) tr.value = t.trailerNo || (t.custom && t.custom.trailer_no) || ''; if (tp) tp.value = t.transporter || (t.custom && t.custom.transporter) || '';
+    const dvr = (state.db.drivers || []).find(x => x.id === t.driverId), set = (id, v) => { const e = document.getElementById(id); if (e) { e.value = v == null ? '' : v; delete e.dataset.auto; } };
+    set('d_driver_text', (dvr && dvr.name) || t.driverNameText || ''); set('d_driver_idno', t.driverIdNo || (dvr && (dvr.idNo || dvr.id_no)) || ''); set('d_driver_phone', t.driverPhone || (dvr && dvr.phone) || '');
+    set('d_mgw', t.mgwKg); set('d_tare', t.tareKg);
+    const wi = document.getElementById('d_weight_info'); if (wi) wi.textContent = '';
+    try { dispatchDriverInfo(false, true); } catch (e) {} }
   const dateOutEl = document.getElementById('d_dateout'); if (dateOutEl) dateOutEl.value = '';
   if (window.GargoForms) { try { GargoForms.decorate('dispatch'); GargoForms.fill('dispatch', t.custom); } catch (e) {} }   // Form Designer fields
 
@@ -816,7 +937,7 @@ function cancelDispatchEdit() {
   _dispatchEditingTripId = null;
   clearContainerImgs();
   clearDispatchReleaseFile();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter','d_driver_text','d_driver_idno','d_driver_phone','d_mgw','d_tare'].forEach(id=>{ const el=document.getElementById(id); if (el) { el.value=''; delete el.dataset.auto; } }); { const wi=document.getElementById('d_weight_info'); if (wi) wi.textContent=''; const di=document.getElementById('d_driver_info'); if (di) { di.style.display='none'; di.innerHTML=''; } }
   const outwardTypeSel = document.getElementById('d_outwardtype');
   if (outwardTypeSel) outwardTypeSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }
@@ -880,6 +1001,17 @@ async function createDispatch() {
   const voyage           = sanitize(document.getElementById('d_voyage').value.trim());
   const trailerNo        = sanitize(((document.getElementById('d_trailer') || {}).value || '').trim().toUpperCase());
   const transporter      = sanitize(((document.getElementById('d_transporter') || {}).value || '').trim());
+  const driverText      = sanitize(((document.getElementById('d_driver_text') || {}).value || '').trim());
+  const driverIdNo      = sanitize(((document.getElementById('d_driver_idno') || {}).value || '').trim());
+  const driverPhone     = sanitize(((document.getElementById('d_driver_phone') || {}).value || '').trim());
+  const mgwRaw          = ((document.getElementById('d_mgw') || {}).value || '').trim();
+  const tareRaw         = ((document.getElementById('d_tare') || {}).value || '').trim();
+  const mgwKg           = mgwRaw === '' ? '' : Number(mgwRaw);
+  const tareKg          = tareRaw === '' ? '' : Number(tareRaw);
+  const driverNameText  = driver ? ((state.db.drivers.find(d => d.id === driver) || {}).name || driverText) : driverText;
+  if (driverPhone && driverPhone.replace(/\D/g, '').length < 9) { toast('Driver phone looks too short', 'error'); return; }
+  if ((mgwKg !== '' && !(mgwKg > 0)) || (tareKg !== '' && !(tareKg > 0))) { toast('Weights must be numbers above zero (kg)', 'error'); return; }
+  if (mgwKg !== '' && tareKg !== '' && tareKg >= mgwKg) { toast('Tare weight must be less than the max gross weight', 'error'); return; }
   const dateOutInput    = document.getElementById('d_dateout').value;
   const dateOut         = dateOutInput ? new Date(dateOutInput).toISOString() : new Date().toISOString();
   const releaseFile     = _dispatchReleaseFile;
@@ -916,7 +1048,7 @@ async function createDispatch() {
       }
     }
 
-    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, custom: Object.assign({}, t.custom, custom) });
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, outwardType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, driverNameText, driverIdNo, driverPhone, mgwKg, tareKg, custom: Object.assign({}, t.custom, custom) });
     t._dirty = true;
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
@@ -942,7 +1074,7 @@ async function createDispatch() {
       ctype, workType, outwardType, origin, dest, shippingLine: line,
       status: 'active', startTime: new Date().toISOString(),
       eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
-      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, custom,
+      containerImages: images, eirNumber, receivingParty, releaseOrderNo, vessel, voyage, dateOut, trailerNo, transporter, driverNameText, driverIdNo, driverPhone, mgwKg, tareKg, custom,
       _dirty: true,
     };
     state.db.trips.push(trip);
@@ -975,7 +1107,7 @@ async function createDispatch() {
 
   clearContainerImgs();
   clearDispatchReleaseFile();
-  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes','d_eir','d_receiving','d_release_no','d_vessel','d_voyage','d_dateout','d_trailer','d_transporter','d_driver_text','d_driver_idno','d_driver_phone','d_mgw','d_tare'].forEach(id=>{ const el=document.getElementById(id); if (el) { el.value=''; delete el.dataset.auto; } }); { const wi=document.getElementById('d_weight_info'); if (wi) wi.textContent=''; const di=document.getElementById('d_driver_info'); if (di) { di.style.display='none'; di.innerHTML=''; } }
   const outwardTypeResetSel = document.getElementById('d_outwardtype');
   if (outwardTypeResetSel) outwardTypeResetSel.value = '';
   { const inf = document.getElementById('d_eir_info'), dc = document.getElementById('d_container'); if (inf) { inf.style.display = 'none'; inf.innerHTML = ''; } if (dc) delete dc.dataset.eirFor; const ie = document.getElementById('d_ineir'), iv = document.getElementById('d_ineir_view'); if (ie) { ie.value = ''; delete ie.dataset.icId; } if (iv) iv.style.display = 'none'; }

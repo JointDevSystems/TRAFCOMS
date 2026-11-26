@@ -137,13 +137,13 @@ async function saveDirty(table, rows, toRowFn) {
   }
   
   if (failure && table === 'trips') {                      // trips.trailer_no / trips.transporter are new: save without them until the migration is run
-    const tcols = ['trailer_no', 'transporter'], tdrop = [];
+    const tcols = ['trailer_no', 'transporter', 'driver_name_text', 'driver_id_no', 'driver_phone', 'mgw_kg', 'tare_kg'], tdrop = [];
     while (failure) {
       const msg = failure.error?.message || '';
       const col = tcols.find(cn => tdrop.indexOf(cn) === -1 && new RegExp('\\b' + cn + '\\b', 'i').test(msg));
       if (!col) break;
       tdrop.push(col);
-      console.warn('trips.' + col + ' column not found - saving without it. Run supabase_trips_vehicle_fields.sql.');
+      console.warn('trips.' + col + ' column not found - saving without it. Run supabase_trips_driver_weights.sql (and supabase_trips_vehicle_fields.sql).');
       failure = await upsertRowsChunked(table, dirty.map(r => { const row = toRowFn(r); tdrop.forEach(d => delete row[d]); return row; }));
     }
   }
