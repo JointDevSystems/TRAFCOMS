@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "11.9";
+const CACHE_VERSION = "12.0";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -125,6 +125,7 @@ const SHELL_FILES = [
   "./css/cameras.css",
   "./css/kpi-polish.css",
   "./css/gate-desk.css",
+  "./css/reserve-polish.css",
   "./vendor/supabase.js",
   "./js/polyfills.js",
   "./js/access-control.js",

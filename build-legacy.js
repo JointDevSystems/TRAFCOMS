@@ -8,7 +8,7 @@ let esbuild;
 try { esbuild = require('esbuild'); } catch (e) { console.error('esbuild missing. Run:  npm i -D esbuild'); process.exit(1); }
 
 const ROOT = process.cwd(), OUT = path.join(ROOT, 'legacy'), TARGET = 'chrome55';
-const CSS = ['styles', 'royal', 'glass', 'nav-shell', 'gargo-colors', 'mobile', 'tablet', 'cameras', 'kpi-polish', 'gate-desk'];
+const CSS = ['styles', 'royal', 'glass', 'nav-shell', 'gargo-colors', 'mobile', 'tablet', 'cameras', 'kpi-polish', 'gate-desk', 'reserve-polish'];
 const SUPABASE = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js';   // same version index.html uses
 const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const wr = (f, s) => { fs.mkdirSync(path.dirname(path.join(OUT, f)), { recursive: true }); fs.writeFileSync(path.join(OUT, f), s); };
