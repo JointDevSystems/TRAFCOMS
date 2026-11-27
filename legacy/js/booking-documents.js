@@ -602,6 +602,18 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     if (error) return null;
     return data || null;
   }
+  async function surveysForBookings(bookingIds) {
+    const ids = Array.from(new Set((bookingIds || []).filter(Boolean)));
+    const latest = {};
+    for (let i = 0; i < ids.length; i += 80) {
+      const { data, error } = await client().from("depot_surveys").select("*").in("booking_id", ids.slice(i, i + 80)).order("surveyed_at", { ascending: false });
+      if (error) throw new Error(error.message || "Could not load surveys");
+      (data || []).forEach((s) => {
+        if (!latest[s.booking_id]) latest[s.booking_id] = s;
+      });
+    }
+    return (bookingIds || []).map((id) => latest[id] || null);
+  }
   async function awaitingSurveyBookings() {
     const { data, error } = await client().from("public_bookings").select("*").eq("storage_status", "awaiting_survey").order("created_at", { ascending: true });
     if (error) throw new Error(error.message || "Could not load awaiting-survey bookings");
@@ -653,6 +665,7 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
     // Survey
     recordSurvey,
     surveyForOccupant,
+    surveysForBookings,
     surveyById,
     awaitingSurveyBookings,
     surveyedAwaitingAllocation,
