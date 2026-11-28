@@ -649,9 +649,9 @@ function buildInterchangeSlip(icId, opts) {
     if (lines.length > 1) {
       doc.setFontSize(7.5);
       lines = doc.splitTextToSize(text, w - 4.4).slice(0, 2);
-      doc.text(lines, x + 2.2, y + 7.8, { lineHeightFactor: 1.05 });
+      doc.text(lines, x + 2.2, y + Math.min(7.8, h - 3.6), { lineHeightFactor: 1.05 });
     } else {
-      doc.text(lines, x + 2.2, y + 9.2);
+      doc.text(lines, x + 2.2, y + Math.min(9.2, h - 1.8));
     }
     doc.setTextColor(...P.INK);
   }
@@ -695,7 +695,33 @@ function buildInterchangeSlip(icId, opts) {
   y += 13;
 
   // ---- field grid --------------------------------------------------------------
-  const ROW = 12;
+  // ---- fit on ONE page: use the roomiest density that still leaves space for the sign-off ----
+  const SO_H = 24, PAGE_BOTTOM = 289, DESC_W = 76;
+  const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || '')) ? '' : String(ic.notes || '');   // system note "Booking REF · name · phone" stays off the slip
+  const LEVELS = [
+    { ROW: 12,   rowMin: 7,   pad: 3,   lh: 3.6, fs: 8,   bo: 4.6, head: 7,   tot: 7.5, totGap: 9, stmt: 12,   noteFs: 8.5, noteBase: 9,   noteLh: 4   },
+    { ROW: 10.5, rowMin: 5.8, pad: 2,   lh: 3.2, fs: 7.4, bo: 4.0, head: 6.5, tot: 6.5, totGap: 7, stmt: 11,   noteFs: 8,   noteBase: 8,   noteLh: 3.7 },
+    { ROW: 10.5, rowMin: 4.8, pad: 1.4, lh: 2.9, fs: 6.8, bo: 3.4, head: 6,   tot: 6,   totGap: 6, stmt: 10.5, noteFs: 7.5, noteBase: 7.5, noteLh: 3.4 },
+    { ROW: 10,   rowMin: 4.0, pad: 1,   lh: 2.6, fs: 6.2, bo: 3.0, head: 5.5, tot: 5.5, totGap: 5, stmt: 10,   noteFs: 7,   noteBase: 7,   noteLh: 3.1 },
+    { ROW: 9.5,  rowMin: 3.6, pad: 0.8, lh: 2.4, fs: 5.8, bo: 2.7, head: 5,   tot: 5,   totGap: 4, stmt: 9.5,  noteFs: 6.5, noteBase: 6.5, noteLh: 2.9 },
+  ];
+  const LV = (function () {
+    const reps = ic.repairs || [];
+    let pick = LEVELS[LEVELS.length - 1];
+    for (let k = 0; k < LEVELS.length; k++) {
+      const lv = LEVELS[k];
+      doc.setFont(undefined, 'normal'); doc.setFontSize(lv.fs);
+      let h = 75 + lv.ROW * 6 + 6 + lv.head;                     // letterhead + info panels + field grid + table header
+      if (reps.length) reps.forEach(r => { h += Math.max(lv.rowMin, doc.splitTextToSize(String(r.item || '\u2014'), DESC_W - 3).length * lv.lh + lv.pad); });
+      else h += 8;
+      h += lv.tot + lv.totGap + lv.stmt;
+      if (slipNotes) { doc.setFontSize(lv.noteFs); h += lv.noteBase + Math.min(5, doc.splitTextToSize(slipNotes, CONTENT_W - 4).length) * lv.noteLh + 4; }
+      if (h + 4 + SO_H <= PAGE_BOTTOM) { pick = lv; break; }
+    }
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8);
+    return pick;
+  })();
+  const ROW = LV.ROW;
   const truckReg = ic.truck ? String(truckName(ic.truck)).split(' · ')[0] : (ic.truckRegText || '');
   const lorry = [truckReg, ic.trailerNo].filter(Boolean).join(' / ');
   const drv = ic.driver ? state.db.drivers.find(d => d.id === ic.driver) : null;
@@ -737,10 +763,10 @@ function buildInterchangeSlip(icId, opts) {
 
   // ---- repair table ----------------------------------------------------------------
   const cols = [
-    { label: 'Repair Code',        x: MARGIN,       w: 26, align: 'left'  },
-    { label: 'Damage Description', x: MARGIN + 26,  w: 70, align: 'left'  },
-    { label: 'Qty',                x: MARGIN + 96,  w: 12, align: 'right' },
-    { label: 'Hrs',                x: MARGIN + 108, w: 14, align: 'right' },
+    { label: 'Repair Code',        x: MARGIN,       w: 24, align: 'left'  },
+    { label: 'Damage Description', x: MARGIN + 24,  w: DESC_W, align: 'left'  },
+    { label: 'Qty',                x: MARGIN + 100, w: 10, align: 'right' },
+    { label: 'Hrs',                x: MARGIN + 110, w: 12, align: 'right' },
     { label: 'Labour Cost',        x: MARGIN + 122, w: 20, align: 'right' },
     { label: 'Material Cost',      x: MARGIN + 142, w: 22, align: 'right' },
     { label: 'Total Cost',         x: MARGIN + 164, w: 18, align: 'right' },
@@ -750,19 +776,22 @@ function buildInterchangeSlip(icId, opts) {
     if (c.align === 'right') doc.text(String(txt), c.x + c.w - 1.5, yy, { align: 'right' });
     else doc.text(String(txt), c.x + 1.5, yy);
   };
-  doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.setFillColor(...P.BLUE_LT);
-  doc.rect(MARGIN, y, CONTENT_W, 7, 'FD');
-  cols.forEach(c => doc.rect(c.x, y, c.w, 7));
-  doc.setFont(undefined, 'bold'); doc.setFontSize(7.5); doc.setTextColor(...P.BLUE);
-  cols.forEach((c, i) => {
-    if (c.align === 'right') doc.text(c.label, c.x + c.w - 1.5, y + 4.7, { align: 'right' });
-    else doc.text(c.label, c.x + 1.5, y + 4.7);
-  });
-  y += 7;
+  const drawHead = () => {
+    doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.setFillColor(...P.BLUE_LT);
+    doc.rect(MARGIN, y, CONTENT_W, LV.head, 'FD');
+    cols.forEach(c => doc.rect(c.x, y, c.w, LV.head));
+    doc.setFont(undefined, 'bold'); doc.setFontSize(Math.min(7.5, LV.fs + 0.3)); doc.setTextColor(...P.BLUE);
+    cols.forEach((c, i) => {
+      if (c.align === 'right') doc.text(c.label, c.x + c.w - 1.5, y + LV.head - 2.3, { align: 'right' });
+      else doc.text(c.label, c.x + 1.5, y + LV.head - 2.3);
+    });
+    y += LV.head;
+  };
+  drawHead();
 
   const repairs = ic.repairs || [];
   let totHrs = 0, totLabour = 0, totMaterial = 0;
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(LV.fs); doc.setTextColor(20);
   if (repairs.length) {
     repairs.forEach(r => {
       const hrs = Number(r.hours || 0);
@@ -770,16 +799,16 @@ function buildInterchangeSlip(icId, opts) {
       const material = Number(r.material || 0);
       totHrs += hrs; totLabour += labour; totMaterial += material;
       const lines = doc.splitTextToSize(String(r.item || '—'), cols[1].w - 3);
-      const rowH = Math.max(7, lines.length * 3.6 + 3);
-      if (y + rowH > 262) { doc.addPage(); y = 20; }
+      const rowH = Math.max(LV.rowMin, lines.length * LV.lh + LV.pad);
+      if (y + rowH > 280) { doc.addPage(); y = 20; drawHead(); doc.setFont(undefined, 'normal'); doc.setFontSize(LV.fs); doc.setTextColor(20); }   // last resort for extreme lists
       cols.forEach(c => doc.rect(c.x, y, c.w, rowH));
-      put(0, r.code || '—', y + 4.6);
-      doc.text(lines, cols[1].x + 1.5, y + 4.6);
-      put(2, r.qty || 1, y + 4.6);
-      put(3, hrs.toFixed(2), y + 4.6);
-      put(4, money(labour), y + 4.6);
-      put(5, money(material), y + 4.6);
-      put(6, money(labour + material), y + 4.6);
+      put(0, r.code || '—', y + LV.bo);
+      doc.text(lines, cols[1].x + 1.5, y + LV.bo);
+      put(2, r.qty || 1, y + LV.bo);
+      put(3, hrs.toFixed(2), y + LV.bo);
+      put(4, money(labour), y + LV.bo);
+      put(5, money(material), y + LV.bo);
+      put(6, money(labour + material), y + LV.bo);
       y += rowH;
     });
   } else {
@@ -790,15 +819,16 @@ function buildInterchangeSlip(icId, opts) {
     y += 8;
   }
   // totals row
-  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...P.GREEN);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(Math.min(8.5, LV.fs + 0.5)); doc.setTextColor(...P.GREEN);
   doc.setFillColor(...P.GREEN_LT);
-  cols.forEach(c => doc.rect(c.x, y, c.w, 7.5, 'FD'));
-  doc.text('Totals :   ' + GargoMoney.sym(GargoMoney.itemsCur(repairs)), cols[1].x + cols[1].w - 1.5, y + 5, { align: 'right' });
-  put(3, totHrs.toFixed(2), y + 5);
-  put(4, money(totLabour), y + 5);
-  put(5, money(totMaterial), y + 5);
-  put(6, money(totLabour + totMaterial), y + 5);
-  y += 7.5 + 9;
+  cols.forEach(c => doc.rect(c.x, y, c.w, LV.tot, 'FD'));
+  const tb = LV.tot - 2.5;
+  doc.text('Totals :   ' + GargoMoney.sym(GargoMoney.itemsCur(repairs)), cols[1].x + cols[1].w - 1.5, y + tb, { align: 'right' });
+  put(3, totHrs.toFixed(2), y + tb);
+  put(4, money(totLabour), y + tb);
+  put(5, money(totMaterial), y + tb);
+  put(6, money(totLabour + totMaterial), y + tb);
+  y += LV.tot + LV.totGap;
 
   // ---- statement + remarks --------------------------------------------------------
   if (y > 262) { doc.addPage(); y = 20; }
@@ -807,25 +837,24 @@ function buildInterchangeSlip(icId, opts) {
   doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(60);
   doc.text(`THIS CONTAINER WAS ${inward ? 'RECEIVED' : 'RELEASED'} IN GOOD CONDITION EXCEPT AS NOTED ABOVE.`, MARGIN + 5, y + 0.9);
   doc.setTextColor(...P.INK);
-  y += 12;
+  y += LV.stmt;
   // the system note "Booking REF · name · phone" is internal; keep it off the printed slip
-  const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || '')) ? '' : String(ic.notes || '');
   if (slipNotes) {
+    doc.setFont(undefined, 'normal'); doc.setFontSize(LV.noteFs);
     const noteLines = doc.splitTextToSize(slipNotes, CONTENT_W - 4).slice(0, 5);
-    const boxH = 9 + noteLines.length * 4;
+    const boxH = LV.noteBase + noteLines.length * LV.noteLh;
     if (y + boxH > 285) { doc.addPage(); y = 20; }
     doc.setDrawColor(P.HAIR); doc.setLineWidth(0.25); doc.rect(MARGIN, y, CONTENT_W, boxH);
     doc.setFont(undefined, 'bold'); doc.setFontSize(6.4); doc.setTextColor(...P.CAP);
     doc.text('REMARKS', MARGIN + 2.2, y + 4.2);
-    doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
-    doc.text(noteLines, MARGIN + 2, y + 8.6);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(LV.noteFs); doc.setTextColor(20);
+    doc.text(noteLines, MARGIN + 2, y + 8.6 - (9 - LV.noteBase), { lineHeightFactor: LV.noteLh / (LV.noteFs * 0.3528) });
     y += boxH + 4;
   }
 
   // ---- sign-off: surveyed / issued by, printed by, official stamp ----------------------
-  const SO_H = 36;
-  let soY = Math.max(y + 4, 286 - SO_H);
-  if (soY + SO_H > 288) { doc.addPage(); soY = 20; }
+  let soY = Math.max(y + 4, PAGE_BOTTOM - SO_H);
+  if (soY + SO_H > PAGE_BOTTOM + 1) { doc.addPage(); soY = 20; }
   ghPdfSignOff(doc, MARGIN, soY, CONTENT_W, {
     surveyLabel: inward ? 'Surveyed by' : 'Issued by (clerk)', surveyor: ic.clerkName || '',
     surveyedAt: inward ? (ic.surveyedAt || ic.depotInAt || ic.date) : ic.date,
