@@ -107,7 +107,7 @@
   }
 })();
 "use strict";
-const CACHE_VERSION = "12.3";
+const CACHE_VERSION = "12.4";
 const SHELL_CACHE = "gargo-legacy-shell-" + CACHE_VERSION;
 const RUNTIME_CACHE = "gargo-legacy-runtime-v1";
 const TILE_CACHE = "gargo-legacy-tiles-v1";
@@ -169,6 +169,7 @@ const SHELL_FILES = [
   "./js/nav-shell.js",
   "./js/navigation.js",
   "./js/offline.js",
+  "./js/outward-details.js",
   "./js/outward-eir.js",
   "./js/payroll-config.js",
   "./js/photo-store.js",
