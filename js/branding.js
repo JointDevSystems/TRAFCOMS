@@ -118,35 +118,34 @@ window.ghAskPrinter = function (o) {
 };
 
 /* ── Bottom block of a document: surveyed/issued by · printed by · official stamp ─────────────── */
-/* Draws at (x, y) across width w. Returns its height (36 mm). o = { surveyLabel, surveyor, surveyedAt, printedBy, printedAt } */
+/* No boxes: each signatory is a caption, a name, a date/time line and a signature line. The stamp area is left clear.
+   Draws at (x, y) across width w and returns its height. ghPdfSignOff.HEIGHT is the same number, so callers can reserve
+   exactly the right space before drawing. o = { surveyLabel, surveyor, surveyedAt, printedBy, printedAt } */
 window.ghPdfSignOff = function (doc, x, y, w, o) {
   o = o || {};
-  var H = 36, gap = 3, wStamp = 56, wBox = (w - wStamp - gap * 2) / 2;
+  var H = window.ghPdfSignOff.HEIGHT, gap = 8, wStamp = 56, wCol = (w - wStamp - gap * 2) / 2;
   function stamp(v) { if (!v) return ''; var d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('en-KE') + '  ' + d.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }); }
-  function box(bx, bw, cap, name, when) {
-    doc.setDrawColor(90); doc.setLineWidth(0.3); doc.rect(bx, y, bw, H);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); doc.setTextColor(90); doc.text(String(cap).toUpperCase(), bx + 2.5, y + 4.4);
+  function col(cx, cw, cap, name, when) {
+    doc.setLineWidth(0.3);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); doc.setTextColor(90); doc.text(String(cap).toUpperCase(), cx, y + 3.5);
     var nm = String(name || ''), fs = 10;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(20);
-    while (fs > 7 && doc.getTextWidth(nm) > bw - 5) { fs -= 0.5; doc.setFontSize(fs); }
-    if (nm) doc.text(nm, bx + 2.5, y + 11); else { doc.setDrawColor(170); doc.line(bx + 2.5, y + 11, bx + bw - 2.5, y + 11); doc.setDrawColor(90); }
+    while (fs > 7 && doc.getTextWidth(nm) > cw) { fs -= 0.5; doc.setFontSize(fs); }
+    if (nm) doc.text(nm, cx, y + 9.5); else { doc.setDrawColor(170); doc.line(cx, y + 9.7, cx + cw, y + 9.7); }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(80);
-    doc.text('Date / time:  ' + (when || ''), bx + 2.5, y + 17.5);
-    if (!when) { doc.setDrawColor(170); doc.line(bx + 22, y + 17.7, bx + bw - 2.5, y + 17.7); doc.setDrawColor(90); }
-    doc.setDrawColor(120); doc.line(bx + 2.5, y + H - 8, bx + bw - 2.5, y + H - 8);
-    doc.setFontSize(6.8); doc.setTextColor(110); doc.text('Signature', bx + 2.5, y + H - 4.4);
+    doc.text('Date / time:  ' + (when || ''), cx, y + 14.8);
+    if (!when) { doc.setDrawColor(170); doc.line(cx + 20, y + 15, cx + cw, y + 15); }
+    doc.setDrawColor(120); doc.line(cx, y + H - 5.5, cx + cw, y + H - 5.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8); doc.setTextColor(110); doc.text('Signature', cx, y + H - 2);
   }
-  box(x, wBox, o.surveyLabel || 'Surveyed by', o.surveyor, stamp(o.surveyedAt));
-  box(x + wBox + gap, wBox, 'Printed by', o.printedBy, stamp(o.printedAt || new Date()));
+  col(x, wCol, o.surveyLabel || 'Surveyed by', o.surveyor, stamp(o.surveyedAt));
+  col(x + wCol + gap, wCol, 'Printed by', o.printedBy, stamp(o.printedAt || new Date()));
   var sx = x + w - wStamp;
-  doc.setDrawColor(90); doc.setLineWidth(0.3);
-  if (doc.setLineDashPattern) doc.setLineDashPattern([1.6, 1.6], 0);
-  doc.rect(sx, y, wStamp, H);
-  if (doc.setLineDashPattern) doc.setLineDashPattern([], 0);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(150); doc.text('OFFICIAL STAMP', sx + wStamp / 2, y + H - 3.5, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(150); doc.text('OFFICIAL STAMP', sx + wStamp / 2, y + H - 2, { align: 'center' });
   doc.setTextColor(20); doc.setDrawColor(90);
   return H;
 };
+window.ghPdfSignOff.HEIGHT = 30;
 
 /* Prints a jsPDF document directly (no file saved). Falls back to opening it in a new tab. */
 window.ghPrintPdf = function (doc) {

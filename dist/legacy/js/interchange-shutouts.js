@@ -800,14 +800,16 @@ function buildInterchangeSlip(icId, opts) {
   doc.text("Equipment Interchange Receipt \u2014 " + (inward ? "Container Received" : "Container Released"), MARGIN + 4, y + 6.1);
   doc.setTextColor(...P.INK);
   y += 13;
-  const SO_H = 24, PAGE_BOTTOM = 289, DESC_W = 76;
+  const SO_H = window.ghPdfSignOff && ghPdfSignOff.HEIGHT || 30, PAGE_BOTTOM = 289, DESC_W = 76;
   const slipNotes = /^Booking\s[^\u00b7]*\u00b7/.test(String(ic.notes || "")) ? "" : String(ic.notes || "");
   const LEVELS = [
     { ROW: 12, rowMin: 7, pad: 3, lh: 3.6, fs: 8, bo: 4.6, head: 7, tot: 7.5, totGap: 9, stmt: 12, noteFs: 8.5, noteBase: 9, noteLh: 4 },
     { ROW: 10.5, rowMin: 5.8, pad: 2, lh: 3.2, fs: 7.4, bo: 4, head: 6.5, tot: 6.5, totGap: 7, stmt: 11, noteFs: 8, noteBase: 8, noteLh: 3.7 },
     { ROW: 10.5, rowMin: 4.8, pad: 1.4, lh: 2.9, fs: 6.8, bo: 3.4, head: 6, tot: 6, totGap: 6, stmt: 10.5, noteFs: 7.5, noteBase: 7.5, noteLh: 3.4 },
     { ROW: 10, rowMin: 4, pad: 1, lh: 2.6, fs: 6.2, bo: 3, head: 5.5, tot: 5.5, totGap: 5, stmt: 10, noteFs: 7, noteBase: 7, noteLh: 3.1 },
-    { ROW: 9.5, rowMin: 3.6, pad: 0.8, lh: 2.4, fs: 5.8, bo: 2.7, head: 5, tot: 5, totGap: 4, stmt: 9.5, noteFs: 6.5, noteBase: 6.5, noteLh: 2.9 }
+    { ROW: 9.5, rowMin: 3.6, pad: 0.8, lh: 2.4, fs: 5.8, bo: 2.7, head: 5, tot: 5, totGap: 4, stmt: 9.5, noteFs: 6.5, noteBase: 6.5, noteLh: 2.9 },
+    { ROW: 9.5, rowMin: 3.2, pad: 0.6, lh: 2.2, fs: 5.2, bo: 2.4, head: 4.6, tot: 4.6, totGap: 3, stmt: 9, noteFs: 6.5, noteBase: 6.5, noteLh: 2.9 }
+    // very long damage lists: only the table tightens, so captions and remarks never collide
   ];
   const LV = (function() {
     const reps = ic.repairs || [];
@@ -990,7 +992,7 @@ function buildInterchangeSlip(icId, opts) {
     doc.setFont(void 0, "normal");
     doc.setFontSize(LV.noteFs);
     doc.setTextColor(20);
-    doc.text(noteLines, MARGIN + 2, y + 8.6 - (9 - LV.noteBase), { lineHeightFactor: LV.noteLh / (LV.noteFs * 0.3528) });
+    doc.text(noteLines, MARGIN + 2, y + Math.max(8.6 - (9 - LV.noteBase), 4.2 + LV.noteFs * 0.3528 * 1.05 + 0.9), { lineHeightFactor: LV.noteLh / (LV.noteFs * 0.3528) });
     y += boxH + 4;
   }
   let soY = Math.max(y + 4, PAGE_BOTTOM - SO_H);
