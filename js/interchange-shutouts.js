@@ -1953,9 +1953,7 @@ function repairItemsTotal(items) {
   return (items || []).reduce((sum, r) => sum + (Number(r.hours || 0) * GargoMoney.labourRate(GargoMoney.itemCur(r))) + Number(r.material || 0), 0);
 }
 
-/* Which tariff prices this form: PIL (KES) forms use the PIL schedule, everything else the GHD (USD) schedule.
-   The currency is the single switch (it defaults from the shipping line and can be changed on the survey form),
-   so a KES form can never be priced from USD figures. */
+
 function tariffMode(prefix) {
   try { if (window.PIL_TARIFF_SCHEDULE && window.GargoMoney && GargoMoney.curFor(prefix) === 'KES') return 'PIL'; } catch (e) {}
   return 'GHD';

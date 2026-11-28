@@ -43,7 +43,7 @@ fs.rmSync(OUT, { recursive: true, force: true });
     try { min(f); } catch (e) { console.error('FAILED ' + f + ': ' + String(e.message).split('\n')[0]); process.exit(1); }
   }
 
-  // index.html (inline <style>/<script> are minified too)
+ 
   const html = rd('index.html').toString('utf8');
   const outHtml = await minifyHtml(html, {
     collapseWhitespace: true, conservativeCollapse: true, removeComments: true,
